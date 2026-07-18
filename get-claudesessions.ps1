@@ -9,11 +9,28 @@
 
     Output is PowerShell-safe: statements are separated with ';' not '&&'.
 
+.NOTES
+    Prior art (tools that also list/resume sessions across projects). This tool
+    goes further than all of them: it classifies each session's end-state
+    (waiting-you / cut-off / limit / ...), estimates context %, surfaces the
+    agent recap + last prompt, and renders a WinForms triage grid that tints
+    unfinished work and emits copy-ready resume one-liners.
+
+      - Claude Code built-in: `claude --resume` / `-r` opens a session picker;
+        recent versions reportedly add an 'A' toggle for all-projects.
+      - cc-sessions   - https://github.com/chronologos/cc-sessions (CLI list/resume)
+      - clauhist      - reads ~/.claude/history.jsonl, browses via fzf
+      - Claude Sessions Explorer - VS Code extension (ShahadIshraq.vscode-claude-sessions)
+      - Claude History Viewer    - VS Code sidebar (diffs, search, resume)
+
 .PARAMETER Top
-    How many entries to show. Default 20.
+    How many entries to show. Default 50.
 
 .PARAMETER All
     Show every session in every project, not just the newest one per project.
+    On by default; pass -All:$false to collapse to the newest session per project.
+
+    In the interactive grid: press A to hide/show completed sessions, R to refresh.
 
 .PARAMETER Copy
     Copy the resulting list to the clipboard.
@@ -38,8 +55,8 @@
 
 [CmdletBinding()]
 param(
-    [int]    $Top  = 20,
-    [switch] $All,
+    [int]    $Top  = 50,
+    [switch] $All  = $true,          # default: every session in every project (pass -All:$false for newest-per-project)
     [switch] $Copy,
     [switch] $Cli,
     [string] $Json,
@@ -196,10 +213,15 @@ function Show-SessionGrid {
     Add-Type -AssemblyName System.Windows.Forms, System.Drawing
     [System.Windows.Forms.Application]::EnableVisualStyles()
 
+    # Mutable state the key handlers write to (a hashtable is shared by reference
+    # with the event closures, unlike a plain variable).
+    $state = @{ Refresh = $false; HideCompleted = $false }
+
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = 'Claude Code sessions - double-click a row to resume it, or select rows and Copy resume command(s)'
+    $form.Text = 'Claude Code sessions - double-click to resume | A: hide/show completed | R: refresh | select rows + Copy'
     $form.StartPosition = 'CenterScreen'
     $form.Size = New-Object System.Drawing.Size(1150, 680)
+    $form.KeyPreview = $true
 
     $grid = New-Object System.Windows.Forms.DataGridView
     $grid.Dock = 'Fill'
@@ -262,6 +284,28 @@ function Show-SessionGrid {
         }
     })
 
+    # A -> toggle visibility of completed rows.  R -> rebuild the list.
+    $form.Add_KeyDown({
+        param($sender, $e)
+        switch ($e.KeyCode) {
+            'A' {
+                $state.HideCompleted = -not $state.HideCompleted
+                $grid.CurrentCell = $null   # can't hide the current row otherwise
+                foreach ($gr in $grid.Rows) {
+                    if ($gr.Cells['Status'].Value -eq 'complete') {
+                        $gr.Visible = -not $state.HideCompleted
+                    }
+                }
+                $e.Handled = $true
+            }
+            'R' {
+                $state.Refresh = $true
+                $form.Close()
+                $e.Handled = $true
+            }
+        }
+    })
+
     $panel = New-Object System.Windows.Forms.FlowLayoutPanel
     $panel.Dock = 'Bottom'; $panel.FlowDirection = 'RightToLeft'
     $panel.Height = 46; $panel.Padding = New-Object System.Windows.Forms.Padding(8)
@@ -280,61 +324,71 @@ function Show-SessionGrid {
     $form.CancelButton = $btnCancel
 
     $result = $form.ShowDialog()
-    if ($result -ne [System.Windows.Forms.DialogResult]::OK) { return @() }
-    return @($grid.SelectedRows | Sort-Object Index | ForEach-Object { $_.Cells['Command'].Value })
+
+    if ($state.Refresh) {
+        return [pscustomobject]@{ Refresh = $true;  Commands = @() }
+    }
+    $commands = if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        @($grid.SelectedRows | Sort-Object Index | ForEach-Object { $_.Cells['Command'].Value })
+    } else { @() }
+    return [pscustomobject]@{ Refresh = $false; Commands = $commands }
 }
 
-$files = Get-ChildItem -LiteralPath $projects -Recurse -Filter *.jsonl -File -ErrorAction SilentlyContinue
+# Scan ~/.claude/projects and build the display rows. Factored into a function
+# so the grid's Refresh (R) hotkey can rebuild the list without restarting.
+function Get-SessionRows {
+    param([string] $Projects, [switch] $All, [int] $Top, [int] $ContextWindow)
 
-if (-not $files) {
-    Write-Warning "No session transcripts (*.jsonl) found under: $projects"
-    return
-}
+    $files = Get-ChildItem -LiteralPath $Projects -Recurse -Filter *.jsonl -File -ErrorAction SilentlyContinue
+    if (-not $files) { return @() }
 
-# Newest session per project folder, unless -All was requested.
-if (-not $All) {
-    $files = $files |
-        Group-Object DirectoryName |
-        ForEach-Object { $_.Group | Sort-Object LastWriteTime -Descending | Select-Object -First 1 }
-}
-
-$rows = $files |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First $Top |
-    ForEach-Object {
-        $info = Get-SessionInfo -Path $_.FullName -ContextWindow $ContextWindow
-        $cwd  = $info.Cwd
-        if (-not $cwd) { $cwd = '<unknown - cwd not found in transcript>' }
-
-        # "Unfinished" = the transcript ends on the agent asking something, or on
-        # an operator prompt the agent never answered in text. Both mean the
-        # thread stopped waiting on a human rather than on a delivered result.
-        $recap  = $info.Recap
-        $openQ  = [bool]($recap -and $recap.TrimEnd() -match '\?$')
-        $noReply = [bool]($info.LastPrompt -and -not $recap)
-
-        [pscustomobject]@{
-            LastActive = $_.LastWriteTime
-            AgeDays    = [math]::Round(((Get-Date) - $_.LastWriteTime).TotalDays, 1)
-            Name       = if ($info.Name) { $info.Name } else { '(untitled)' }
-            Project    = Split-Path $cwd -Leaf
-            Status     = $info.Status
-            Complete   = $info.Complete
-            ContextPct = $info.ContextPct
-            ContextTokens = $info.ContextTokens
-            LastPrompt = $info.LastPrompt
-            Recap      = $recap
-            Unfinished = ($openQ -or $noReply)
-            WaitingOn  = if ($noReply) { 'agent' } elseif ($openQ) { 'you' } else { '' }
-            Cwd        = $cwd
-            SessionId  = $_.BaseName
-            SizeKB     = [math]::Round($_.Length / 1KB, 1)
-            Command    = 'cd "{0}"; claude --resume {1}' -f $cwd, $_.BaseName
-        }
+    # Newest session per project folder, unless -All was requested.
+    if (-not $All) {
+        $files = $files |
+            Group-Object DirectoryName |
+            ForEach-Object { $_.Group | Sort-Object LastWriteTime -Descending | Select-Object -First 1 }
     }
 
+    $files |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First $Top |
+        ForEach-Object {
+            $info = Get-SessionInfo -Path $_.FullName -ContextWindow $ContextWindow
+            $cwd  = $info.Cwd
+            if (-not $cwd) { $cwd = '<unknown - cwd not found in transcript>' }
+
+            # "Unfinished" = the transcript ends on the agent asking something, or on
+            # an operator prompt the agent never answered in text. Both mean the
+            # thread stopped waiting on a human rather than on a delivered result.
+            $recap  = $info.Recap
+            $openQ  = [bool]($recap -and $recap.TrimEnd() -match '\?$')
+            $noReply = [bool]($info.LastPrompt -and -not $recap)
+
+            [pscustomobject]@{
+                LastActive = $_.LastWriteTime
+                AgeDays    = [math]::Round(((Get-Date) - $_.LastWriteTime).TotalDays, 1)
+                Name       = if ($info.Name) { $info.Name } else { '(untitled)' }
+                Project    = Split-Path $cwd -Leaf
+                Status     = $info.Status
+                Complete   = $info.Complete
+                ContextPct = $info.ContextPct
+                ContextTokens = $info.ContextTokens
+                LastPrompt = $info.LastPrompt
+                Recap      = $recap
+                Unfinished = ($openQ -or $noReply)
+                WaitingOn  = if ($noReply) { 'agent' } elseif ($openQ) { 'you' } else { '' }
+                Cwd        = $cwd
+                SessionId  = $_.BaseName
+                SizeKB     = [math]::Round($_.Length / 1KB, 1)
+                Command    = 'cd "{0}"; claude --resume {1}' -f $cwd, $_.BaseName
+            }
+        }
+}
+
+$rows = @(Get-SessionRows -Projects $projects -All:$All -Top $Top -ContextWindow $ContextWindow)
+
 if (-not $rows) {
-    Write-Warning "Nothing to show."
+    Write-Warning "No session transcripts (*.jsonl) found under: $projects"
     return
 }
 
@@ -358,7 +412,15 @@ if ($Json) {
 
 # ---- Interactive UI: WinForms grid (default; wrapping prompt/recap cells) ---
 if (-not $Cli) {
-    $picked = Show-SessionGrid -Rows $rows
+    # Loop so the R hotkey can rebuild the list and re-show the grid.
+    do {
+        $result = Show-SessionGrid -Rows $rows
+        if ($result.Refresh) {
+            $rows = @(Get-SessionRows -Projects $projects -All:$All -Top $Top -ContextWindow $ContextWindow)
+            if (-not $rows) { Write-Warning "Nothing to show."; return }
+        }
+    } while ($result.Refresh)
+    $picked = $result.Commands
 
     if ($picked) {
         ($picked -join [Environment]::NewLine) | Set-Clipboard
