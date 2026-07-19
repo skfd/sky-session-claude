@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SessionApp/SessionApp.csproj" />
+    <Project Path="src/SessionCore.Tests/SessionCore.Tests.csproj" />
+    <Project Path="src/SessionCore/SessionCore.csproj" />
+  </Folder>
+</Solution>
