@@ -26,6 +26,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _allProjects = true;
     [ObservableProperty] private int _top = 50;
 
+    /// <summary>When on, a filesystem watcher auto-refreshes on transcript changes.</summary>
+    [ObservableProperty] private bool _liveUpdates = true;
+
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _statusLine = "";
 
@@ -46,6 +49,12 @@ public partial class MainViewModel : ObservableObject
     partial void OnHideCompletedChanged(bool value) => RowsView.Refresh();
     partial void OnStatusFilterChanged(string value) => RowsView.Refresh();
     partial void OnProjectFilterChanged(string value) => RowsView.Refresh();
+
+    // Changing scan scope re-scans (fire-and-forget; the command guards reentrancy).
+    partial void OnAllProjectsChanged(bool value)
+    {
+        if (RefreshCommand.CanExecute(null)) RefreshCommand.Execute(null);
+    }
 
     private bool FilterRow(object obj)
     {
@@ -68,21 +77,20 @@ public partial class MainViewModel : ObservableObject
         return true;
     }
 
-    [RelayCommand]
+    // Concurrent execution allowed so a live-watcher tick can refresh even while a
+    // manual refresh is resolving; both resume on the UI thread and merge serially.
+    [RelayCommand(AllowConcurrentExecutions = true)]
     public async Task RefreshAsync()
     {
-        if (IsBusy) return;
         IsBusy = true;
         StatusLine = "Scanning...";
         try
         {
             var options = new ScanOptions { All = AllProjects, Top = Top };
-            // Parse off the UI thread; M3 will turn this into a streaming/incremental scan.
+            // Parse off the UI thread; the cache makes repeat scans cheap.
             var infos = await Task.Run(() => _scanner.Scan(options));
 
-            Rows.Clear();
-            foreach (var info in infos) Rows.Add(new SessionRow(info));
-
+            Merge(infos);
             RebuildFilterOptions();
             RowsView.Refresh();
             StatusLine = $"{infos.Count} session(s)  ·  {DateTime.Now:HH:mm:ss}";
@@ -90,6 +98,35 @@ public partial class MainViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Reconcile the incoming scan into <see cref="Rows"/> in place, keyed by SessionId,
+    /// so unchanged rows keep their identity (and the grid keeps selection + scroll).
+    /// </summary>
+    private void Merge(IReadOnlyList<SessionInfo> incoming)
+    {
+        var incomingIds = new HashSet<string>(incoming.Select(i => i.SessionId));
+        for (int i = Rows.Count - 1; i >= 0; i--)
+            if (!incomingIds.Contains(Rows[i].Info.SessionId)) Rows.RemoveAt(i);
+
+        var bySid = Rows.ToDictionary(r => r.Info.SessionId);
+        for (int idx = 0; idx < incoming.Count; idx++)
+        {
+            var info = incoming[idx];
+            if (bySid.TryGetValue(info.SessionId, out var existing))
+            {
+                existing.Info = info;                       // in-place update; bindings refresh
+                int cur = Rows.IndexOf(existing);
+                if (cur != idx) Rows.Move(cur, idx);
+            }
+            else
+            {
+                var row = new SessionRow(info);
+                Rows.Insert(idx, row);
+                bySid[info.SessionId] = row;
+            }
         }
     }
 

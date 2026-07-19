@@ -88,6 +88,9 @@
                               IsChecked="{Binding HideCompleted}"/>
                     <CheckBox Content="All projects" VerticalAlignment="Center" Margin="0,0,12,0"
                               IsChecked="{Binding AllProjects}"/>
+                    <CheckBox Content="Live" VerticalAlignment="Center" Margin="0,0,12,0"
+                              IsChecked="{Binding LiveUpdates}"
+                              ToolTip="Auto-refresh when a session transcript changes"/>
                 </WrapPanel>
 
                 <DockPanel Margin="0,6,0,0">

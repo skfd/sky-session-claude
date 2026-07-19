@@ -17,11 +17,14 @@ public sealed record ScanOptions
 public sealed class SessionScanner
 {
     private readonly string _projectsDir;
+    private readonly TranscriptCache _cache = new();
 
     public SessionScanner(string? projectsDir = null)
     {
         _projectsDir = projectsDir ?? DefaultProjectsDir();
     }
+
+    public string ProjectsDir => _projectsDir;
 
     public static string DefaultProjectsDir() =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "projects");
@@ -58,7 +61,7 @@ public sealed class SessionScanner
         TranscriptFields fields;
         try
         {
-            fields = TranscriptParser.Parse(File.ReadLines(file.FullName), contextWindow);
+            fields = _cache.GetOrParse(file, contextWindow);
         }
         catch
         {

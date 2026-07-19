@@ -2,18 +2,39 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using SessionCore;
 
 namespace SessionApp;
 
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _vm = new();
+    private ProjectsWatcher? _watcher;
 
     public MainWindow()
     {
         InitializeComponent();
         DataContext = _vm;
-        Loaded += async (_, _) => await _vm.RefreshAsync();
+        Loaded += async (_, _) =>
+        {
+            await _vm.RefreshAsync();
+            StartWatcher();
+        };
+        Closed += (_, _) => _watcher?.Dispose();
+    }
+
+    // Auto-refresh when a transcript changes (debounced in ProjectsWatcher).
+    private void StartWatcher()
+    {
+        var dir = SessionScanner.DefaultProjectsDir();
+        if (!System.IO.Directory.Exists(dir)) return;
+
+        _watcher = new ProjectsWatcher(dir);
+        _watcher.Changed += () => Dispatcher.BeginInvoke(() =>
+        {
+            if (_vm.LiveUpdates && _vm.RefreshCommand.CanExecute(null))
+                _vm.RefreshCommand.Execute(null);
+        });
     }
 
     // A: hide/show completed · R: refresh. Ignore while typing in the search box.
