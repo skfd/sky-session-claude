@@ -24,7 +24,15 @@ public partial class MainViewModel : ObservableObject
 
     // --- scan options -------------------------------------------------------
     [ObservableProperty] private bool _allProjects = true;
+
+    /// <summary>Effective row cap passed to the scanner ("All" maps to int.MaxValue).</summary>
     [ObservableProperty] private int _top = 50;
+
+    /// <summary>Label bound to the "Show" dropdown; drives <see cref="Top"/>.</summary>
+    [ObservableProperty] private string _topSelection = "50";
+
+    public ObservableCollection<string> TopOptions { get; } =
+        new() { "50", "100", "250", "500", "All" };
 
     /// <summary>When on, a filesystem watcher auto-refreshes on transcript changes.</summary>
     [ObservableProperty] private bool _liveUpdates = true;
@@ -53,6 +61,12 @@ public partial class MainViewModel : ObservableObject
     // Changing scan scope re-scans (fire-and-forget; the command guards reentrancy).
     partial void OnAllProjectsChanged(bool value)
     {
+        if (RefreshCommand.CanExecute(null)) RefreshCommand.Execute(null);
+    }
+
+    partial void OnTopSelectionChanged(string value)
+    {
+        Top = value == "All" ? int.MaxValue : int.Parse(value);
         if (RefreshCommand.CanExecute(null)) RefreshCommand.Execute(null);
     }
 

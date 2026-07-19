@@ -88,6 +88,13 @@
                               IsChecked="{Binding HideCompleted}"/>
                     <CheckBox Content="All projects" VerticalAlignment="Center" Margin="0,0,12,0"
                               IsChecked="{Binding AllProjects}"/>
+
+                    <TextBlock Text="Show:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                    <ComboBox Width="70" Margin="0,0,12,0" VerticalAlignment="Center"
+                              ItemsSource="{Binding TopOptions}"
+                              SelectedItem="{Binding TopSelection}"
+                              ToolTip="Max sessions to load (older 1M sessions may need a larger cap)"/>
+
                     <CheckBox Content="Live" VerticalAlignment="Center" Margin="0,0,12,0"
                               IsChecked="{Binding LiveUpdates}"
                               ToolTip="Auto-refresh when a session transcript changes"/>
