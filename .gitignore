@@ -5,3 +5,6 @@ sessions.json
 [Bb]in/
 [Oo]bj/
 
+# Release publish output
+dist/
+
