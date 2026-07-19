@@ -37,7 +37,9 @@ public sealed class SessionRow : INotifyPropertyChanged
     public string Project => _info.Project;
     public string Status => _info.Status.ToWire();
     public bool Complete => _info.Complete;
-    public string CtxDisplay => _info.ContextPct is int p ? $"{p}%" : "";
+    public string CtxDisplay => _info.ContextPct is int p
+        ? (_info.IsLargeContext ? $"{p}% · 1M" : $"{p}%")
+        : "";
     public string LastPrompt => _info.LastPrompt;
     public string Recap => _info.Recap;
     public double SizeKB => _info.SizeKB;

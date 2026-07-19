@@ -117,6 +117,36 @@ public class ClassifierTests
     }
 
     [Fact]
+    public void LargeContext_DetectedWhenTokensExceed200k_AndScaledAgainst1M()
+    {
+        // A single turn at 460k tokens is impossible on a 200k window -> must be 1M.
+        var f = Parse(Asst("end_turn", "done", input: 460000));
+        Assert.True(f.IsLargeContext);
+        Assert.Equal(1_000_000, f.EffectiveContextWindow);
+        Assert.Equal(46, f.ContextPct);          // 460000 / 1_000_000
+    }
+
+    [Fact]
+    public void LargeContext_DetectedFromPeakEvenAfterCompaction()
+    {
+        // Peaked at 400k, then compacted down to 120k. Window stays 1M; % uses last turn.
+        var f = Parse(
+            Asst("tool_use", "big", toolUse: true, input: 400000),
+            Asst("end_turn", "after compaction", input: 120000));
+        Assert.True(f.IsLargeContext);
+        Assert.Equal(12, f.ContextPct);          // 120000 / 1_000_000
+    }
+
+    [Fact]
+    public void NormalContext_StaysOn200kWindow()
+    {
+        var f = Parse(Asst("end_turn", "done", input: 150000));
+        Assert.False(f.IsLargeContext);
+        Assert.Equal(200_000, f.EffectiveContextWindow);
+        Assert.Equal(75, f.ContextPct);          // 150000 / 200000
+    }
+
+    [Fact]
     public void CustomTitle_WinsOverAiTitle()
     {
         var f = Parse(

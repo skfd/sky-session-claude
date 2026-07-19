@@ -12,6 +12,12 @@ public sealed record TranscriptFields
     public SessionStatus Status { get; init; }
     public int ContextTokens { get; init; }
     public int? ContextPct { get; init; }
+
+    /// <summary>Window Ctx% is computed against (200k normally, 1M when detected).</summary>
+    public int EffectiveContextWindow { get; init; }
+
+    /// <summary>True when the session ran with an extended (1M) context window.</summary>
+    public bool IsLargeContext { get; init; }
 }
 
 /// <summary>
@@ -22,6 +28,7 @@ public sealed record TranscriptFields
 public static class TranscriptParser
 {
     public const int DefaultContextWindow = 200_000;
+    public const int LargeContextWindow = 1_000_000;
 
     public static TranscriptFields Parse(IEnumerable<string> lines, int contextWindow = DefaultContextWindow)
     {
@@ -32,7 +39,7 @@ public static class TranscriptParser
         string? lastRole = null, lastStop = null, errText = null;
         bool lastSynthetic = false, lastHasTool = false, lastEndsQ = false;
         bool lastToolResult = false, lastInterrupt = false;
-        int ctxTokens = 0;
+        int ctxTokens = 0, maxCtxTokens = 0;
 
         foreach (var line in lines)
         {
@@ -74,7 +81,7 @@ public static class TranscriptParser
                     break;
                 case "assistant":
                     HandleAssistant(o, ref lastText, ref errText, ref lastRole, ref lastStop,
-                        ref lastSynthetic, ref lastHasTool, ref lastEndsQ, ref ctxTokens);
+                        ref lastSynthetic, ref lastHasTool, ref lastEndsQ, ref ctxTokens, ref maxCtxTokens);
                     break;
             }
         }
@@ -85,8 +92,13 @@ public static class TranscriptParser
         var status = Classify(lastRole, lastStop, lastSynthetic, lastHasTool, lastEndsQ,
             lastToolResult, lastInterrupt, errText);
 
+        // A 200k-window model cannot physically exceed ~200k tokens, so any turn
+        // observed above the standard window means the session ran with the 1M window.
+        bool isLarge = maxCtxTokens > contextWindow;
+        int effectiveWindow = isLarge ? LargeContextWindow : contextWindow;
+
         int? ctxPct = ctxTokens > 0
-            ? (int)Math.Round(100.0 * ctxTokens / contextWindow, MidpointRounding.AwayFromZero)
+            ? (int)Math.Round(100.0 * ctxTokens / effectiveWindow, MidpointRounding.AwayFromZero)
             : null;
 
         return new TranscriptFields
@@ -98,6 +110,8 @@ public static class TranscriptParser
             Status = status,
             ContextTokens = ctxTokens,
             ContextPct = ctxPct,
+            EffectiveContextWindow = effectiveWindow,
+            IsLargeContext = isLarge,
         };
     }
 
@@ -135,7 +149,7 @@ public static class TranscriptParser
 
     private static void HandleAssistant(JsonElement o, ref string? lastText, ref string? errText,
         ref string? lastRole, ref string? lastStop, ref bool lastSynthetic, ref bool lastHasTool,
-        ref bool lastEndsQ, ref int ctxTokens)
+        ref bool lastEndsQ, ref int ctxTokens, ref int maxCtxTokens)
     {
         if (!o.TryGetProperty("message", out var msg) || msg.ValueKind != JsonValueKind.Object)
         {
@@ -177,6 +191,7 @@ public static class TranscriptParser
                         + GetInt(u, "cache_creation_input_tokens")
                         + GetInt(u, "cache_read_input_tokens");
                 if (sum > 0) ctxTokens = sum;                  // last real turn wins (resets on compaction)
+                if (sum > maxCtxTokens) maxCtxTokens = sum;    // peak drives 1M-window detection
             }
         }
     }

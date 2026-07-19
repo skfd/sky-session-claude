@@ -15,6 +15,7 @@ public sealed class SessionInfo
     public bool Complete => Status == SessionStatus.Complete;
     public int ContextTokens { get; init; }
     public int? ContextPct { get; init; }
+    public bool IsLargeContext { get; init; }     // session ran with the 1M window
 
     // --- from the file on disk ----------------------------------------------
     public string SessionId { get; init; } = "";     // transcript file base name

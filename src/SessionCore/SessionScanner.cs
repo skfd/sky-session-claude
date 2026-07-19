@@ -84,6 +84,7 @@ public sealed class SessionScanner
             Status = fields.Status,
             ContextTokens = fields.ContextTokens,
             ContextPct = fields.ContextPct,
+            IsLargeContext = fields.IsLargeContext,
             SessionId = Path.GetFileNameWithoutExtension(file.Name),
             LastActive = file.LastWriteTime,
             AgeDays = Math.Round((DateTime.Now - file.LastWriteTime).TotalDays, 1),
