@@ -63,10 +63,25 @@ dotnet run --project src/SessionApp
 ./publish.ps1
 ```
 
+## Headless mode
+
+Some tools (like the morning brief) run in a sandbox that can't read `~/.claude/projects` directly. For them, **`SessionCli.exe`** scans the same sessions and writes the list as JSON — no window, no UI. It shares `SessionCore` with the app, so both classify status the same way.
+
+```powershell
+SessionCli.exe                       # JSON to stdout
+SessionCli.exe --json <path>         # JSON to a file (parent dirs created)
+SessionCli.exe --top <n>             # cap sessions (default 50)
+SessionCli.exe --newest-per-project  # one session per project (default: all)
+SessionCli.exe --context-window <n>  # token budget for Ctx% (default 200000)
+```
+
+A scheduled task on the host runs `SessionCli.exe --json <path>` to refresh a file the sandbox can then read. The JSON shape matches `get-claudesessions.ps1 -Json`, so consumers of the old script need no changes.
+
 ## Project layout
 
 - **`src/SessionCore`** — session scanning, session-file parsing, status detection, live-refresh cache/watcher (no UI dependencies).
 - **`src/SessionApp`** — the WPF grid and view model.
+- **`src/SessionCli`** — headless JSON scanner for the morning brief (shares `SessionCore`).
 - **`src/SessionCore.Tests`** — unit tests for the core.
 - **`get-claudesessions.ps1`** — the original PowerShell script this app is a faithful port of; still handy for `-Json` output consumed by other tools.
 
