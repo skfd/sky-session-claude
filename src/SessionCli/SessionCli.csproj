@@ -12,7 +12,7 @@
     <AssemblyName>SessionCli</AssemblyName>
     <Product>Sky Session Claude CLI</Product>
     <Description>Headless session scanner: emits the session list as JSON for the morning brief.</Description>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
   </PropertyGroup>
 
 </Project>
