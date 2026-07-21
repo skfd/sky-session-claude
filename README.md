@@ -75,7 +75,7 @@ SessionCli.exe --newest-per-project  # one session per project (default: all)
 SessionCli.exe --context-window <n>  # token budget for Ctx% (default 200000)
 ```
 
-A scheduled task on the host runs `SessionCli.exe --json <path>` to refresh a file the sandbox can then read. The JSON shape matches `get-claudesessions.ps1 -Json`, so consumers of the old script need no changes.
+A scheduled task on the host runs `SessionCli.exe --json <path>` to refresh a file the sandbox can then read — see `schedule-add.ps1`.
 
 ## Project layout
 
@@ -83,7 +83,7 @@ A scheduled task on the host runs `SessionCli.exe --json <path>` to refresh a fi
 - **`src/SessionApp`** — the WPF grid and view model.
 - **`src/SessionCli`** — headless JSON scanner for the morning brief (shares `SessionCore`).
 - **`src/SessionCore.Tests`** — unit tests for the core.
-- **`get-claudesessions.ps1`** — the original PowerShell script this app is a faithful port of; still handy for `-Json` output consumed by other tools.
+- **`schedule-add.ps1`** / **`schedule-remove.ps1`** — register/remove the daily task that refreshes `sessions.json` for the morning brief.
 
 ## License
 
