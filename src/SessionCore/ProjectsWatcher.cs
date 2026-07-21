@@ -1,7 +1,7 @@
 namespace SessionCore;
 
 /// <summary>
-/// Watches ~/.claude/projects for transcript changes and raises a single debounced
+/// Watches ~/.claude/projects for session file changes and raises a single debounced
 /// <see cref="Changed"/> event after activity settles. The event fires on a
 /// thread-pool thread; subscribers touching UI must marshal to their own thread.
 /// </summary>

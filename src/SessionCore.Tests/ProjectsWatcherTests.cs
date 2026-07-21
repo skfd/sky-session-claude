@@ -5,7 +5,7 @@ namespace SessionCore.Tests;
 public class ProjectsWatcherTests
 {
     [Fact]
-    public async Task FiresDebouncedChanged_WhenTranscriptChanges()
+    public async Task FiresDebouncedChanged_WhenSessionFileChanges()
     {
         var dir = Path.Combine(Path.GetTempPath(), $"pw-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dir);
@@ -17,7 +17,7 @@ public class ProjectsWatcherTests
             int count = 0;
             watcher.Changed += () => { Interlocked.Increment(ref count); fired.TrySetResult(); };
 
-            // Create + append to a transcript under a project subfolder.
+            // Create + append to a session file under a project subfolder.
             var file = Path.Combine(sub, "session.jsonl");
             await File.WriteAllTextAsync(file, "{\"type\":\"ai-title\",\"aiTitle\":\"x\"}\n");
             await File.AppendAllTextAsync(file, "{\"type\":\"last-prompt\",\"lastPrompt\":\"go\"}\n");

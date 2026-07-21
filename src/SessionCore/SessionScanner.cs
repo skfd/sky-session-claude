@@ -7,17 +7,17 @@ public sealed record ScanOptions
     /// <summary>How many entries to return.</summary>
     public int Top { get; init; } = 50;
     /// <summary>Token budget used to compute Ctx%.</summary>
-    public int ContextWindow { get; init; } = TranscriptParser.DefaultContextWindow;
+    public int ContextWindow { get; init; } = SessionFileParser.DefaultContextWindow;
 }
 
 /// <summary>
-/// Scans ~/.claude/projects for transcripts and builds display rows. Faithful
+/// Scans ~/.claude/projects for session files and builds display rows. Faithful
 /// port of Get-SessionRows from get-claudesessions.ps1.
 /// </summary>
 public sealed class SessionScanner
 {
     private readonly string _projectsDir;
-    private readonly TranscriptCache _cache = new();
+    private readonly SessionFileCache _cache = new();
 
     public SessionScanner(string? projectsDir = null)
     {
@@ -31,7 +31,7 @@ public sealed class SessionScanner
 
     public bool ProjectsDirExists => Directory.Exists(_projectsDir);
 
-    /// <summary>Enumerate all transcript files, newest first, honoring the All/Top options.</summary>
+    /// <summary>Enumerate all session files, newest first, honoring the All/Top options.</summary>
     public IReadOnlyList<FileInfo> SelectFiles(ScanOptions options)
     {
         if (!Directory.Exists(_projectsDir)) return [];
@@ -58,19 +58,19 @@ public sealed class SessionScanner
     /// <summary>Parse one file into a full display row.</summary>
     public SessionInfo BuildRow(FileInfo file, int contextWindow)
     {
-        TranscriptFields fields;
+        SessionFileFields fields;
         try
         {
             fields = _cache.GetOrParse(file, contextWindow);
         }
         catch
         {
-            fields = new TranscriptFields();
+            fields = new SessionFileFields();
         }
 
-        var cwd = string.IsNullOrEmpty(fields.Cwd) ? "<unknown - cwd not found in transcript>" : fields.Cwd;
+        var cwd = string.IsNullOrEmpty(fields.Cwd) ? "<unknown - cwd not found in session file>" : fields.Cwd;
 
-        // "Unfinished" = transcript ends on the agent asking, or on an operator
+        // "Unfinished" = session file ends on the agent asking, or on an operator
         // prompt the agent never answered in text.
         bool openQ = !string.IsNullOrEmpty(fields.Recap) && fields.Recap.TrimEnd().EndsWith('?');
         bool noReply = !string.IsNullOrEmpty(fields.LastPrompt) && string.IsNullOrEmpty(fields.Recap);

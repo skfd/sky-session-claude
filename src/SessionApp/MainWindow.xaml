@@ -97,7 +97,7 @@
 
                     <CheckBox Content="Live" VerticalAlignment="Center" Margin="0,0,12,0"
                               IsChecked="{Binding LiveUpdates}"
-                              ToolTip="Auto-refresh when a session transcript changes"/>
+                              ToolTip="Auto-refresh when a session file changes"/>
                 </WrapPanel>
 
                 <DockPanel Margin="0,6,0,0">

@@ -2,7 +2,7 @@
 
 A tiny Windows desktop app that shows all your **Claude Code sessions** in one place and lets you jump back into any of them with a double-click.
 
-Claude Code stores every session as a transcript under `~/.claude/projects`. Once you have dozens of them across several repos, finding the one you want — *"which session was I in when I asked it to fix the migration?"* — turns into archaeology. This app scans those transcripts and lays them out in a sortable, filterable grid so you can see at a glance what each session was doing, whether it finished, and how full its context got.
+Claude Code stores every session as a session file (a `.jsonl`) under `~/.claude/projects`. Once you have dozens of them across several repos, finding the one you want — *"which session was I in when I asked it to fix the migration?"* — turns into archaeology. This app scans those session files and lays them out in a sortable, filterable grid so you can see at a glance what each session was doing, whether it finished, and how full its context got.
 
 ![Sky Session Claude — the session grid](docs/screenshot.png)
 
@@ -12,13 +12,13 @@ Each row is one session:
 
 | Column | Meaning |
 |---|---|
-| **Last active** | When the transcript was last written to |
+| **Last active** | When the session file was last written to |
 | **Name / Project** | Session id and the repo it belongs to |
 | **Status** | `complete`, `waiting-you`, `waiting-agent`, `cut-off`, `limit`, `error`, `interrupted` |
 | **Ctx%** | How full the context window is (auto-detects 1M-token sessions) |
 | **Last prompt** | Your most recent message in that session |
 | **Agent recap** | A short summary of what the agent last did |
-| **KB** | Transcript size on disk |
+| **KB** | Session file size on disk |
 
 Unfinished sessions are tinted amber so your eye lands on the ones still waiting on you. ("Unfinished" = every Status except `complete`.)
 
@@ -65,7 +65,7 @@ dotnet run --project src/SessionApp
 
 ## Project layout
 
-- **`src/SessionCore`** — session scanning, transcript parsing, status detection, live-refresh cache/watcher (no UI dependencies).
+- **`src/SessionCore`** — session scanning, session-file parsing, status detection, live-refresh cache/watcher (no UI dependencies).
 - **`src/SessionApp`** — the WPF grid and view model.
 - **`src/SessionCore.Tests`** — unit tests for the core.
 - **`get-claudesessions.ps1`** — the original PowerShell script this app is a faithful port of; still handy for `-Json` output consumed by other tools.

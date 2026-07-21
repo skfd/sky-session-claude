@@ -1,12 +1,12 @@
 namespace SessionCore;
 
 /// <summary>
-/// Everything extracted from a single transcript. Mirrors the pscustomobject the
+/// Everything extracted from a single session file. Mirrors the pscustomobject the
 /// original Get-SessionInfo returned, plus the file-level fields Get-SessionRows added.
 /// </summary>
 public sealed class SessionInfo
 {
-    // --- from the transcript body -------------------------------------------
+    // --- from the session file body -------------------------------------------
     public string? Cwd { get; init; }
     public string? Name { get; init; }          // custom title wins over AI title
     public string LastPrompt { get; init; } = "";
@@ -18,7 +18,7 @@ public sealed class SessionInfo
     public bool IsLargeContext { get; init; }     // session ran with the 1M window
 
     // --- from the file on disk ----------------------------------------------
-    public string SessionId { get; init; } = "";     // transcript file base name
+    public string SessionId { get; init; } = "";     // session file base name
     public DateTime LastActive { get; init; }
     public double AgeDays { get; init; }
     public double SizeKB { get; init; }

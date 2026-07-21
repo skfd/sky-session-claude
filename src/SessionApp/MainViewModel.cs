@@ -34,7 +34,7 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<string> TopOptions { get; } =
         new() { "50", "100", "250", "500", "All" };
 
-    /// <summary>When on, a filesystem watcher auto-refreshes on transcript changes.</summary>
+    /// <summary>When on, a filesystem watcher auto-refreshes on session file changes.</summary>
     [ObservableProperty] private bool _liveUpdates = true;
 
     [ObservableProperty] private bool _isBusy;

@@ -3,13 +3,13 @@ using SessionCore;
 namespace SessionCore.Tests;
 
 /// <summary>
-/// Locks the 7-state classifier and field extraction against crafted transcripts.
+/// Locks the 7-state classifier and field extraction against crafted session files.
 /// Each fixture is the minimal set of JSONL records that drives one branch.
 /// </summary>
 public class ClassifierTests
 {
-    private static TranscriptFields Parse(params string[] lines) =>
-        TranscriptParser.Parse(lines);
+    private static SessionFileFields Parse(params string[] lines) =>
+        SessionFileParser.Parse(lines);
 
     private static string J(string s) => System.Text.Json.JsonSerializer.Serialize(s);
 

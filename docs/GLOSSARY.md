@@ -16,7 +16,7 @@ raw JSON role strings (`"user"` / `"assistant"`) with what they actually mean.
 | Term | Meaning |
 |---|---|
 | **Session** | The logical conversation — one row in the grid. |
-| **Session file** | The `.jsonl` artifact on disk that records a session. *(The code still calls this the "transcript": `TranscriptParser`, `TranscriptCache`, `TranscriptFields`. Naming mismatch — treat "transcript" in code as "session file".)* |
+| **Session file** | The `.jsonl` artifact on disk that records a session. In code: `SessionFileParser`, `SessionFileCache`, `SessionFileFields`. |
 | **Record** | One line of the session file (one JSON object). |
 | **Last real turn** | The last record that survives the pre-filter and actually drives classification — i.e. the final meaningful record after skipping attachment/mode/snapshot noise. |
 
@@ -28,7 +28,7 @@ A record's JSON `type`/role doesn't tell the whole story; these names do.
 |---|---|---|
 | **Operator turn** | `user` role carrying typed **text** | Something the operator actually typed. |
 | **Tool-result turn** | `user` role carrying a **`tool_result`** | Machine-generated; the operator did not type it. A tool-result turn as the last real turn means the session died between a tool result and the agent's next turn (→ `cut-off`). |
-| **Harness turn** | `user` role whose text is injected by the tooling: `<system-reminder>`, `<command-name>/clear`, `<task-notification>`, etc. | Not typed by the operator. Currently the classifier still treats these as operator turns (→ `waiting-agent`), which is a known imprecision. |
+| **Harness turn** | `user` role whose text is injected by the tooling: `<system-reminder>`, `<command-name>/clear`, `<task-notification>`, etc. | Not typed by the operator. The classifier skips these as noise, so the last real turn stays the last genuine operator/agent exchange rather than reading as `waiting-agent`. |
 | **Agent turn** | `assistant` role with real text/tool_use | Something the agent said or did. |
 | **Error/limit record** | `assistant` role flagged `<synthetic>` or `isApiErrorMessage` | System-injected, not real agent text. Classifies to `limit` or `error`. |
 

@@ -2,7 +2,7 @@ using SessionCore;
 
 namespace SessionCore.Tests;
 
-public class TranscriptCacheTests
+public class SessionFileCacheTests
 {
     private static string WriteTemp(string content)
     {
@@ -17,7 +17,7 @@ public class TranscriptCacheTests
         var path = WriteTemp("{\"type\":\"ai-title\",\"aiTitle\":\"First\"}");
         try
         {
-            var cache = new TranscriptCache();
+            var cache = new SessionFileCache();
             var a = cache.GetOrParse(new FileInfo(path), 200_000);
             var b = cache.GetOrParse(new FileInfo(path), 200_000);
             Assert.Same(a, b);           // record instance reused, not re-parsed
@@ -32,7 +32,7 @@ public class TranscriptCacheTests
         var path = WriteTemp("{\"type\":\"ai-title\",\"aiTitle\":\"First\"}");
         try
         {
-            var cache = new TranscriptCache();
+            var cache = new SessionFileCache();
             var a = cache.GetOrParse(new FileInfo(path), 200_000);
             Assert.Equal("First", a.Name);
 
@@ -57,7 +57,7 @@ public class TranscriptCacheTests
             "\"usage\":{\"input_tokens\":100000,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0}}}");
         try
         {
-            var cache = new TranscriptCache();
+            var cache = new SessionFileCache();
             var a = cache.GetOrParse(new FileInfo(path), 200_000);
             var b = cache.GetOrParse(new FileInfo(path), 1_000_000);
             Assert.Equal(50, a.ContextPct);

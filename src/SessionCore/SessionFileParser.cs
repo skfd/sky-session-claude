@@ -2,8 +2,8 @@ using System.Text.Json;
 
 namespace SessionCore;
 
-/// <summary>The transcript-body fields, before file-level info is attached.</summary>
-public sealed record TranscriptFields
+/// <summary>The session-file body fields, before file-level info is attached.</summary>
+public sealed record SessionFileFields
 {
     public string? Cwd { get; init; }
     public string? Name { get; init; }
@@ -22,15 +22,15 @@ public sealed record TranscriptFields
 
 /// <summary>
 /// Faithful port of Get-SessionInfo from get-claudesessions.ps1: reads a JSONL
-/// transcript once and extracts cwd, title, last prompt, recap, context tokens,
+/// session file once and extracts cwd, title, last prompt, recap, context tokens,
 /// and the 7-state end classifier.
 /// </summary>
-public static class TranscriptParser
+public static class SessionFileParser
 {
     public const int DefaultContextWindow = 200_000;
     public const int LargeContextWindow = 1_000_000;
 
-    public static TranscriptFields Parse(IEnumerable<string> lines, int contextWindow = DefaultContextWindow)
+    public static SessionFileFields Parse(IEnumerable<string> lines, int contextWindow = DefaultContextWindow)
     {
         string? cwd = null, name = null, custom = null, prompt = null;
         string? summary = null, lastText = null, userText = null;
@@ -86,7 +86,7 @@ public static class TranscriptParser
             }
         }
 
-        prompt ??= userText;                                   // fall back for older transcripts
+        prompt ??= userText;                                   // fall back for older session files
         var recap = summary ?? lastText ?? "";
 
         var status = Classify(lastRole, lastStop, lastSynthetic, lastHasTool, lastEndsQ,
@@ -101,7 +101,7 @@ public static class TranscriptParser
             ? (int)Math.Round(100.0 * ctxTokens / effectiveWindow, MidpointRounding.AwayFromZero)
             : null;
 
-        return new TranscriptFields
+        return new SessionFileFields
         {
             Cwd = cwd,
             Name = custom ?? name,                             // manual title wins over AI one

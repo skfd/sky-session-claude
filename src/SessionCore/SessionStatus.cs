@@ -1,7 +1,7 @@
 namespace SessionCore;
 
 /// <summary>
-/// End-state of a transcript, mirroring the 7-state classifier in the original
+/// End-state of a session file, mirroring the 7-state classifier in the original
 /// get-claudesessions.ps1. The string values match what the PowerShell script
 /// emitted so existing consumers (JSON export, morning brief) stay compatible.
 /// </summary>

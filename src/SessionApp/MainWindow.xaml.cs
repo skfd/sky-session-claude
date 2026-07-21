@@ -23,7 +23,7 @@ public partial class MainWindow : Window
         Closed += (_, _) => _watcher?.Dispose();
     }
 
-    // Auto-refresh when a transcript changes (debounced in ProjectsWatcher).
+    // Auto-refresh when a session file changes (debounced in ProjectsWatcher).
     private void StartWatcher()
     {
         var dir = SessionScanner.DefaultProjectsDir();
