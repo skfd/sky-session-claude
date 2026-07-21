@@ -4,6 +4,8 @@ A tiny Windows desktop app that shows all your **Claude Code sessions** in one p
 
 Claude Code stores every session as a transcript under `~/.claude/projects`. Once you have dozens of them across several repos, finding the one you want — *"which session was I in when I asked it to fix the migration?"* — turns into archaeology. This app scans those transcripts and lays them out in a sortable, filterable grid so you can see at a glance what each session was doing, whether it finished, and how full its context got.
 
+![Sky Session Claude — the session grid](docs/screenshot.png)
+
 ## What it shows
 
 Each row is one session:
