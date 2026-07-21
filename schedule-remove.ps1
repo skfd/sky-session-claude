@@ -8,7 +8,7 @@
 
 [CmdletBinding()]
 param(
-    [string] $TaskName = 'Claude - dump sessions for morning brief'
+    [string] $TaskName = 'kk-sessions-dump'
 )
 
 $ErrorActionPreference = 'Stop'
