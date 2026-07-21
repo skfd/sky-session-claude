@@ -72,6 +72,32 @@ public class ClassifierTests
         Assert.Equal(SessionStatus.WaitingAgent, f.Status);
     }
 
+    [Theory]
+    [InlineData("<command-name>/clear</command-name>\n<command-message>clear</command-message>")]
+    [InlineData("<system-reminder>\nThe user named this session \"foo\".\n</system-reminder>")]
+    [InlineData("<task-notification>\n<task-id>abc</task-id>\n</task-notification>")]
+    [InlineData("<local-command-caveat>Caveat: generated while running local commands.</local-command-caveat>")]
+    public void HarnessTurn_SkippedSoAgentTurnStillDrivesStatus(string harness)
+    {
+        // A tooling-injected record after the agent finished must not flip the
+        // session to waiting-agent; the agent's turn is still the last real one.
+        var f = Parse(Asst("end_turn", "All done."), User(harness));
+        Assert.Equal(SessionStatus.Complete, f.Status);
+    }
+
+    [Fact]
+    public void HarnessTurn_DoesNotOverrideRealOperatorPrompt()
+    {
+        // Operator asked, then a harness record was injected: still waiting-agent,
+        // and the harness text must not leak into LastPrompt.
+        var f = Parse(
+            Asst("end_turn", "Done."),
+            User("please do the next thing"),
+            User("<system-reminder>\nThe user named this session \"bar\".\n</system-reminder>"));
+        Assert.Equal(SessionStatus.WaitingAgent, f.Status);
+        Assert.Equal("please do the next thing", f.LastPrompt);
+    }
+
     [Fact]
     public void CutOff_WhenLastRecordIsToolResult()
     {

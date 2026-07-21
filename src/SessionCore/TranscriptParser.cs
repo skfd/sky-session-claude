@@ -120,6 +120,7 @@ public static class TranscriptParser
     {
         string? utext = null;
         bool hasToolResult = false;
+        bool contentIsString = false;
 
         if (o.TryGetProperty("message", out var msg)
             && msg.ValueKind == JsonValueKind.Object
@@ -128,6 +129,7 @@ public static class TranscriptParser
             if (content.ValueKind == JsonValueKind.String)
             {
                 utext = content.GetString();
+                contentIsString = true;
             }
             else if (content.ValueKind == JsonValueKind.Array)
             {
@@ -140,6 +142,14 @@ public static class TranscriptParser
                 }
             }
         }
+
+        // Harness turns are tooling-injected user records (/clear, <system-reminder>,
+        // <task-notification>, local-command wrappers), not the operator speaking.
+        // Skip them as noise so the last real turn stays the last genuine operator or
+        // agent exchange, instead of misreading an injected record as waiting-agent.
+        // These are always plain-string records; a real prompt carrying a trailing
+        // reminder comes through as an array, so it is never caught here.
+        if (contentIsString && IsHarnessText(utext)) return;
 
         if (!string.IsNullOrEmpty(utext)) userText = utext;
         lastRole = "user";
@@ -223,6 +233,17 @@ public static class TranscriptParser
         }
 
         return SessionStatus.Complete;
+    }
+
+    /// <summary>True when a plain-string user record is a tooling-injected harness turn.</summary>
+    private static bool IsHarnessText(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        var t = text.TrimStart();
+        return t.StartsWith("<command-", StringComparison.Ordinal)
+            || t.StartsWith("<local-command-", StringComparison.Ordinal)
+            || t.StartsWith("<system-reminder>", StringComparison.Ordinal)
+            || t.StartsWith("<task-notification>", StringComparison.Ordinal);
     }
 
     // --- small JSON helpers --------------------------------------------------
