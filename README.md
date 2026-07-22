@@ -34,7 +34,7 @@ So: last real turn is an agent turn → `complete` (or `waiting-you` if it ends 
 - **Double-click a card** → opens a new PowerShell terminal in that repo and runs `claude --resume <id>`, dropping you straight back into the session.
 - **Copy resume command(s)** → copies the resume command for every selected card to the clipboard.
 - **Live updates** → a filesystem watcher refreshes cards automatically as sessions change (toggle off with the **Live** checkbox).
-- **Filter** by search text, status, or project; hide completed sessions; scope to the current project or all projects; cap how many sessions load (50 → All).
+- **Filter** by search text, status, or project; hide completed sessions; scope to the current project or all projects; cap how many sessions load (defaults to **All**, so an old unfinished session can never hide just past a cut-off; drop to 50 → 500 if you want a shorter scan).
 - **Abandon a session** (**X**) → crosses out sessions you're not going back to. They stay honestly classified as unfinished — abandoning is your judgment, not the classifier's, so it never changes the status. Abandoned cards are hidden until you tick **Show abandoned**, which shows them struck through. The marks persist in `%APPDATA%\sky-session-claude\abandoned.json`.
 
 ### Keyboard shortcuts

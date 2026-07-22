@@ -28,10 +28,14 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _allProjects = true;
 
     /// <summary>Effective row cap passed to the scanner ("All" maps to int.MaxValue).</summary>
-    [ObservableProperty] private int _top = 50;
+    [ObservableProperty] private int _top = int.MaxValue;
 
-    /// <summary>Label bound to the "Show" dropdown; drives <see cref="Top"/>.</summary>
-    [ObservableProperty] private string _topSelection = "50";
+    /// <summary>
+    /// Label bound to the "Show" dropdown; drives <see cref="Top"/>. Defaults to "All":
+    /// a capped list can hide an old unfinished session just past the cut, and the parse
+    /// cache keys on (path, mtime, size), so the full scan is paid once per run.
+    /// </summary>
+    [ObservableProperty] private string _topSelection = "All";
 
     public ObservableCollection<string> TopOptions { get; } =
         new() { "50", "100", "250", "500", "All" };
