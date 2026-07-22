@@ -36,11 +36,11 @@ A record's JSON `type`/role doesn't tell the whole story; these names do.
 
 | Term | Meaning |
 |---|---|
-| **Status** | The classification output for a session (the README column, the `SessionStatus` enum). |
+| **Status** | The classification output for a session (the README column, the `SessionStatus` enum). Always **derived** from the session file. |
 | **Close-out** | A terminal operator turn that acknowledges rather than requests — "thank you", "all good", "perfect". Closes the conversation without asking for anything. |
 | **Unfinished** | Collective term for every Status except `complete` (`waiting-you`, `waiting-agent`, `cut-off`, `limit`, `error`, `interrupted`). These are the amber rows. |
 
-### Status values
+### Status values (derived)
 
 | Status | Last real turn | Means |
 |---|---|---|
@@ -51,6 +51,31 @@ A record's JSON `type`/role doesn't tell the whole story; these names do.
 | `limit` | Error/limit record naming a usage/spend/weekly/session limit | Hit a usage limit. |
 | `error` | Any other error/limit record | API or other error ended it. |
 | `interrupted` | Operator turn containing `[Request interrupted by user` | Operator interrupted the agent. |
+
+## Disposition (operator judgment)
+
+Everything above is **derived** — the scanner reads the session file and decides.
+A **disposition** is the opposite: it's what the *operator* decided about a
+session, and the scanner never sets it.
+
+| Term | Meaning |
+|---|---|
+| **Disposition** | What the operator decided to do about a session. Independent of Status. |
+| **Abandoned** | The one disposition: "this session is genuinely unfinished, and I'm not going back to it." |
+
+The rule that keeps the two axes honest: **abandoning does not change Status.**
+An abandoned `cut-off` session stays `cut-off` and stays **Unfinished** — the
+classifier's verdict was correct, the operator is only overriding what to *do*
+about it. Never fold Abandoned into `complete`; `complete` means the agent
+finished, which is the opposite of what abandoned records.
+
+Abandoned sessions are hidden by default and revealed by the **Show abandoned**
+filter, which renders them struck through — the strikethrough is what
+distinguishes the operator's judgment from the classifier's.
+
+Dispositions live in `abandoned.json` under `%APPDATA%\sky-session-claude`,
+keyed by `SessionId`. They are deliberately **not** in `sessions.json`, which is
+a regenerated scan artifact and would erase them on every scan.
 
 ## Note on close-outs vs Status
 

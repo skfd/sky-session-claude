@@ -29,6 +29,23 @@ public sealed class SessionRow : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <summary>
+    /// Operator disposition: "unfinished, and I'm not going back to it". Never set by
+    /// the scanner and never folded into <see cref="Complete"/> — see docs/GLOSSARY.md.
+    /// </summary>
+    public bool Abandoned
+    {
+        get => _abandoned;
+        set
+        {
+            if (_abandoned == value) return;
+            _abandoned = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Abandoned)));
+        }
+    }
+
+    private bool _abandoned;
+
     public DateTime LastActive => _info.LastActive;
     public string RelativeAge => TextUtil.RelativeAge(_info.LastActive);
     public string Timestamp => _info.LastActive.ToString("yyyy-MM-dd HH:mm");

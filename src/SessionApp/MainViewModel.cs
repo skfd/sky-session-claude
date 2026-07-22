@@ -10,6 +10,7 @@ namespace SessionApp;
 public partial class MainViewModel : ObservableObject
 {
     private readonly SessionScanner _scanner = new();
+    private readonly AbandonedStore _abandoned = new();
 
     /// <summary>Backing list; the grid binds to <see cref="RowsView"/> so filters apply.</summary>
     public ObservableCollection<SessionRow> Rows { get; } = new();
@@ -19,6 +20,7 @@ public partial class MainViewModel : ObservableObject
     // --- filter-bar state ---------------------------------------------------
     [ObservableProperty] private string _searchText = "";
     [ObservableProperty] private bool _hideCompleted = true;
+    [ObservableProperty] private bool _showAbandoned;
     [ObservableProperty] private string _statusFilter = AllStatusesLabel;
     [ObservableProperty] private string _projectFilter = AllProjectsLabel;
 
@@ -55,6 +57,7 @@ public partial class MainViewModel : ObservableObject
     // Re-apply filters whenever any filter input changes.
     partial void OnSearchTextChanged(string value) => RowsView.Refresh();
     partial void OnHideCompletedChanged(bool value) => RowsView.Refresh();
+    partial void OnShowAbandonedChanged(bool value) => RowsView.Refresh();
     partial void OnStatusFilterChanged(string value) => RowsView.Refresh();
     partial void OnProjectFilterChanged(string value) => RowsView.Refresh();
 
@@ -75,6 +78,7 @@ public partial class MainViewModel : ObservableObject
         if (obj is not SessionRow r) return false;
 
         if (HideCompleted && r.Complete) return false;
+        if (!ShowAbandoned && r.Abandoned) return false;
         if (StatusFilter != AllStatusesLabel && r.Status != StatusFilter) return false;
         if (ProjectFilter != AllProjectsLabel && r.Project != ProjectFilter) return false;
 
@@ -137,7 +141,7 @@ public partial class MainViewModel : ObservableObject
             }
             else
             {
-                var row = new SessionRow(info);
+                var row = new SessionRow(info) { Abandoned = _abandoned.Contains(info.SessionId) };
                 Rows.Insert(idx, row);
                 bySid[info.SessionId] = row;
             }
@@ -146,6 +150,31 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary>Toggle the hide-completed filter (bound to the A hotkey).</summary>
     public void ToggleHideCompleted() => HideCompleted = !HideCompleted;
+
+    /// <summary>
+    /// Abandon or restore the given rows (bound to the X hotkey). A mixed selection
+    /// abandons, so one keypress crosses out everything selected.
+    /// </summary>
+    public void ToggleAbandoned(IReadOnlyList<SessionRow> rows)
+    {
+        if (rows.Count == 0)
+        {
+            StatusLine = "No rows selected.";
+            return;
+        }
+
+        bool abandon = rows.Any(r => !r.Abandoned);
+        foreach (var r in rows)
+        {
+            r.Abandoned = abandon;
+            _abandoned.Set(r.Info.SessionId, abandon);
+        }
+
+        RowsView.Refresh();
+        // The rows vanish when abandoned, so say where they went.
+        StatusLine = $"{(abandon ? "Abandoned" : "Restored")} {rows.Count} session(s)."
+            + (abandon && !ShowAbandoned ? "  Tick \"Show abandoned\" to see them." : "");
+    }
 
     private void RebuildFilterOptions()
     {

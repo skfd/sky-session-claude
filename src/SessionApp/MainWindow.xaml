@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:SessionApp"
-        Title="Claude Code sessions — double-click to resume · A: hide/show completed · R: refresh"
+        Title="Claude Code sessions — double-click to resume · A: hide/show completed · X: abandon/restore · R: refresh"
         Height="720" Width="1200" WindowStartupLocation="CenterScreen"
         FontSize="14" Foreground="#1A1A1A"
         TextOptions.TextFormattingMode="Display"
@@ -72,6 +72,9 @@
 
                     <CheckBox Content="Hide completed" VerticalAlignment="Center" Margin="0,0,10,0"
                               IsChecked="{Binding HideCompleted}"/>
+                    <CheckBox Content="Show abandoned" VerticalAlignment="Center" Margin="0,0,10,0"
+                              IsChecked="{Binding ShowAbandoned}"
+                              ToolTip="Sessions you crossed out with X — still unfinished, just not coming back to"/>
                     <CheckBox Content="All projects" VerticalAlignment="Center" Margin="0,0,10,0"
                               IsChecked="{Binding AllProjects}"/>
                     <CheckBox Content="Live" VerticalAlignment="Center" Margin="0,0,10,0"
@@ -98,6 +101,16 @@
             <ListBox.ItemTemplate>
                 <DataTemplate>
                     <Grid Height="126">
+                        <!-- Abandoned cards read as set aside: dimmed, with a struck-out title. -->
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Abandoned}" Value="True">
+                                        <Setter Property="Opacity" Value="0.65"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="4"/>
                             <ColumnDefinition Width="*"/>
@@ -124,7 +137,17 @@
                                          ToolTip="{Binding Timestamp}"/>
                                 </TextBlock>
                                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="15"
-                                           Foreground="#141414" TextTrimming="CharacterEllipsis"/>
+                                           Foreground="#141414" TextTrimming="CharacterEllipsis">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Abandoned}" Value="True">
+                                                    <Setter Property="TextDecorations" Value="Strikethrough"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
                             </DockPanel>
 
                             <TextBlock Grid.Row="1" Text="{Binding LastPrompt}" Margin="0,3,0,0"

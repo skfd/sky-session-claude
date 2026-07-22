@@ -37,7 +37,7 @@ public partial class MainWindow : Window
         });
     }
 
-    // A: hide/show completed · R: refresh. Ignore while typing in the search box.
+    // A: hide/show completed · X: abandon/restore · R: refresh. Ignore while typing.
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
         if (Keyboard.FocusedElement is TextBox) return;
@@ -46,6 +46,10 @@ public partial class MainWindow : Window
         {
             case Key.A:
                 _vm.ToggleHideCompleted();
+                e.Handled = true;
+                break;
+            case Key.X:
+                _vm.ToggleAbandoned(Grid.SelectedItems.OfType<SessionRow>().ToList());
                 e.Handled = true;
                 break;
             case Key.R:
