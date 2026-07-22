@@ -83,13 +83,20 @@ public partial class MainWindow : Window
         _vm.StatusLine = $"Copied {commands.Count} resume command(s) to the clipboard.";
     }
 
+    // If this app was itself launched from a Claude session, it inherited that session's
+    // markers. Passing them on makes the resumed session think it is a nested child and
+    // skip saving its transcript, so drop them. UseShellExecute must be false to edit the
+    // child environment at all.
     private static void Start(string command)
     {
-        Process.Start(new ProcessStartInfo
+        var psi = new ProcessStartInfo
         {
             FileName = "powershell.exe",
             ArgumentList = { "-NoExit", "-Command", command },
-            UseShellExecute = true,
-        });
+            UseShellExecute = false,
+        };
+        psi.Environment.Remove("CLAUDE_CODE_CHILD_SESSION");
+        psi.Environment.Remove("CLAUDE_CODE_SESSION_ID");
+        Process.Start(psi);
     }
 }
