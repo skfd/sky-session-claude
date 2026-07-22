@@ -4,6 +4,7 @@
         xmlns:local="clr-namespace:SessionApp"
         Title="Claude Code sessions — double-click to resume · A: hide/show completed · R: refresh"
         Height="720" Width="1200" WindowStartupLocation="CenterScreen"
+        FontSize="14" Foreground="#1A1A1A"
         TextOptions.TextFormattingMode="Display"
         KeyDown="Window_KeyDown">
 
@@ -16,7 +17,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
                         <Border x:Name="Bd" Background="Transparent"
-                                BorderBrush="#EDEDED" BorderThickness="0,0,0,1">
+                                BorderBrush="#D8DBDF" BorderThickness="0,0,0,1">
                             <ContentPresenter/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -24,7 +25,7 @@
                                 <Setter TargetName="Bd" Property="Background" Value="#F5F7FA"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#E4EDFB"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#CFE0F8"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -34,7 +35,7 @@
 
         <Style x:Key="BarLabel" TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Foreground" Value="#666"/>
+            <Setter Property="Foreground" Value="#33383D"/>
             <Setter Property="Margin" Value="0,0,4,0"/>
         </Style>
     </Window.Resources>
@@ -47,25 +48,25 @@
         </Grid.RowDefinitions>
 
         <!-- Filter bar + actions, one row across the top. -->
-        <Border Grid.Row="0" BorderBrush="#DDD" BorderThickness="0,0,0,1" Background="#F7F7F7">
-            <DockPanel Margin="8,6">
+        <Border Grid.Row="0" BorderBrush="#B9BDC2" BorderThickness="0,0,0,1" Background="#F2F3F4">
+            <DockPanel Margin="8,7">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="12,0,0,0">
-                    <Button Content="Refresh (R)" Padding="10,3" Margin="0,0,6,0"
+                    <Button Content="Refresh (R)" Padding="12,5" Margin="0,0,6,0"
                             Command="{Binding RefreshCommand}"/>
-                    <Button x:Name="CopyBtn" Content="Copy resume command(s)" Padding="10,3"
+                    <Button x:Name="CopyBtn" Content="Copy resume command(s)" Padding="12,5"
                             Click="CopyBtn_Click"/>
                 </StackPanel>
 
                 <WrapPanel VerticalAlignment="Center">
                     <TextBlock Text="Search:" Style="{StaticResource BarLabel}"/>
-                    <TextBox x:Name="SearchBox" Width="180" Margin="0,0,10,0"
+                    <TextBox x:Name="SearchBox" Width="200" Margin="0,0,10,0"
                              VerticalAlignment="Center"
                              Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=150}"/>
 
-                    <ComboBox Width="120" Margin="0,0,6,0" VerticalAlignment="Center"
+                    <ComboBox Width="140" Margin="0,0,6,0" VerticalAlignment="Center"
                               ItemsSource="{Binding StatusOptions}"
                               SelectedItem="{Binding StatusFilter}"/>
-                    <ComboBox Width="150" Margin="0,0,10,0" VerticalAlignment="Center"
+                    <ComboBox Width="172" Margin="0,0,10,0" VerticalAlignment="Center"
                               ItemsSource="{Binding ProjectOptions}"
                               SelectedItem="{Binding ProjectFilter}"/>
 
@@ -78,7 +79,7 @@
                               ToolTip="Auto-refresh when a session file changes"/>
 
                     <TextBlock Text="Show:" Style="{StaticResource BarLabel}"/>
-                    <ComboBox Width="66" VerticalAlignment="Center"
+                    <ComboBox Width="78" VerticalAlignment="Center"
                               ItemsSource="{Binding TopOptions}"
                               SelectedItem="{Binding TopSelection}"
                               ToolTip="Max sessions to load (older 1M sessions may need a larger cap)"/>
@@ -96,9 +97,9 @@
                  MouseDoubleClick="Grid_MouseDoubleClick">
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <Grid Height="104">
+                    <Grid Height="126">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="3"/>
+                            <ColumnDefinition Width="4"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
@@ -116,44 +117,44 @@
                             <!-- Title line: name on the left, project + age on the right. -->
                             <DockPanel Grid.Row="0">
                                 <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center"
-                                           Margin="10,0,0,0" Foreground="#8A9099">
-                                    <Run Text="{Binding Project, Mode=OneWay}" Foreground="#5A6270"/>
+                                           Margin="10,0,0,0" Foreground="#4A5260">
+                                    <Run Text="{Binding Project, Mode=OneWay}" Foreground="#3B4351"/>
                                     <Run Text="·"/>
                                     <Run Text="{Binding RelativeAge, Mode=OneWay}"
                                          ToolTip="{Binding Timestamp}"/>
                                 </TextBlock>
-                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
-                                           Foreground="#1A1A1A" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="15"
+                                           Foreground="#141414" TextTrimming="CharacterEllipsis"/>
                             </DockPanel>
 
                             <TextBlock Grid.Row="1" Text="{Binding LastPrompt}" Margin="0,3,0,0"
-                                       FontStyle="Italic" Foreground="#6B7785"
+                                       FontStyle="Italic" Foreground="#4A5260"
                                        TextTrimming="CharacterEllipsis"
                                        ToolTip="{Binding LastPrompt}"/>
 
                             <!-- Two lines of recap, hard-clipped; hover for the rest. -->
                             <TextBlock Grid.Row="2" Text="{Binding Recap}" Margin="0,2,0,0"
-                                       Height="32" TextWrapping="Wrap"
+                                       Height="40" TextWrapping="Wrap"
                                        TextTrimming="CharacterEllipsis"
-                                       LineHeight="16" LineStackingStrategy="BlockLineHeight"
-                                       Foreground="#3A3A3A">
+                                       LineHeight="20" LineStackingStrategy="BlockLineHeight"
+                                       Foreground="#2A2A2A">
                                 <TextBlock.ToolTip>
                                     <ToolTip MaxWidth="520">
-                                        <TextBlock Text="{Binding Recap}" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Recap}" TextWrapping="Wrap" FontSize="14"/>
                                     </ToolTip>
                                 </TextBlock.ToolTip>
                             </TextBlock>
 
                             <TextBlock Grid.Row="3" Text="{Binding MetaLine}" Margin="0,2,0,0"
-                                       FontSize="11" Foreground="#93999F"/>
+                                       FontSize="12.5" Foreground="#4A5260"/>
                         </Grid>
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
 
-        <Border Grid.Row="2" BorderBrush="#DDD" BorderThickness="0,1,0,0" Background="#F7F7F7">
-            <TextBlock Margin="10,4" Foreground="#666" Text="{Binding StatusLine}"/>
+        <Border Grid.Row="2" BorderBrush="#B9BDC2" BorderThickness="0,1,0,0" Background="#F2F3F4">
+            <TextBlock Margin="10,5" Foreground="#33383D" Text="{Binding StatusLine}"/>
         </Border>
     </Grid>
 </Window>

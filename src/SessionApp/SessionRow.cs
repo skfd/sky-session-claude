@@ -69,11 +69,13 @@ public sealed class SessionRow : INotifyPropertyChanged
         _ => Brushes.Transparent,
     };
 
-    private static readonly Brush Amber = Frozen("#F59E0B");
-    private static readonly Brush Blue = Frozen("#3B82F6");
-    private static readonly Brush Red = Frozen("#EF4444");
-    private static readonly Brush Purple = Frozen("#A855F7");
-    private static readonly Brush Orange = Frozen("#F97316");
+    // Darkened from the Tailwind-500 shades so each stripe clears 3:1 against
+    // the white card background (WCAG 1.4.11, non-text contrast).
+    private static readonly Brush Amber = Frozen("#A16207");
+    private static readonly Brush Blue = Frozen("#1D4ED8");
+    private static readonly Brush Red = Frozen("#B91C1C");
+    private static readonly Brush Purple = Frozen("#7E22CE");
+    private static readonly Brush Orange = Frozen("#C2410C");
 
     private static Brush Frozen(string hex)
     {
