@@ -18,7 +18,7 @@ public partial class MainViewModel : ObservableObject
 
     // --- filter-bar state ---------------------------------------------------
     [ObservableProperty] private string _searchText = "";
-    [ObservableProperty] private bool _hideCompleted;
+    [ObservableProperty] private bool _hideCompleted = true;
     [ObservableProperty] private string _statusFilter = AllStatusesLabel;
     [ObservableProperty] private string _projectFilter = AllProjectsLabel;
 
