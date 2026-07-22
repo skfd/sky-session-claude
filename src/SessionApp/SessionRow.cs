@@ -1,13 +1,14 @@
 using System.ComponentModel;
+using System.Windows.Media;
 using SessionCore;
 
 namespace SessionApp;
 
 /// <summary>
 /// Thin display wrapper over a <see cref="SessionInfo"/>. Keeps view-specific
-/// formatting (two-line timestamp, "Ctx%" string) out of the core model. The
-/// <see cref="Info"/> is swappable so a live refresh can update a row in place
-/// (preserving the grid's selection and scroll) instead of rebuilding the list.
+/// formatting (relative age, "Ctx%" string, status colour) out of the core model.
+/// The <see cref="Info"/> is swappable so a live refresh can update a row in place
+/// (preserving the list's selection and scroll) instead of rebuilding the list.
 /// </summary>
 public sealed class SessionRow : INotifyPropertyChanged
 {
@@ -28,11 +29,9 @@ public sealed class SessionRow : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    // Two lines: absolute timestamp over a relative "how long ago".
-    public string LastActiveDisplay =>
-        $"{_info.LastActive:yyyy-MM-dd HH:mm}\n{TextUtil.RelativeAge(_info.LastActive)}";
-
     public DateTime LastActive => _info.LastActive;
+    public string RelativeAge => TextUtil.RelativeAge(_info.LastActive);
+    public string Timestamp => _info.LastActive.ToString("yyyy-MM-dd HH:mm");
     public string Name => _info.Name ?? "(untitled)";
     public string Project => _info.Project;
     public string Status => _info.Status.ToWire();
@@ -44,4 +43,42 @@ public sealed class SessionRow : INotifyPropertyChanged
     public string Recap => _info.Recap;
     public double SizeKB => _info.SizeKB;
     public string Command => _info.Command;
+
+    /// <summary>Third line of the card: status · context · file size.</summary>
+    public string MetaLine
+    {
+        get
+        {
+            var parts = new List<string> { Status };
+            if (CtxDisplay.Length > 0) parts.Add($"ctx {CtxDisplay}");
+            parts.Add(SizeKB >= 1024 ? $"{SizeKB / 1024:0.#} MB" : $"{SizeKB:0} KB");
+            return string.Join("  ·  ", parts);
+        }
+    }
+
+    /// <summary>Accent colour for the status dot and the card's left edge.</summary>
+    public Brush StatusBrush => _info.Status switch
+    {
+        SessionStatus.Complete => Brushes.Transparent,
+        SessionStatus.WaitingYou => Amber,
+        SessionStatus.WaitingAgent => Blue,
+        SessionStatus.CutOff => Red,
+        SessionStatus.Limit => Purple,
+        SessionStatus.Error => Red,
+        SessionStatus.Interrupted => Orange,
+        _ => Brushes.Transparent,
+    };
+
+    private static readonly Brush Amber = Frozen("#F59E0B");
+    private static readonly Brush Blue = Frozen("#3B82F6");
+    private static readonly Brush Red = Frozen("#EF4444");
+    private static readonly Brush Purple = Frozen("#A855F7");
+    private static readonly Brush Orange = Frozen("#F97316");
+
+    private static Brush Frozen(string hex)
+    {
+        var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+        b.Freeze();
+        return b;
+    }
 }

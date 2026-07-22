@@ -4,113 +4,156 @@
         xmlns:local="clr-namespace:SessionApp"
         Title="Claude Code sessions — double-click to resume · A: hide/show completed · R: refresh"
         Height="720" Width="1200" WindowStartupLocation="CenterScreen"
+        TextOptions.TextFormattingMode="Display"
         KeyDown="Window_KeyDown">
 
     <Window.Resources>
-        <!-- Wrapping text cell for the prompt/recap columns. -->
-        <Style x:Key="WrapCell" TargetType="TextBlock">
-            <Setter Property="TextWrapping" Value="Wrap"/>
-            <Setter Property="Padding" Value="4,3"/>
-            <Setter Property="VerticalAlignment" Value="Top"/>
+        <!-- Card row. Fixed height: long recaps are clipped, never stretch the row. -->
+        <Style x:Key="CardItem" TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Bd" Background="Transparent"
+                                BorderBrush="#EDEDED" BorderThickness="0,0,0,1">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#F5F7FA"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E4EDFB"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
-        <Style x:Key="TopCell" TargetType="TextBlock">
-            <Setter Property="Padding" Value="4,3"/>
-            <Setter Property="VerticalAlignment" Value="Top"/>
+
+        <Style x:Key="BarLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="#666"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
         </Style>
     </Window.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <DataGrid x:Name="Grid" Grid.Row="0"
-                  ItemsSource="{Binding RowsView}"
-                  AutoGenerateColumns="False" IsReadOnly="True"
-                  SelectionMode="Extended" SelectionUnit="FullRow"
-                  HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                  CanUserAddRows="False" CanUserResizeRows="False"
-                  RowHeaderWidth="0" VerticalScrollBarVisibility="Auto"
-                  MouseDoubleClick="Grid_MouseDoubleClick">
+        <!-- Filter bar + actions, one row across the top. -->
+        <Border Grid.Row="0" BorderBrush="#DDD" BorderThickness="0,0,0,1" Background="#F7F7F7">
+            <DockPanel Margin="8,6">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="12,0,0,0">
+                    <Button Content="Refresh (R)" Padding="10,3" Margin="0,0,6,0"
+                            Command="{Binding RefreshCommand}"/>
+                    <Button x:Name="CopyBtn" Content="Copy resume command(s)" Padding="10,3"
+                            Click="CopyBtn_Click"/>
+                </StackPanel>
 
-            <DataGrid.RowStyle>
-                <Style TargetType="DataGridRow">
-                    <!-- Tint unfinished rows pale amber so the eye lands on them. -->
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding Complete}" Value="False">
-                            <Setter Property="Background" Value="#FFF8E1"/>
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </DataGrid.RowStyle>
-
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="Last active" Binding="{Binding LastActiveDisplay}"
-                                    ElementStyle="{StaticResource TopCell}" Width="Auto"/>
-                <DataGridTextColumn Header="Name" Binding="{Binding Name}"
-                                    ElementStyle="{StaticResource TopCell}" Width="Auto"/>
-                <DataGridTextColumn Header="Project" Binding="{Binding Project}"
-                                    ElementStyle="{StaticResource TopCell}" Width="Auto"/>
-                <DataGridTextColumn Header="Status" Binding="{Binding Status}"
-                                    ElementStyle="{StaticResource TopCell}" Width="Auto"/>
-                <DataGridTextColumn Header="Ctx%" Binding="{Binding CtxDisplay}"
-                                    ElementStyle="{StaticResource TopCell}" Width="Auto"/>
-                <DataGridTextColumn Header="Last prompt" Binding="{Binding LastPrompt}"
-                                    ElementStyle="{StaticResource WrapCell}" Width="34*"/>
-                <DataGridTextColumn Header="Agent recap" Binding="{Binding Recap}"
-                                    ElementStyle="{StaticResource WrapCell}" Width="46*"/>
-                <DataGridTextColumn Header="KB" Binding="{Binding SizeKB}"
-                                    ElementStyle="{StaticResource TopCell}" Width="Auto"/>
-            </DataGrid.Columns>
-        </DataGrid>
-
-        <!-- Filter bar + actions, docked at the bottom. -->
-        <Border Grid.Row="1" BorderBrush="#DDD" BorderThickness="0,1,0,0" Background="#F7F7F7">
-            <StackPanel Margin="8,6">
                 <WrapPanel VerticalAlignment="Center">
-                    <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                    <TextBox x:Name="SearchBox" Width="220" Margin="0,0,12,0"
+                    <TextBlock Text="Search:" Style="{StaticResource BarLabel}"/>
+                    <TextBox x:Name="SearchBox" Width="180" Margin="0,0,10,0"
                              VerticalAlignment="Center"
                              Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=150}"/>
 
-                    <TextBlock Text="Status:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                    <ComboBox Width="130" Margin="0,0,12,0" VerticalAlignment="Center"
+                    <ComboBox Width="120" Margin="0,0,6,0" VerticalAlignment="Center"
                               ItemsSource="{Binding StatusOptions}"
                               SelectedItem="{Binding StatusFilter}"/>
-
-                    <TextBlock Text="Project:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                    <ComboBox Width="180" Margin="0,0,12,0" VerticalAlignment="Center"
+                    <ComboBox Width="150" Margin="0,0,10,0" VerticalAlignment="Center"
                               ItemsSource="{Binding ProjectOptions}"
                               SelectedItem="{Binding ProjectFilter}"/>
 
-                    <CheckBox Content="Hide completed" VerticalAlignment="Center" Margin="0,0,12,0"
+                    <CheckBox Content="Hide completed" VerticalAlignment="Center" Margin="0,0,10,0"
                               IsChecked="{Binding HideCompleted}"/>
-                    <CheckBox Content="All projects" VerticalAlignment="Center" Margin="0,0,12,0"
+                    <CheckBox Content="All projects" VerticalAlignment="Center" Margin="0,0,10,0"
                               IsChecked="{Binding AllProjects}"/>
+                    <CheckBox Content="Live" VerticalAlignment="Center" Margin="0,0,10,0"
+                              IsChecked="{Binding LiveUpdates}"
+                              ToolTip="Auto-refresh when a session file changes"/>
 
-                    <TextBlock Text="Show:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                    <ComboBox Width="70" Margin="0,0,12,0" VerticalAlignment="Center"
+                    <TextBlock Text="Show:" Style="{StaticResource BarLabel}"/>
+                    <ComboBox Width="66" VerticalAlignment="Center"
                               ItemsSource="{Binding TopOptions}"
                               SelectedItem="{Binding TopSelection}"
                               ToolTip="Max sessions to load (older 1M sessions may need a larger cap)"/>
-
-                    <CheckBox Content="Live" VerticalAlignment="Center" Margin="0,0,12,0"
-                              IsChecked="{Binding LiveUpdates}"
-                              ToolTip="Auto-refresh when a session file changes"/>
                 </WrapPanel>
+            </DockPanel>
+        </Border>
 
-                <DockPanel Margin="0,6,0,0">
-                    <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center"
-                               Foreground="#666" Text="{Binding StatusLine}"/>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button Content="Refresh (R)" Padding="10,4" Margin="0,0,8,0"
-                                Command="{Binding RefreshCommand}"/>
-                        <Button x:Name="CopyBtn" Content="Copy resume command(s)" Padding="10,4"
-                                Click="CopyBtn_Click"/>
-                    </StackPanel>
-                </DockPanel>
-            </StackPanel>
+        <ListBox x:Name="Grid" Grid.Row="1"
+                 ItemsSource="{Binding RowsView}"
+                 SelectionMode="Extended"
+                 BorderThickness="0" Background="White"
+                 HorizontalContentAlignment="Stretch"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 ItemContainerStyle="{StaticResource CardItem}"
+                 MouseDoubleClick="Grid_MouseDoubleClick">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Grid Height="104">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Status accent stripe; transparent for completed sessions. -->
+                        <Rectangle Grid.Column="0" Fill="{Binding StatusBrush}"/>
+
+                        <Grid Grid.Column="1" Margin="10,7,10,7">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Title line: name on the left, project + age on the right. -->
+                            <DockPanel Grid.Row="0">
+                                <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center"
+                                           Margin="10,0,0,0" Foreground="#8A9099">
+                                    <Run Text="{Binding Project, Mode=OneWay}" Foreground="#5A6270"/>
+                                    <Run Text="·"/>
+                                    <Run Text="{Binding RelativeAge, Mode=OneWay}"
+                                         ToolTip="{Binding Timestamp}"/>
+                                </TextBlock>
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
+                                           Foreground="#1A1A1A" TextTrimming="CharacterEllipsis"/>
+                            </DockPanel>
+
+                            <TextBlock Grid.Row="1" Text="{Binding LastPrompt}" Margin="0,3,0,0"
+                                       FontStyle="Italic" Foreground="#6B7785"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding LastPrompt}"/>
+
+                            <!-- Two lines of recap, hard-clipped; hover for the rest. -->
+                            <TextBlock Grid.Row="2" Text="{Binding Recap}" Margin="0,2,0,0"
+                                       Height="32" TextWrapping="Wrap"
+                                       TextTrimming="CharacterEllipsis"
+                                       LineHeight="16" LineStackingStrategy="BlockLineHeight"
+                                       Foreground="#3A3A3A">
+                                <TextBlock.ToolTip>
+                                    <ToolTip MaxWidth="520">
+                                        <TextBlock Text="{Binding Recap}" TextWrapping="Wrap"/>
+                                    </ToolTip>
+                                </TextBlock.ToolTip>
+                            </TextBlock>
+
+                            <TextBlock Grid.Row="3" Text="{Binding MetaLine}" Margin="0,2,0,0"
+                                       FontSize="11" Foreground="#93999F"/>
+                        </Grid>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <Border Grid.Row="2" BorderBrush="#DDD" BorderThickness="0,1,0,0" Background="#F7F7F7">
+            <TextBlock Margin="10,4" Foreground="#666" Text="{Binding StatusLine}"/>
         </Border>
     </Grid>
 </Window>

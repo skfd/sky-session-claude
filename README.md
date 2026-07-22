@@ -2,25 +2,22 @@
 
 A tiny Windows desktop app that shows all your **Claude Code sessions** in one place and lets you jump back into any of them with a double-click.
 
-Claude Code stores every session as a session file (a `.jsonl`) under `~/.claude/projects`. Once you have dozens of them across several repos, finding the one you want — *"which session was I in when I asked it to fix the migration?"* — turns into archaeology. This app scans those session files and lays them out in a sortable, filterable grid so you can see at a glance what each session was doing, whether it finished, and how full its context got.
+Claude Code stores every session as a session file (a `.jsonl`) under `~/.claude/projects`. Once you have dozens of them across several repos, finding the one you want — *"which session was I in when I asked it to fix the migration?"* — turns into archaeology. This app scans those session files and lays them out as a filterable list of cards so you can see at a glance what each session was doing, whether it finished, and how full its context got.
 
-![Sky Session Claude — the session grid](docs/screenshot.png)
+![Sky Session Claude — the session list](docs/screenshot.png)
 
 ## What it shows
 
-Each row is one session:
+Each card is one session, four lines tall:
 
-| Column | Meaning |
+| Line | Meaning |
 |---|---|
-| **Last active** | When the session file was last written to |
-| **Name / Project** | Session id and the repo it belongs to |
-| **Status** | `complete`, `waiting-you`, `waiting-agent`, `cut-off`, `limit`, `error`, `interrupted` |
-| **Ctx%** | How full the context window is (auto-detects 1M-token sessions) |
-| **Last prompt** | Your most recent message in that session |
-| **Agent recap** | A short summary of what the agent last did |
-| **KB** | Session file size on disk |
+| **Title** | Session name, plus the repo it belongs to and how long ago it was last written to |
+| **Prompt** *(italic)* | Your most recent message in that session |
+| **Recap** | A short summary of what the agent last did, clipped to two lines (hover for the rest) |
+| **Meta** | `complete`, `waiting-you`, `waiting-agent`, `cut-off`, `limit`, `error`, `interrupted` · how full the context window is (auto-detects 1M-token sessions) · session file size on disk |
 
-Unfinished sessions are tinted amber so your eye lands on the ones still waiting on you. ("Unfinished" = every Status except `complete`.)
+Cards are a fixed height, so one long recap can never push the rest of the list off screen. Unfinished sessions get a coloured stripe down their left edge so your eye lands on the ones still waiting on you; completed ones have none. ("Unfinished" = every Status except `complete`.)
 
 ## How Status is decided
 
@@ -34,9 +31,9 @@ So: last real turn is an agent turn → `complete` (or `waiting-you` if it ends 
 
 ## What it does
 
-- **Double-click a row** → opens a new PowerShell terminal in that repo and runs `claude --resume <id>`, dropping you straight back into the session.
-- **Copy resume command(s)** → copies the resume command for every selected row to the clipboard.
-- **Live updates** → a filesystem watcher refreshes rows automatically as sessions change (toggle off with the **Live** checkbox).
+- **Double-click a card** → opens a new PowerShell terminal in that repo and runs `claude --resume <id>`, dropping you straight back into the session.
+- **Copy resume command(s)** → copies the resume command for every selected card to the clipboard.
+- **Live updates** → a filesystem watcher refreshes cards automatically as sessions change (toggle off with the **Live** checkbox).
 - **Filter** by search text, status, or project; hide completed sessions; scope to the current project or all projects; cap how many sessions load (50 → All).
 
 ### Keyboard shortcuts
@@ -80,7 +77,7 @@ A scheduled task on the host runs `SessionCli.exe --json <path>` to refresh a fi
 ## Project layout
 
 - **`src/SessionCore`** — session scanning, session-file parsing, status detection, live-refresh cache/watcher (no UI dependencies).
-- **`src/SessionApp`** — the WPF grid and view model.
+- **`src/SessionApp`** — the WPF card list and view model.
 - **`src/SessionCli`** — headless JSON scanner for the morning brief (shares `SessionCore`).
 - **`src/SessionCore.Tests`** — unit tests for the core.
 - **`schedule-add.ps1`** / **`schedule-remove.ps1`** — register/remove the daily task that refreshes `sessions.json` for the morning brief.
