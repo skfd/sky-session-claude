@@ -17,7 +17,7 @@
     <AssemblyName>SkySessionClaude</AssemblyName>
     <Product>Sky Session Claude</Product>
     <Description>Desktop viewer and resumer for Claude Code sessions.</Description>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 
