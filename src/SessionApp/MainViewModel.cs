@@ -48,18 +48,33 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<string> StatusOptions { get; } = new() { AllStatusesLabel };
     public ObservableCollection<string> ProjectOptions { get; } = new() { AllProjectsLabel };
 
+    /// <summary>
+    /// Set by the view: runs the given update and re-applies the list selection afterwards.
+    /// A view refresh (or a row move) raises a collection reset, and WPF's Selector drops
+    /// the selection on reset, so the view has to put it back.
+    /// </summary>
+    public Action<Action>? SelectionKeeper { get; set; }
+
     public MainViewModel()
     {
         RowsView = CollectionViewSource.GetDefaultView(Rows);
         RowsView.Filter = FilterRow;
     }
 
+    private void KeepingSelection(Action update)
+    {
+        if (SelectionKeeper is null) update();
+        else SelectionKeeper(update);
+    }
+
+    private void RefreshView() => KeepingSelection(RowsView.Refresh);
+
     // Re-apply filters whenever any filter input changes.
-    partial void OnSearchTextChanged(string value) => RowsView.Refresh();
-    partial void OnHideCompletedChanged(bool value) => RowsView.Refresh();
-    partial void OnShowAbandonedChanged(bool value) => RowsView.Refresh();
-    partial void OnStatusFilterChanged(string value) => RowsView.Refresh();
-    partial void OnProjectFilterChanged(string value) => RowsView.Refresh();
+    partial void OnSearchTextChanged(string value) => RefreshView();
+    partial void OnHideCompletedChanged(bool value) => RefreshView();
+    partial void OnShowAbandonedChanged(bool value) => RefreshView();
+    partial void OnStatusFilterChanged(string value) => RefreshView();
+    partial void OnProjectFilterChanged(string value) => RefreshView();
 
     // Changing scan scope re-scans (fire-and-forget; the command guards reentrancy).
     partial void OnAllProjectsChanged(bool value)
@@ -108,9 +123,12 @@ public partial class MainViewModel : ObservableObject
             // Parse off the UI thread; the cache makes repeat scans cheap.
             var infos = await Task.Run(() => _scanner.Scan(options));
 
-            Merge(infos);
-            RebuildFilterOptions();
-            RowsView.Refresh();
+            KeepingSelection(() =>
+            {
+                Merge(infos);
+                RebuildFilterOptions();
+                RowsView.Refresh();
+            });
             StatusLine = $"{infos.Count} session(s)  ·  {DateTime.Now:HH:mm:ss}";
         }
         finally
@@ -170,7 +188,7 @@ public partial class MainViewModel : ObservableObject
             _abandoned.Set(r.Info.SessionId, abandon);
         }
 
-        RowsView.Refresh();
+        RefreshView();
         // The rows vanish when abandoned, so say where they went.
         StatusLine = $"{(abandon ? "Abandoned" : "Restored")} {rows.Count} session(s)."
             + (abandon && !ShowAbandoned ? "  Tick \"Show abandoned\" to see them." : "");

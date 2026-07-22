@@ -15,12 +15,30 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = _vm;
+        _vm.SelectionKeeper = KeepSelection;
         Loaded += async (_, _) =>
         {
             await _vm.RefreshAsync();
             StartWatcher();
         };
         Closed += (_, _) => _watcher?.Dispose();
+    }
+
+    // Rescans and filter changes reset the collection view, and the ListBox drops its
+    // selection on reset. Rows keep their identity across a merge, so re-select the same
+    // ones afterwards, minus any the filter now hides.
+    private void KeepSelection(Action update)
+    {
+        var selected = Grid.SelectedItems.OfType<SessionRow>().ToList();
+        update();
+        if (selected.Count == 0) return;
+
+        var survivors = selected.Where(_vm.RowsView.Contains).ToList();
+        if (survivors.Count == Grid.SelectedItems.Count
+            && survivors.All(Grid.SelectedItems.Contains)) return;
+
+        Grid.SelectedItems.Clear();
+        foreach (var row in survivors) Grid.SelectedItems.Add(row);
     }
 
     // Auto-refresh when a session file changes (debounced in ProjectsWatcher).
