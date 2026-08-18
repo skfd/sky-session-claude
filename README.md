@@ -1,4 +1,4 @@
-# Sky Session Claude
+# <img src="docs/icon.png" width="30" align="top" alt=""> Sky Session Claude
 
 A tiny Windows desktop app that shows all your **Claude Code sessions** in one place and lets you jump back into any of them with a double-click.
 
