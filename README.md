@@ -6,6 +6,10 @@ Claude Code stores every session as a session file (a `.jsonl`) under `~/.claude
 
 ![Sky Session Claude — the session list](docs/screenshot.png)
 
+It follows the Windows apps theme, so the same list in dark mode:
+
+![Sky Session Claude — dark mode](docs/screenshot-dark.png)
+
 ## What it shows
 
 Each card is one session, four lines tall:
