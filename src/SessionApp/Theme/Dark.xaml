@@ -1,0 +1,47 @@
+<!--
+    Dark palette. Mirrors every key in Light.xaml — a key that exists in only one of
+    the two turns into a blank brush the moment the system theme flips.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Surfaces -->
+    <SolidColorBrush x:Key="Brush.List.Background" Color="#1B1D21"/>
+    <SolidColorBrush x:Key="Brush.Bar.Background" Color="#24272B"/>
+    <SolidColorBrush x:Key="Brush.Bar.Border" Color="#3A3F45"/>
+
+    <!-- Cards -->
+    <SolidColorBrush x:Key="Brush.Card.Separator" Color="#2E3238"/>
+    <SolidColorBrush x:Key="Brush.Card.Hover" Color="#262A2F"/>
+    <SolidColorBrush x:Key="Brush.Card.Selected" Color="#2C4160"/>
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="Brush.Text.Title" Color="#F3F5F7"/>
+    <SolidColorBrush x:Key="Brush.Text.Primary" Color="#E2E5E9"/>
+    <SolidColorBrush x:Key="Brush.Text.Emphasis" Color="#C0C8D3"/>
+    <SolidColorBrush x:Key="Brush.Text.Secondary" Color="#9AA4B1"/>
+    <SolidColorBrush x:Key="Brush.Text.Disabled" Color="#6B727C"/>
+
+    <!-- Controls -->
+    <SolidColorBrush x:Key="Brush.Control.Background" Color="#2C3036"/>
+    <SolidColorBrush x:Key="Brush.Control.Border" Color="#4A5058"/>
+    <SolidColorBrush x:Key="Brush.Control.Hover" Color="#363B42"/>
+    <SolidColorBrush x:Key="Brush.Control.Pressed" Color="#41474F"/>
+    <SolidColorBrush x:Key="Brush.Control.Accent" Color="#60A5FA"/>
+    <SolidColorBrush x:Key="Brush.Control.AccentText" Color="#12161B"/>
+    <SolidColorBrush x:Key="Brush.Popup.Background" Color="#23272C"/>
+    <SolidColorBrush x:Key="Brush.Scroll.Thumb" Color="#464C54"/>
+    <SolidColorBrush x:Key="Brush.Scroll.ThumbHover" Color="#5E656E"/>
+
+    <!--
+        Status accents, lightened to the Tailwind-400 shades: the light-mode stripes
+        are tuned for a white card and drop under 3:1 on a dark one.
+    -->
+    <SolidColorBrush x:Key="Brush.Accent.None" Color="Transparent"/>
+    <SolidColorBrush x:Key="Brush.Accent.Amber" Color="#FBBF24"/>
+    <SolidColorBrush x:Key="Brush.Accent.Blue" Color="#60A5FA"/>
+    <SolidColorBrush x:Key="Brush.Accent.Red" Color="#F87171"/>
+    <SolidColorBrush x:Key="Brush.Accent.Purple" Color="#C084FC"/>
+    <SolidColorBrush x:Key="Brush.Accent.Orange" Color="#FB923C"/>
+
+</ResourceDictionary>

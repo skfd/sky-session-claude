@@ -1,0 +1,48 @@
+<!--
+    Light palette. Every key here has a same-named twin in Dark.xaml; ThemeManager
+    swaps one dictionary for the other, and everything downstream reaches them
+    through DynamicResource so the swap repaints without rebuilding the tree.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Surfaces -->
+    <SolidColorBrush x:Key="Brush.List.Background" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="Brush.Bar.Background" Color="#F2F3F4"/>
+    <SolidColorBrush x:Key="Brush.Bar.Border" Color="#B9BDC2"/>
+
+    <!-- Cards -->
+    <SolidColorBrush x:Key="Brush.Card.Separator" Color="#D8DBDF"/>
+    <SolidColorBrush x:Key="Brush.Card.Hover" Color="#F5F7FA"/>
+    <SolidColorBrush x:Key="Brush.Card.Selected" Color="#CFE0F8"/>
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="Brush.Text.Title" Color="#141414"/>
+    <SolidColorBrush x:Key="Brush.Text.Primary" Color="#1A1A1A"/>
+    <SolidColorBrush x:Key="Brush.Text.Emphasis" Color="#3B4351"/>
+    <SolidColorBrush x:Key="Brush.Text.Secondary" Color="#4A5260"/>
+    <SolidColorBrush x:Key="Brush.Text.Disabled" Color="#9AA0A8"/>
+
+    <!-- Controls -->
+    <SolidColorBrush x:Key="Brush.Control.Background" Color="#FBFBFC"/>
+    <SolidColorBrush x:Key="Brush.Control.Border" Color="#ADB2B9"/>
+    <SolidColorBrush x:Key="Brush.Control.Hover" Color="#E8ECF2"/>
+    <SolidColorBrush x:Key="Brush.Control.Pressed" Color="#DAE0E8"/>
+    <SolidColorBrush x:Key="Brush.Control.Accent" Color="#1D4ED8"/>
+    <SolidColorBrush x:Key="Brush.Control.AccentText" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="Brush.Popup.Background" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="Brush.Scroll.Thumb" Color="#C2C7CE"/>
+    <SolidColorBrush x:Key="Brush.Scroll.ThumbHover" Color="#9BA2AB"/>
+
+    <!--
+        Status accents, darkened from the Tailwind-500 shades so each stripe clears
+        3:1 against the white card background (WCAG 1.4.11, non-text contrast).
+    -->
+    <SolidColorBrush x:Key="Brush.Accent.None" Color="Transparent"/>
+    <SolidColorBrush x:Key="Brush.Accent.Amber" Color="#A16207"/>
+    <SolidColorBrush x:Key="Brush.Accent.Blue" Color="#1D4ED8"/>
+    <SolidColorBrush x:Key="Brush.Accent.Red" Color="#B91C1C"/>
+    <SolidColorBrush x:Key="Brush.Accent.Purple" Color="#7E22CE"/>
+    <SolidColorBrush x:Key="Brush.Accent.Orange" Color="#C2410C"/>
+
+</ResourceDictionary>

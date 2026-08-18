@@ -1,9 +1,17 @@
-﻿<Application x:Class="SessionApp.App"
+<Application x:Class="SessionApp.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:SessionApp"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-         
+        <ResourceDictionary>
+            <!--
+                Light.xaml / Dark.xaml is merged in ahead of this one at startup by
+                ThemeManager, which also swaps it when the system theme changes.
+            -->
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Theme/Controls.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

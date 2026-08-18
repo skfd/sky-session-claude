@@ -15,6 +15,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = _vm;
+        ThemeManager.Attach(this);   // dark title bar + live system theme switching
         _vm.SelectionKeeper = KeepSelection;
         Loaded += async (_, _) =>
         {

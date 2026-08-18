@@ -36,6 +36,7 @@ So: last real turn is an agent turn → `complete` (or `waiting-you` if it ends 
 - **Live updates** → a filesystem watcher refreshes cards automatically as sessions change (toggle off with the **Live** checkbox).
 - **Filter** by search text, status, or project; hide completed sessions; scope to the current project or all projects; cap how many sessions load (defaults to **All**, so an old unfinished session can never hide just past a cut-off; drop to 50 → 500 if you want a shorter scan).
 - **Abandon a session** (**X**) → crosses out sessions you're not going back to. They stay honestly classified as unfinished — abandoning is your judgment, not the classifier's, so it never changes the status. Abandoned cards are hidden until you tick **Show abandoned**, which shows them struck through. The marks persist in `%APPDATA%\sky-session-claude\abandoned.json`.
+- **Dark mode** → follows the Windows apps theme, title bar included, and switches live when you flip the system setting — no restart, and no in-app toggle to keep in sync.
 
 ### Keyboard shortcuts
 
@@ -79,7 +80,7 @@ A scheduled task on the host runs `SessionCli.exe --json <path>` to refresh a fi
 ## Project layout
 
 - **`src/SessionCore`** — session scanning, session-file parsing, status detection, live-refresh cache/watcher (no UI dependencies).
-- **`src/SessionApp`** — the WPF card list and view model.
+- **`src/SessionApp`** — the WPF card list and view model; `Theme/` holds the light/dark palettes, the themed control chrome, and the system-theme watcher.
 - **`src/SessionCli`** — headless JSON scanner for the morning brief (shares `SessionCore`).
 - **`src/SessionCore.Tests`** — unit tests for the core.
 - **`schedule-add.ps1`** / **`schedule-remove.ps1`** — register/remove the daily task that refreshes `sessions.json` for the morning brief.

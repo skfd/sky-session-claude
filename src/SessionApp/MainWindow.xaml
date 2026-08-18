@@ -4,7 +4,8 @@
         xmlns:local="clr-namespace:SessionApp"
         Title="Claude Code sessions — double-click to resume · A: hide/show completed · X: abandon/restore · R: refresh"
         Height="720" Width="1200" WindowStartupLocation="CenterScreen"
-        FontSize="14" Foreground="#1A1A1A"
+        FontSize="14" Foreground="{DynamicResource Brush.Text.Primary}"
+        Background="{DynamicResource Brush.List.Background}"
         TextOptions.TextFormattingMode="Display"
         KeyDown="Window_KeyDown">
 
@@ -17,15 +18,16 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
                         <Border x:Name="Bd" Background="Transparent"
-                                BorderBrush="#D8DBDF" BorderThickness="0,0,0,1">
+                                BorderBrush="{DynamicResource Brush.Card.Separator}"
+                                BorderThickness="0,0,0,1">
                             <ContentPresenter/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#F5F7FA"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Brush.Card.Hover}"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#CFE0F8"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Brush.Card.Selected}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -35,8 +37,37 @@
 
         <Style x:Key="BarLabel" TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Foreground" Value="#33383D"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}"/>
             <Setter Property="Margin" Value="0,0,4,0"/>
+        </Style>
+
+        <!--
+            Status accent stripe down the card's left edge. Driven by triggers rather
+            than a brush on the row so a theme swap repaints it: the palette brushes
+            resolve dynamically, a brush handed over from code would not.
+        -->
+        <Style x:Key="StatusStripe" TargetType="Rectangle">
+            <Setter Property="Fill" Value="{DynamicResource Brush.Accent.None}"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Status}" Value="waiting-you">
+                    <Setter Property="Fill" Value="{DynamicResource Brush.Accent.Amber}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="waiting-agent">
+                    <Setter Property="Fill" Value="{DynamicResource Brush.Accent.Blue}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="cut-off">
+                    <Setter Property="Fill" Value="{DynamicResource Brush.Accent.Red}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="limit">
+                    <Setter Property="Fill" Value="{DynamicResource Brush.Accent.Purple}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="error">
+                    <Setter Property="Fill" Value="{DynamicResource Brush.Accent.Red}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="interrupted">
+                    <Setter Property="Fill" Value="{DynamicResource Brush.Accent.Orange}"/>
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
     </Window.Resources>
 
@@ -48,7 +79,9 @@
         </Grid.RowDefinitions>
 
         <!-- Filter bar + actions, one row across the top. -->
-        <Border Grid.Row="0" BorderBrush="#B9BDC2" BorderThickness="0,0,0,1" Background="#F2F3F4">
+        <Border Grid.Row="0" BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource Brush.Bar.Border}"
+                Background="{DynamicResource Brush.Bar.Background}">
             <DockPanel Margin="8,7">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="12,0,0,0">
                     <Button Content="Refresh (R)" Padding="12,5" Margin="0,0,6,0"
@@ -93,7 +126,8 @@
         <ListBox x:Name="Grid" Grid.Row="1"
                  ItemsSource="{Binding RowsView}"
                  SelectionMode="Extended"
-                 BorderThickness="0" Background="White"
+                 BorderThickness="0"
+                 Background="{DynamicResource Brush.List.Background}"
                  HorizontalContentAlignment="Stretch"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                  ItemContainerStyle="{StaticResource CardItem}"
@@ -117,7 +151,7 @@
                         </Grid.ColumnDefinitions>
 
                         <!-- Status accent stripe; transparent for completed sessions. -->
-                        <Rectangle Grid.Column="0" Fill="{Binding StatusBrush}"/>
+                        <Rectangle Grid.Column="0" Style="{StaticResource StatusStripe}"/>
 
                         <Grid Grid.Column="1" Margin="10,7,10,7">
                             <Grid.RowDefinitions>
@@ -130,14 +164,17 @@
                             <!-- Title line: name on the left, project + age on the right. -->
                             <DockPanel Grid.Row="0">
                                 <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center"
-                                           Margin="10,0,0,0" Foreground="#4A5260">
-                                    <Run Text="{Binding Project, Mode=OneWay}" Foreground="#3B4351"/>
+                                           Margin="10,0,0,0"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}">
+                                    <Run Text="{Binding Project, Mode=OneWay}"
+                                         Foreground="{DynamicResource Brush.Text.Emphasis}"/>
                                     <Run Text="·"/>
                                     <Run Text="{Binding RelativeAge, Mode=OneWay}"
                                          ToolTip="{Binding Timestamp}"/>
                                 </TextBlock>
                                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="15"
-                                           Foreground="#141414" TextTrimming="CharacterEllipsis">
+                                           Foreground="{DynamicResource Brush.Text.Title}"
+                                           TextTrimming="CharacterEllipsis">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
                                             <Style.Triggers>
@@ -151,7 +188,8 @@
                             </DockPanel>
 
                             <TextBlock Grid.Row="1" Text="{Binding LastPrompt}" Margin="0,3,0,0"
-                                       FontStyle="Italic" Foreground="#4A5260"
+                                       FontStyle="Italic"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"
                                        TextTrimming="CharacterEllipsis"
                                        ToolTip="{Binding LastPrompt}"/>
 
@@ -160,7 +198,7 @@
                                        Height="40" TextWrapping="Wrap"
                                        TextTrimming="CharacterEllipsis"
                                        LineHeight="20" LineStackingStrategy="BlockLineHeight"
-                                       Foreground="#2A2A2A">
+                                       Foreground="{DynamicResource Brush.Text.Primary}">
                                 <TextBlock.ToolTip>
                                     <ToolTip MaxWidth="520">
                                         <TextBlock Text="{Binding Recap}" TextWrapping="Wrap" FontSize="14"/>
@@ -169,15 +207,19 @@
                             </TextBlock>
 
                             <TextBlock Grid.Row="3" Text="{Binding MetaLine}" Margin="0,2,0,0"
-                                       FontSize="12.5" Foreground="#4A5260"/>
+                                       FontSize="12.5"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"/>
                         </Grid>
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
 
-        <Border Grid.Row="2" BorderBrush="#B9BDC2" BorderThickness="0,1,0,0" Background="#F2F3F4">
-            <TextBlock Margin="10,5" Foreground="#33383D" Text="{Binding StatusLine}"/>
+        <Border Grid.Row="2" BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource Brush.Bar.Border}"
+                Background="{DynamicResource Brush.Bar.Background}">
+            <TextBlock Margin="10,5" Foreground="{DynamicResource Brush.Text.Secondary}"
+                       Text="{Binding StatusLine}"/>
         </Border>
     </Grid>
 </Window>
