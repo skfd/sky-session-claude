@@ -1,8 +1,13 @@
 # Builds a self-contained, single-file Windows release of Sky Session Claude.
 # Output: dist/SkySessionClaude.exe (no .NET runtime required to run it).
+#
+# By default it then installs that exe into the stable location the "Sky Session
+# Claude" Start-menu shortcut points at (%LOCALAPPDATA%\Programs\SkySessionClaude),
+# so a release keeps the stable app up to date. Pass -SkipInstall to only fill dist.
 param(
     [string]$Runtime = 'win-x64',
-    [string]$OutDir  = 'dist'
+    [string]$OutDir  = 'dist',
+    [switch]$SkipInstall
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,3 +35,22 @@ dotnet publish "$root/src/SessionCli/SessionCli.csproj" `
     -o "$root/$OutDir"
 
 Write-Host "Built: $root/$OutDir/SessionCli.exe"
+
+# Refresh the stable install so the "Sky Session Claude" Start-menu shortcut (which
+# points at %LOCALAPPDATA%\Programs\SkySessionClaude) runs the version we just built.
+if (-not $SkipInstall) {
+    $installDir = Join-Path $env:LOCALAPPDATA 'Programs\SkySessionClaude'
+    New-Item -ItemType Directory -Force -Path $installDir | Out-Null
+
+    $targetExe = Join-Path $installDir 'SkySessionClaude.exe'
+    # A running stable instance holds a lock on its exe; close only that one (never the
+    # dev build) so the copy can overwrite it.
+    Get-Process SkySessionClaude -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -eq $targetExe } |
+        ForEach-Object { $_.CloseMainWindow() | Out-Null; if (-not $_.WaitForExit(5000)) { $_.Kill() } }
+
+    Copy-Item "$root/$OutDir/SkySessionClaude.exe" $targetExe -Force
+    Write-Host "Installed: $targetExe"
+} else {
+    Write-Host "Skipped install (-SkipInstall); stable Start-menu app not updated."
+}

@@ -63,8 +63,12 @@ Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download).
 # Run in-place
 dotnet run --project src/SessionApp
 
-# Or produce the release single-file exe in dist/
+# Produce the release single-file exe in dist/ AND refresh the stable install
+# under %LOCALAPPDATA%\Programs\SkySessionClaude (what the Start-menu shortcut runs)
 ./publish.ps1
+
+# Just build dist/, leave the installed app alone
+./publish.ps1 -SkipInstall
 ```
 
 ## Headless mode
