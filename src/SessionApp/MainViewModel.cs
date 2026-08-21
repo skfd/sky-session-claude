@@ -163,7 +163,7 @@ public partial class MainViewModel : ObservableObject
             });
             UpdateWindowTitle();
             StatusLine = $"{infos.Count} session(s)  ·  {DateTime.Now:HH:mm:ss}"
-                + "  —  double-click to resume · A: hide/show completed · X: abandon/restore · R: refresh";
+                + "  —  double-click to resume · A: hide/show completed · X: abandon/restore · R: refresh · F: fork";
         }
         finally
         {
