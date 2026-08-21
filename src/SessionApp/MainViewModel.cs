@@ -47,15 +47,26 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _statusLine = "";
 
     /// <summary>
-    /// "v1.5.0" from the assembly, so the footer can never drift from the csproj
-    /// version. InformationalVersion may carry a "+commit" suffix; cut it.
+    /// Footer build label, e.g. "v1.6.0 · 5c5afdc", from the assembly so it can never
+    /// drift from the csproj version. The "· sha" comes from InformationalVersion's
+    /// "+commit" suffix and is what tells two builds of the same version apart — so a
+    /// rebuild is visibly current — and is dropped when the suffix is absent.
     /// </summary>
-    public static string VersionLabel { get; } = "v" + (System.Reflection.Assembly
-        .GetExecutingAssembly()
-        .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
-        is [System.Reflection.AssemblyInformationalVersionAttribute a, ..]
-            ? a.InformationalVersion.Split('+')[0]
-            : "?");
+    public static string VersionLabel { get; } = BuildVersionLabel();
+
+    private static string BuildVersionLabel()
+    {
+        var info = System.Reflection.Assembly.GetExecutingAssembly()
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            is [System.Reflection.AssemblyInformationalVersionAttribute a, ..]
+                ? a.InformationalVersion
+                : "?";
+
+        var parts = info.Split('+');
+        var version = parts[0];
+        var sha = parts.Length > 1 ? parts[1] : "";
+        return sha.Length >= 7 ? $"v{version} · {sha[..7]}" : $"v{version}";
+    }
 
     /// <summary>
     /// Window/taskbar caption: "Sky N sessions", N = rows still open (not completed,

@@ -1,6 +1,7 @@
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
+using System.Text.Json;
 
 namespace SessionApp;
 
@@ -9,12 +10,14 @@ namespace SessionApp;
 /// double-click can jump to that live window instead of spawning a second
 /// <c>claude --resume</c> against the same session.
 ///
-/// A running interactive CLI carries its session id in the
-/// <c>CLAUDE_CODE_SESSION_ID</c> environment variable, and for a local session
-/// that id is exactly the <c>.jsonl</c> file's base name — i.e. our
-/// <see cref="SessionCore.SessionInfo.SessionId"/>. We read that variable out of
-/// each <c>claude.exe</c>'s PEB (same user, no elevation) to build the id→pid map,
-/// then walk from the pid up to the hosting terminal window to focus it.
+/// Every running interactive CLI publishes a registry file at
+/// <c>~/.claude/sessions/&lt;pid&gt;.json</c> holding its <c>sessionId</c> (which
+/// for a local session is exactly the <c>.jsonl</c> base name — our
+/// <see cref="SessionCore.SessionInfo.SessionId"/>) and its pid. We read that to
+/// map session → pid, then walk from the pid up to the hosting terminal window
+/// to focus it. (The id is generated at runtime and never appears on the command
+/// line or in the process's creation-time environment, so the registry is the
+/// only reliable source.)
 /// </summary>
 internal static class LiveSessions
 {
@@ -27,23 +30,34 @@ internal static class LiveSessions
     {
         var map = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var p in SafeGetProcessesByName("claude"))
+        var dir = SessionsDir();
+        if (!Directory.Exists(dir)) return map;
+
+        foreach (var path in Directory.EnumerateFiles(dir, "*.json"))
         {
             try
             {
-                var env = ReadEnvironment(p.Id);
-                if (env is null) continue;
+                using var doc = JsonDocument.Parse(File.ReadAllBytes(path));
+                var root = doc.RootElement;
 
-                // CLAUDECODE=1 marks the CLI; the Electron desktop app lacks it.
-                if (!env.TryGetValue("CLAUDECODE", out var cc) || cc != "1") continue;
-                if (!env.TryGetValue("CLAUDE_CODE_SESSION_ID", out var sid) || string.IsNullOrEmpty(sid))
+                // Only interactive terminals have a window to focus.
+                if (root.TryGetProperty("kind", out var kind) &&
+                    kind.ValueKind == JsonValueKind.String &&
+                    !string.Equals(kind.GetString(), "interactive", StringComparison.OrdinalIgnoreCase))
                     continue;
 
+                if (!root.TryGetProperty("sessionId", out var sidEl) ||
+                    sidEl.GetString() is not { Length: > 0 } sid)
+                    continue;
+                if (!root.TryGetProperty("pid", out var pidEl) || !pidEl.TryGetInt32(out int pid))
+                    continue;
+
+                if (!IsLiveClaude(pid)) continue;   // skip stale registry files
+
                 if (!map.TryGetValue(sid, out var pids)) map[sid] = pids = new List<int>();
-                if (!pids.Contains(p.Id)) pids.Add(p.Id);
+                if (!pids.Contains(pid)) pids.Add(pid);
             }
-            catch { /* process died mid-scan, or no read access — skip it */ }
-            finally { p.Dispose(); }
+            catch { /* unreadable/racing/partial file — skip it */ }
         }
 
         return map;
@@ -59,6 +73,21 @@ internal static class LiveSessions
         var hwnd = ResolveTerminalWindow(pid);
         if (hwnd == IntPtr.Zero) return false;
         return Activate(hwnd);
+    }
+
+    private static string SessionsDir() =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "sessions");
+
+    // A registry file can outlive its process; confirm the pid is a running claude
+    // before trusting it, so we never focus a window that reused the pid.
+    private static bool IsLiveClaude(int pid)
+    {
+        try
+        {
+            using var p = Process.GetProcessById(pid);
+            return p.ProcessName.Equals("claude", StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
     }
 
     // --- window resolution --------------------------------------------------
@@ -95,12 +124,6 @@ internal static class LiveSessions
     private static bool IsConsoleHost(string name) =>
         name.Equals("conhost.exe", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("OpenConsole.exe", StringComparison.OrdinalIgnoreCase);
-
-    private static Process[] SafeGetProcessesByName(string name)
-    {
-        try { return Process.GetProcessesByName(name); }
-        catch { return Array.Empty<Process>(); }
-    }
 
     // --- foreground activation (the documented AttachThreadInput dance) ------
 
@@ -174,86 +197,12 @@ internal static class LiveSessions
         return byPid;
     }
 
-    // --- reading a remote process's environment block (PEB, x64) ------------
-
-    private static Dictionary<string, string>? ReadEnvironment(int pid)
-    {
-        IntPtr h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, false, pid);
-        if (h == IntPtr.Zero) return null;
-        try
-        {
-            var pbi = new PROCESS_BASIC_INFORMATION();
-            if (NtQueryInformationProcess(h, 0, ref pbi, Marshal.SizeOf(pbi), out _) != 0) return null;
-            if (pbi.PebBaseAddress == IntPtr.Zero) return null;
-
-            // PEB.ProcessParameters (0x20) → RTL_USER_PROCESS_PARAMETERS.Environment
-            // (0x80) and .EnvironmentSize (0x3F0), all x64 offsets.
-            IntPtr pp = ReadPtr(h, pbi.PebBaseAddress + 0x20);
-            if (pp == IntPtr.Zero) return null;
-
-            IntPtr envAddr = ReadPtr(h, pp + 0x80);
-            if (envAddr == IntPtr.Zero) return null;
-
-            long size = ReadInt64(h, pp + 0x3F0);
-            if (size <= 0 || size > 8 * 1024 * 1024) size = 128 * 1024;   // sane fallback
-
-            var buffer = new byte[size];
-            if (!ReadProcessMemory(h, envAddr, buffer, (IntPtr)size, out IntPtr read) || read == IntPtr.Zero)
-                return null;
-
-            return ParseEnvironmentBlock(buffer, (int)read);
-        }
-        catch { return null; }
-        finally { CloseHandle(h); }
-    }
-
-    private static Dictionary<string, string> ParseEnvironmentBlock(byte[] buffer, int bytes)
-    {
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var text = Encoding.Unicode.GetString(buffer, 0, bytes & ~1);   // whole wchars only
-        foreach (var entry in text.Split('\0'))
-        {
-            if (entry.Length == 0) continue;
-            int eq = entry.IndexOf('=', 1);   // skip a leading '=' (drive-cwd vars like "=C:")
-            if (eq <= 0) continue;
-            result[entry[..eq]] = entry[(eq + 1)..];
-        }
-        return result;
-    }
-
-    private static IntPtr ReadPtr(IntPtr h, IntPtr addr)
-    {
-        var buf = new byte[8];
-        return ReadProcessMemory(h, addr, buf, (IntPtr)8, out _)
-            ? (IntPtr)BitConverter.ToInt64(buf, 0)
-            : IntPtr.Zero;
-    }
-
-    private static long ReadInt64(IntPtr h, IntPtr addr)
-    {
-        var buf = new byte[8];
-        return ReadProcessMemory(h, addr, buf, (IntPtr)8, out _) ? BitConverter.ToInt64(buf, 0) : 0;
-    }
-
     // --- P/Invoke -----------------------------------------------------------
 
-    private const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
-    private const int PROCESS_VM_READ = 0x0010;
     private const uint TH32CS_SNAPPROCESS = 0x00000002;
     private static readonly IntPtr INVALID_HANDLE_VALUE = new(-1);
     private const uint GW_OWNER = 4;
     private const int SW_RESTORE = 9;
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct PROCESS_BASIC_INFORMATION
-    {
-        public IntPtr ExitStatus;
-        public IntPtr PebBaseAddress;
-        public IntPtr AffinityMask;
-        public IntPtr BasePriority;
-        public IntPtr UniqueProcessId;
-        public IntPtr InheritedFromUniqueProcessId;
-    }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct PROCESSENTRY32
@@ -272,18 +221,6 @@ internal static class LiveSessions
     }
 
     private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
-
-    [DllImport("ntdll.dll")]
-    private static extern int NtQueryInformationProcess(
-        IntPtr processHandle, int processInformationClass,
-        ref PROCESS_BASIC_INFORMATION processInformation, int length, out int returnLength);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr OpenProcess(int access, bool inheritHandle, int pid);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool ReadProcessMemory(
-        IntPtr hProcess, IntPtr baseAddress, byte[] buffer, IntPtr size, out IntPtr bytesRead);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr handle);
