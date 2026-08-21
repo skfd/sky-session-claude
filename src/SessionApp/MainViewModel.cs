@@ -46,6 +46,12 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _statusLine = "";
 
+    /// <summary>
+    /// Window/taskbar caption: "Sky N sessions", N = rows still open (not completed,
+    /// not abandoned) regardless of the current filters.
+    /// </summary>
+    [ObservableProperty] private string _windowTitle = "Sky sessions";
+
     public const string AllStatusesLabel = "(all statuses)";
     public const string AllProjectsLabel = "(all projects)";
 
@@ -133,7 +139,9 @@ public partial class MainViewModel : ObservableObject
                 RebuildFilterOptions();
                 RowsView.Refresh();
             });
-            StatusLine = $"{infos.Count} session(s)  ·  {DateTime.Now:HH:mm:ss}";
+            UpdateWindowTitle();
+            StatusLine = $"{infos.Count} session(s)  ·  {DateTime.Now:HH:mm:ss}"
+                + "  —  double-click to resume · A: hide/show completed · X: abandon/restore · R: refresh";
         }
         finally
         {
@@ -193,9 +201,16 @@ public partial class MainViewModel : ObservableObject
         }
 
         RefreshView();
+        UpdateWindowTitle();
         // The rows vanish when abandoned, so say where they went.
         StatusLine = $"{(abandon ? "Abandoned" : "Restored")} {rows.Count} session(s)."
             + (abandon && !ShowAbandoned ? "  Tick \"Show abandoned\" to see them." : "");
+    }
+
+    private void UpdateWindowTitle()
+    {
+        int n = Rows.Count(r => !r.Complete && !r.Abandoned);
+        WindowTitle = $"Sky {n} session{(n == 1 ? "" : "s")}";
     }
 
     private void RebuildFilterOptions()
