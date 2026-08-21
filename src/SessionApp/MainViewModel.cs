@@ -47,6 +47,17 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _statusLine = "";
 
     /// <summary>
+    /// "v1.5.0" from the assembly, so the footer can never drift from the csproj
+    /// version. InformationalVersion may carry a "+commit" suffix; cut it.
+    /// </summary>
+    public static string VersionLabel { get; } = "v" + (System.Reflection.Assembly
+        .GetExecutingAssembly()
+        .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+        is [System.Reflection.AssemblyInformationalVersionAttribute a, ..]
+            ? a.InformationalVersion.Split('+')[0]
+            : "?");
+
+    /// <summary>
     /// Window/taskbar caption: "Sky N sessions", N = rows still open (not completed,
     /// not abandoned) regardless of the current filters.
     /// </summary>

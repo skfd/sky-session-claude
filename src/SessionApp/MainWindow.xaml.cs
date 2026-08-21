@@ -102,6 +102,16 @@ public partial class MainWindow : Window
         _vm.StatusLine = $"Copied {commands.Count} resume command(s) to the clipboard.";
     }
 
+    private void Changelog_Click(object sender, RoutedEventArgs e)
+    {
+        // ShellExecute so the URL opens in the default browser.
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "https://github.com/skfd/sky-session-claude/releases",
+            UseShellExecute = true,
+        });
+    }
+
     // If this app was itself launched from a Claude session, it inherited that session's
     // markers. Passing them on makes the resumed session think it is a nested child and
     // skip saving its transcript, so drop them. UseShellExecute must be false to edit the

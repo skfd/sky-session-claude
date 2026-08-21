@@ -36,6 +36,18 @@
             </Setter>
         </Style>
 
+        <!-- Footer version link: quiet until hovered, then reads as a link. -->
+        <Style x:Key="FooterLink" TargetType="Hyperlink">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}"/>
+            <Setter Property="TextDecorations" Value="{x:Null}"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource Brush.Control.Accent}"/>
+                    <Setter Property="TextDecorations" Value="Underline"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="BarLabel" TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}"/>
@@ -219,8 +231,17 @@
         <Border Grid.Row="2" BorderThickness="0,1,0,0"
                 BorderBrush="{DynamicResource Brush.Bar.Border}"
                 Background="{DynamicResource Brush.Bar.Background}">
-            <TextBlock Margin="10,5" Foreground="{DynamicResource Brush.Text.Secondary}"
-                       Text="{Binding StatusLine}"/>
+            <DockPanel Margin="10,5">
+                <TextBlock DockPanel.Dock="Right" Margin="10,0,0,0" VerticalAlignment="Center">
+                    <Hyperlink Style="{StaticResource FooterLink}" Click="Changelog_Click"
+                               ToolTip="What changed in each version — opens the changelog on GitHub">
+                        <Run Text="{x:Static local:MainViewModel.VersionLabel}"/>
+                    </Hyperlink>
+                </TextBlock>
+                <TextBlock Foreground="{DynamicResource Brush.Text.Secondary}"
+                           TextTrimming="CharacterEllipsis"
+                           Text="{Binding StatusLine}"/>
+            </DockPanel>
         </Border>
     </Grid>
 </Window>
