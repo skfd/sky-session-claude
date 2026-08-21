@@ -36,8 +36,13 @@ public sealed class SessionScanner
     {
         if (!Directory.Exists(_projectsDir)) return [];
 
+        // Real sessions live exactly at <projectsDir>/<flat-project>/<uuid>.jsonl.
+        // Anything deeper is per-session auxiliary data — subagent transcripts
+        // (<session-id>/subagents/agent-*.jsonl, not resumable and never titled),
+        // tool-results, memory — so only the top level of each project counts.
         var files = new DirectoryInfo(_projectsDir)
-            .EnumerateFiles("*.jsonl", SearchOption.AllDirectories)
+            .EnumerateDirectories()
+            .SelectMany(d => d.EnumerateFiles("*.jsonl"))
             .ToList();
 
         IEnumerable<FileInfo> selected = files;
