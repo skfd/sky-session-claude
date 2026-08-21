@@ -9,16 +9,16 @@ namespace SessionCore;
 /// </summary>
 public sealed class SessionFileCache
 {
-    private readonly record struct Key(long WriteTicks, long Length, int ContextWindow);
+    private readonly record struct Key(long WriteTicks, long Length, int ContextWindow, string? LargeModelId);
     private readonly ConcurrentDictionary<string, (Key Key, SessionFileFields Fields)> _cache = new();
 
-    public SessionFileFields GetOrParse(FileInfo file, int contextWindow)
+    public SessionFileFields GetOrParse(FileInfo file, int contextWindow, string? largeModelId = null)
     {
-        var key = new Key(file.LastWriteTimeUtc.Ticks, file.Length, contextWindow);
+        var key = new Key(file.LastWriteTimeUtc.Ticks, file.Length, contextWindow, largeModelId);
         if (_cache.TryGetValue(file.FullName, out var e) && e.Key == key)
             return e.Fields;
 
-        var fields = SessionFileParser.Parse(File.ReadLines(file.FullName), contextWindow);
+        var fields = SessionFileParser.Parse(File.ReadLines(file.FullName), contextWindow, largeModelId);
         _cache[file.FullName] = (key, fields);
         return fields;
     }

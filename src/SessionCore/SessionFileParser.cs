@@ -30,7 +30,8 @@ public static class SessionFileParser
     public const int DefaultContextWindow = 200_000;
     public const int LargeContextWindow = 1_000_000;
 
-    public static SessionFileFields Parse(IEnumerable<string> lines, int contextWindow = DefaultContextWindow)
+    public static SessionFileFields Parse(IEnumerable<string> lines, int contextWindow = DefaultContextWindow,
+        string? largeModelId = null)
     {
         string? cwd = null, name = null, custom = null, prompt = null;
         string? summary = null, lastText = null, userText = null;
@@ -40,6 +41,7 @@ public static class SessionFileParser
         bool lastSynthetic = false, lastHasTool = false, lastEndsQ = false;
         bool lastToolResult = false, lastInterrupt = false;
         int ctxTokens = 0, maxCtxTokens = 0;
+        bool sawLargeModel = false;
 
         foreach (var line in lines)
         {
@@ -80,8 +82,9 @@ public static class SessionFileParser
                     HandleUser(o, ref userText, ref lastRole, ref lastToolResult, ref lastInterrupt);
                     break;
                 case "assistant":
-                    HandleAssistant(o, ref lastText, ref errText, ref lastRole, ref lastStop,
-                        ref lastSynthetic, ref lastHasTool, ref lastEndsQ, ref ctxTokens, ref maxCtxTokens);
+                    HandleAssistant(o, largeModelId, ref lastText, ref errText, ref lastRole, ref lastStop,
+                        ref lastSynthetic, ref lastHasTool, ref lastEndsQ, ref ctxTokens, ref maxCtxTokens,
+                        ref sawLargeModel);
                     break;
             }
         }
@@ -92,9 +95,11 @@ public static class SessionFileParser
         var status = Classify(lastRole, lastStop, lastSynthetic, lastHasTool, lastEndsQ,
             lastToolResult, lastInterrupt, errText);
 
-        // A 200k-window model cannot physically exceed ~200k tokens, so any turn
-        // observed above the standard window means the session ran with the 1M window.
-        bool isLarge = maxCtxTokens > contextWindow;
+        // Two 1M-window signals: a turn observed above the standard window (a 200k
+        // model cannot physically exceed ~200k tokens), or turns that ran on the
+        // model the operator configured with the "[1m]" suffix — transcripts strip
+        // the suffix, so below the threshold the settings default is the only signal.
+        bool isLarge = maxCtxTokens > contextWindow || sawLargeModel;
         int effectiveWindow = isLarge ? LargeContextWindow : contextWindow;
 
         int? ctxPct = ctxTokens > 0
@@ -157,9 +162,10 @@ public static class SessionFileParser
         lastInterrupt = utext is not null && utext.Contains("[Request interrupted by user");
     }
 
-    private static void HandleAssistant(JsonElement o, ref string? lastText, ref string? errText,
-        ref string? lastRole, ref string? lastStop, ref bool lastSynthetic, ref bool lastHasTool,
-        ref bool lastEndsQ, ref int ctxTokens, ref int maxCtxTokens)
+    private static void HandleAssistant(JsonElement o, string? largeModelId, ref string? lastText,
+        ref string? errText, ref string? lastRole, ref string? lastStop, ref bool lastSynthetic,
+        ref bool lastHasTool, ref bool lastEndsQ, ref int ctxTokens, ref int maxCtxTokens,
+        ref bool sawLargeModel)
     {
         if (!o.TryGetProperty("message", out var msg) || msg.ValueKind != JsonValueKind.Object)
         {
@@ -194,6 +200,7 @@ public static class SessionFileParser
         }
         else
         {
+            if (largeModelId is not null && GetString(msg, "model") == largeModelId) sawLargeModel = true;
             if (text is not null) { lastText = text; lastEndsQ = text.TrimEnd().EndsWith('?'); }
             if (msg.TryGetProperty("usage", out var u) && u.ValueKind == JsonValueKind.Object)
             {

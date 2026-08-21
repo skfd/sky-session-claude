@@ -79,6 +79,8 @@ SessionCli.exe --newest-per-project  # one session per project (default: all)
 SessionCli.exe --context-window <n>  # token budget for Ctx% (default 200000)
 ```
 
+Ctx% switches to a 1M budget for sessions detected on the extended context window: either a turn exceeded 200k tokens, or the session ran on the model configured with the `[1m]` suffix in `~/.claude/settings.json` (transcripts don't record the window themselves).
+
 A scheduled task on the host runs `SessionCli.exe --json <path>` to refresh a file the sandbox can then read — see `schedule-add.ps1`.
 
 ## Project layout

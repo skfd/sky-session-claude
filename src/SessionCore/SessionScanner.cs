@@ -8,6 +8,12 @@ public sealed record ScanOptions
     public int Top { get; init; } = 50;
     /// <summary>Token budget used to compute Ctx%.</summary>
     public int ContextWindow { get; init; } = SessionFileParser.DefaultContextWindow;
+    /// <summary>
+    /// Base model id whose sessions ran with the 1M window, read from the "[1m]"
+    /// suffix on the configured model in ~/.claude/settings.json; null when no 1M
+    /// model is configured.
+    /// </summary>
+    public string? LargeModelId { get; init; } = ClaudeSettings.ReadLargeModelId();
 }
 
 /// <summary>
@@ -61,12 +67,12 @@ public sealed class SessionScanner
     }
 
     /// <summary>Parse one file into a full display row.</summary>
-    public SessionInfo BuildRow(FileInfo file, int contextWindow)
+    public SessionInfo BuildRow(FileInfo file, int contextWindow, string? largeModelId = null)
     {
         SessionFileFields fields;
         try
         {
-            fields = _cache.GetOrParse(file, contextWindow);
+            fields = _cache.GetOrParse(file, contextWindow, largeModelId);
         }
         catch
         {
@@ -105,7 +111,7 @@ public sealed class SessionScanner
     public IReadOnlyList<SessionInfo> Scan(ScanOptions options)
     {
         return SelectFiles(options)
-            .Select(f => BuildRow(f, options.ContextWindow))
+            .Select(f => BuildRow(f, options.ContextWindow, options.LargeModelId))
             .ToList();
     }
 

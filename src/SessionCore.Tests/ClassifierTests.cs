@@ -173,6 +173,30 @@ public class ClassifierTests
     }
 
     [Fact]
+    public void LargeContext_DetectedFromConfiguredModel_BelowPeakThreshold()
+    {
+        // 168k could physically fit a 200k window (would read 84%), but the turns
+        // ran on the model the operator configured with the "[1m]" suffix -> 1M.
+        var f = SessionFileParser.Parse(
+            [Asst("end_turn", "done", model: "claude-fable-5", input: 168000)],
+            largeModelId: "claude-fable-5");
+        Assert.True(f.IsLargeContext);
+        Assert.Equal(1_000_000, f.EffectiveContextWindow);
+        Assert.Equal(17, f.ContextPct);          // 168000 / 1_000_000
+    }
+
+    [Fact]
+    public void LargeContext_NotAssumedForOtherModels()
+    {
+        // Session ran on a different model than the configured 1M one -> 200k window.
+        var f = SessionFileParser.Parse(
+            [Asst("end_turn", "done", model: "claude-opus-5", input: 150000)],
+            largeModelId: "claude-fable-5");
+        Assert.False(f.IsLargeContext);
+        Assert.Equal(75, f.ContextPct);          // 150000 / 200000
+    }
+
+    [Fact]
     public void CustomTitle_WinsOverAiTitle()
     {
         var f = Parse(

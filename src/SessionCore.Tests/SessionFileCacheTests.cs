@@ -65,4 +65,24 @@ public class SessionFileCacheTests
         }
         finally { File.Delete(path); }
     }
+
+    [Fact]
+    public void ReparsesWhenLargeModelIdChanges()
+    {
+        // Same file, different configured 1M model -> different window, so no reuse.
+        var path = WriteTemp(
+            "{\"type\":\"assistant\",\"message\":{\"model\":\"claude-fable-5\",\"stop_reason\":\"end_turn\"," +
+            "\"content\":[{\"type\":\"text\",\"text\":\"done\"}]," +
+            "\"usage\":{\"input_tokens\":100000,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0}}}");
+        try
+        {
+            var cache = new SessionFileCache();
+            var a = cache.GetOrParse(new FileInfo(path), 200_000);
+            var b = cache.GetOrParse(new FileInfo(path), 200_000, "claude-fable-5");
+            Assert.Equal(50, a.ContextPct);
+            Assert.Equal(10, b.ContextPct);
+            Assert.True(b.IsLargeContext);
+        }
+        finally { File.Delete(path); }
+    }
 }
