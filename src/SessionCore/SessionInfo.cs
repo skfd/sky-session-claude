@@ -19,6 +19,7 @@ public sealed class SessionInfo
 
     // --- from the file on disk ----------------------------------------------
     public string SessionId { get; init; } = "";     // session file base name
+    public string FilePath { get; init; } = "";      // full path, for fork-from-point
     public DateTime LastActive { get; init; }
     public double AgeDays { get; init; }
     public double SizeKB { get; init; }

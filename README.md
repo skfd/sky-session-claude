@@ -37,6 +37,7 @@ So: last real turn is an agent turn → `complete` (or `waiting-you` if it ends 
 
 - **Double-click a card** → if that session is already open in a terminal, jumps to that window; otherwise opens a new PowerShell terminal in that repo and runs `claude --resume <id>`, dropping you straight back into the session. (Windows Terminal is focused window-level — it has no public API to select a specific tab.)
 - **Copy resume command(s)** → copies the resume command for every selected card to the clipboard.
+- **Fork a session** (**F**) → branch the selected session into a new one, picking where it branches off: **at the tip** (the official `claude --resume --fork-session`) or **from just before any earlier prompt**. The from-a-point fork writes a new session file containing only the conversation up to that moment (session records form a `uuid`/`parentUuid` tree, so the app copies the chosen record's ancestry under a fresh session id) and resumes it — handy for "back to before I asked it to do X, but keep the original too". The original session is never modified; a fork you don't like is just a session file you delete. Note the record format is internal to Claude Code, so a future CLI version could change it — worst case a fork fails to resume, the original is always safe.
 - **Live updates** → a filesystem watcher refreshes cards automatically as sessions change (toggle off with the **Live** checkbox).
 - **Filter** by search text, status, or project; hide completed sessions; scope to the current project or all projects; cap how many sessions load (defaults to **All**, so an old unfinished session can never hide just past a cut-off; drop to 50 → 500 if you want a shorter scan).
 - **Abandon a session** (**X**) → crosses out sessions you're not going back to. They stay honestly classified as unfinished — abandoning is your judgment, not the classifier's, so it never changes the status. Abandoned cards are hidden until you tick **Show abandoned**, which shows them struck through. The marks persist in `%APPDATA%\sky-session-claude\abandoned.json`.
@@ -47,6 +48,7 @@ So: last real turn is an agent turn → `complete` (or `waiting-you` if it ends 
 - **R** — refresh
 - **A** — hide/show completed sessions
 - **X** — abandon/restore the selected session(s)
+- **F** — fork the selected session (at the tip, or from before any earlier prompt)
 
 ## Install
 

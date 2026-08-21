@@ -243,7 +243,7 @@ public static class SessionFileParser
     }
 
     /// <summary>True when a plain-string user record is a tooling-injected harness turn.</summary>
-    private static bool IsHarnessText(string? text)
+    internal static bool IsHarnessText(string? text)
     {
         if (string.IsNullOrEmpty(text)) return false;
         var t = text.TrimStart();

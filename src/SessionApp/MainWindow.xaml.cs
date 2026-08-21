@@ -56,7 +56,7 @@ public partial class MainWindow : Window
         });
     }
 
-    // A: hide/show completed · X: abandon/restore · R: refresh. Ignore while typing.
+    // A: hide/show completed · X: abandon/restore · R: refresh · F: fork. Ignore while typing.
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
         if (Keyboard.FocusedElement is TextBox) return;
@@ -75,6 +75,73 @@ public partial class MainWindow : Window
                 if (_vm.RefreshCommand.CanExecute(null)) _vm.RefreshCommand.Execute(null);
                 e.Handled = true;
                 break;
+            case Key.F:
+                ForkSelected();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    // F: fork the selected session — at the tip via the official --fork-session, or
+    // from just before an earlier prompt via a truncated-copy fork (SessionForker).
+    // Either way the original session file is never modified.
+    private async void ForkSelected()
+    {
+        if (Grid.SelectedItems.OfType<SessionRow>().ToList() is not [var row])
+        {
+            _vm.StatusLine = "Select exactly one session to fork (F).";
+            return;
+        }
+
+        var info = row.Info;
+        if (string.IsNullOrEmpty(info.FilePath) || string.IsNullOrEmpty(info.Command))
+        {
+            _vm.StatusLine = "This session has no resumable file.";
+            return;
+        }
+
+        IReadOnlyList<ForkPoint> points;
+        try
+        {
+            points = await Task.Run(() => SessionForker.ListForkPoints(info.FilePath));
+        }
+        catch (Exception ex)
+        {
+            _vm.StatusLine = $"Could not read the session file: {ex.Message}";
+            return;
+        }
+
+        var choices = new List<ForkChoice>
+        {
+            new("At the tip — everything up to now",
+                "Official fork (claude --resume --fork-session)", null),
+        };
+        // Newest first, so recent fork points sit next to the tip option.
+        foreach (var p in points.Reverse())
+        {
+            var when = p.Timestamp is DateTime t ? $"  ·  {t:yyyy-MM-dd HH:mm}" : "";
+            choices.Add(new($"Before prompt #{p.Ordinal}{when}", $"“{p.Prompt}”", p.LeafUuid));
+        }
+
+        var dlg = new ForkDialog(row.Name, choices) { Owner = this };
+        if (dlg.ShowDialog() != true || dlg.Choice is not { } choice) return;
+
+        if (choice.LeafUuid is null)
+        {
+            Start(info.Command + " --fork-session");
+            _vm.StatusLine = $"Forking \"{row.Name}\" at the tip in a new terminal.";
+            return;
+        }
+
+        try
+        {
+            var newId = await Task.Run(() => SessionForker.ForkFrom(info.FilePath, choice.LeafUuid));
+            Start($"cd \"{info.Cwd}\"; claude --resume {newId}");
+            _vm.StatusLine = $"Forked \"{row.Name}\" ({choice.Title.ToLowerInvariant()}) → new session {newId[..8]}…";
+        }
+        catch (Exception ex)
+        {
+            _vm.StatusLine = $"Fork failed: {ex.Message}";
         }
     }
 
