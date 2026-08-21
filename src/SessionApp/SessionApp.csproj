@@ -11,6 +11,7 @@
   <ItemGroup>
     <!-- ApplicationIcon only stamps the exe; the Window's Icon needs it as a WPF resource. -->
     <Resource Include="app.ico" />
+    <Resource Include="app-night.ico" />
   </ItemGroup>
 
   <PropertyGroup>

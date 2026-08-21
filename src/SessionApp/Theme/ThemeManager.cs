@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 
 namespace SessionApp;
@@ -16,6 +18,9 @@ public enum AppTheme { Light, Dark }
 /// swapping that one dictionary repaints everything, because every consumer reaches
 /// the brushes through DynamicResource. The non-client area (title bar) is not ours
 /// to style, so it is handed to DWM separately.
+///
+/// The window icon follows the theme too: the day cloud by day, the night variant
+/// (moon and stars) when dark mode is on.
 /// </summary>
 public static class ThemeManager
 {
@@ -46,6 +51,7 @@ public static class ThemeManager
     {
         var hwnd = new WindowInteropHelper(window).Handle;
         ApplyTitleBar(hwnd, Current);
+        window.Icon = IconFor(Current);
         HwndSource.FromHwnd(hwnd)?.AddHook(WndProc);
     }
 
@@ -81,8 +87,20 @@ public static class ThemeManager
         _palette = next;
 
         foreach (Window w in app.Windows)
+        {
             ApplyTitleBar(new WindowInteropHelper(w).Handle, theme);
+            w.Icon = IconFor(theme);
+        }
     }
+
+    private static ImageSource? _dayIcon;
+    private static ImageSource? _nightIcon;
+
+    // BitmapFrame keeps its decoder, so the title bar and taskbar each still pick
+    // the best-fitting size out of the .ico.
+    private static ImageSource IconFor(AppTheme theme) => theme == AppTheme.Dark
+        ? _nightIcon ??= BitmapFrame.Create(new Uri("pack://application:,,,/app-night.ico", UriKind.Absolute))
+        : _dayIcon ??= BitmapFrame.Create(new Uri("pack://application:,,,/app.ico", UriKind.Absolute));
 
     private static AppTheme ReadSystemTheme()
     {
