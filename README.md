@@ -35,7 +35,7 @@ So: last real turn is an agent turn → `complete` (or `waiting-you` if it ends 
 
 ## What it does
 
-- **Double-click a card** → opens a new PowerShell terminal in that repo and runs `claude --resume <id>`, dropping you straight back into the session.
+- **Double-click a card** → if that session is already open in a terminal, jumps to that window; otherwise opens a new PowerShell terminal in that repo and runs `claude --resume <id>`, dropping you straight back into the session. (Windows Terminal is focused window-level — it has no public API to select a specific tab.)
 - **Copy resume command(s)** → copies the resume command for every selected card to the clipboard.
 - **Live updates** → a filesystem watcher refreshes cards automatically as sessions change (toggle off with the **Live** checkbox).
 - **Filter** by search text, status, or project; hide completed sessions; scope to the current project or all projects; cap how many sessions load (defaults to **All**, so an old unfinished session can never hide just past a cut-off; drop to 50 → 500 if you want a shorter scan).

@@ -78,11 +78,34 @@ public partial class MainWindow : Window
         }
     }
 
-    // Double-click a row -> open a new terminal in that folder and resume the session.
+    // Double-click a row -> jump to the terminal already running this session if one is
+    // open; otherwise open a new terminal in that folder and resume the session.
     private void Grid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (Grid.SelectedItem is not SessionRow row || string.IsNullOrEmpty(row.Command)) return;
+
+        if (TryFocusRunning(row))
+        {
+            _vm.StatusLine = $"Switched to the terminal already running \"{row.Name}\".";
+            return;
+        }
+
         Start(row.Command);
+    }
+
+    // True if this session is live in a terminal and we brought that window to the front.
+    // Any failure (not running, or no focusable window) falls through to a fresh resume.
+    private static bool TryFocusRunning(SessionRow row)
+    {
+        try
+        {
+            if (!LiveSessions.Scan().TryGetValue(row.Info.SessionId, out var pids)) return false;
+            return pids.Any(LiveSessions.TryFocus);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void CopyBtn_Click(object sender, RoutedEventArgs e)
