@@ -45,6 +45,25 @@ public sealed class SessionRow : INotifyPropertyChanged
 
     private bool _abandoned;
 
+    /// <summary>
+    /// True while an interactive CLI is running this session in a terminal right now
+    /// (see <see cref="LiveSessions"/>). Lights the dot on the card, and is the same
+    /// condition under which a double-click jumps to that window instead of resuming.
+    /// Refreshed on a timer, not by the file watcher: closing a terminal writes nothing.
+    /// </summary>
+    public bool IsLive
+    {
+        get => _isLive;
+        set
+        {
+            if (_isLive == value) return;
+            _isLive = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLive)));
+        }
+    }
+
+    private bool _isLive;
+
     public DateTime LastActive => _info.LastActive;
     public string Timestamp => _info.LastActive.ToString("yyyy-MM-dd HH:mm");
 

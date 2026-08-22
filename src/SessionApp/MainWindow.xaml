@@ -11,6 +11,8 @@
         KeyDown="Window_KeyDown">
 
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
         <!-- Card row. Fixed height: long recaps are clipped, never stretch the row. -->
         <Style x:Key="CardItem" TargetType="ListBoxItem">
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -185,6 +187,16 @@
                                     <Run Text="{Binding AgeDisplay, Mode=OneWay}"
                                          ToolTip="{Binding AgeTooltip}"/>
                                 </TextBlock>
+                                <!--
+                                    Live dot: this session is open in a terminal right now,
+                                    so a double-click jumps to that window instead of
+                                    starting a second one.
+                                -->
+                                <Ellipse DockPanel.Dock="Left" Width="8" Height="8"
+                                         Margin="0,0,7,1" VerticalAlignment="Center"
+                                         Fill="{DynamicResource Brush.Live.Dot}"
+                                         Visibility="{Binding IsLive, Converter={StaticResource BoolToVis}}"
+                                         ToolTip="Open in a terminal right now — double-click to jump to that window"/>
                                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="15"
                                            Foreground="{DynamicResource Brush.Text.Title}"
                                            TextTrimming="CharacterEllipsis">

@@ -21,6 +21,8 @@ Each card is one session, four lines tall:
 | **Recap** | A short summary of what the agent last did, clipped to two lines (hover for the rest) |
 | **Meta** | `complete`, `waiting-you`, `waiting-agent`, `cut-off`, `limit`, `error`, `interrupted` · how full the context window is (auto-detects 1M-token sessions) · session file size on disk |
 
+A card whose session is **open in a terminal right now** gets a small green dot before its title. It answers the question you'd otherwise answer by alt-tabbing through terminals — *is this one already up somewhere?* — and marks exactly the cards where a double-click jumps to that window instead of starting a second `claude --resume` against the same session. The dots are polled every few seconds rather than driven by the file watcher, because closing a terminal writes to no session file and a dot left lit would send a double-click looking for a window that is gone.
+
 Cards are a fixed height, so one long recap can never push the rest of the list off screen. Unfinished sessions get a coloured stripe down their left edge so your eye lands on the ones still waiting on you; completed ones have none. ("Unfinished" = every Status except `complete`.)
 
 The age is the **last real turn** in the session file, not the file's timestamp on disk. Resuming a session appends bookkeeping records (mode, titles, last prompt) the moment it opens, so a file's last-write time says "just now" even when you opened a session, looked at it, and typed nothing — which is exactly when you most want to know it has been sitting for three weeks. A fork still reads as new, though — the age is floored at the file's own creation time, so a fresh file full of copied records doesn't inherit the age of the conversation it branched from.
@@ -39,7 +41,7 @@ So: last real turn is an agent turn → `complete` (or `waiting-you` if it ends 
 
 ## What it does
 
-- **Double-click a card** → if that session is already open in a terminal, jumps to that window; otherwise opens a new PowerShell terminal in that repo and runs `claude --resume <id>`, dropping you straight back into the session. (Windows Terminal is focused window-level — it has no public API to select a specific tab.)
+- **Double-click a card** → if that session is already open in a terminal (the ones wearing a green dot), jumps to that window; otherwise opens a new PowerShell terminal in that repo and runs `claude --resume <id>`, dropping you straight back into the session. (Windows Terminal is focused window-level — it has no public API to select a specific tab.)
 - **Copy resume command(s)** → copies the resume command for every selected card to the clipboard.
 - **Fork a session** (**F**) → branch the selected session into a new one, picking where it branches off: **at the tip** (the official `claude --resume --fork-session`) or **from just before any earlier prompt**. The from-a-point fork writes a new session file containing only the conversation up to that moment (session records form a `uuid`/`parentUuid` tree, so the app copies the chosen record's ancestry under a fresh session id) and resumes it — handy for "back to before I asked it to do X, but keep the original too". The original session is never modified; a fork you don't like is just a session file you delete. Note the record format is internal to Claude Code, so a future CLI version could change it — worst case a fork fails to resume, the original is always safe.
 - **Live updates** → a filesystem watcher refreshes cards automatically as sessions change (toggle off with the **Live** checkbox).

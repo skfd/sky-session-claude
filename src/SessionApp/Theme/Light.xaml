@@ -45,4 +45,7 @@
     <SolidColorBrush x:Key="Brush.Accent.Purple" Color="#7E22CE"/>
     <SolidColorBrush x:Key="Brush.Accent.Orange" Color="#C2410C"/>
 
+    <!-- "Open in a terminal right now" dot. Not a status, so it sits outside the stripe set. -->
+    <SolidColorBrush x:Key="Brush.Live.Dot" Color="#15803D"/>
+
 </ResourceDictionary>

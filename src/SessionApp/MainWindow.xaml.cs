@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 using SessionCore;
 
 namespace SessionApp;
@@ -10,6 +11,7 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _vm = new();
     private ProjectsWatcher? _watcher;
+    private DispatcherTimer? _liveTimer;
 
     public MainWindow()
     {
@@ -21,8 +23,13 @@ public partial class MainWindow : Window
         {
             await _vm.RefreshAsync();
             StartWatcher();
+            StartLiveTimer();
         };
-        Closed += (_, _) => _watcher?.Dispose();
+        Closed += (_, _) =>
+        {
+            _watcher?.Dispose();
+            _liveTimer?.Stop();
+        };
     }
 
     // Rescans and filter changes reset the collection view, and the ListBox drops its
@@ -54,6 +61,20 @@ public partial class MainWindow : Window
             if (_vm.LiveUpdates && _vm.RefreshCommand.CanExecute(null))
                 _vm.RefreshCommand.Execute(null);
         });
+    }
+
+    // Keep the "open in a terminal" dots honest. Polled rather than watched: opening a
+    // session touches its file (so the watcher would catch the dot coming on), but closing
+    // the terminal touches nothing, and a dot left lit sends a double-click looking for a
+    // window that is gone. Background priority so it never competes with scrolling.
+    private void StartLiveTimer()
+    {
+        _liveTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(3),
+        };
+        _liveTimer.Tick += async (_, _) => await _vm.RefreshLiveAsync();
+        _liveTimer.Start();
     }
 
     // A: hide/show completed · X: abandon/restore · R: refresh · F: fork. Ignore while typing.

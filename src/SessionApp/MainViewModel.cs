@@ -161,6 +161,7 @@ public partial class MainViewModel : ObservableObject
                 RebuildFilterOptions();
                 RowsView.Refresh();
             });
+            await RefreshLiveAsync();
             UpdateWindowTitle();
             StatusLine = $"{infos.Count} session(s)  ·  {DateTime.Now:HH:mm:ss}"
                 + "  —  double-click to resume · A: hide/show completed · X: abandon/restore · R: refresh · F: fork";
@@ -169,6 +170,28 @@ public partial class MainViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Light the dot on every row whose session is open in a terminal right now.
+    /// Called after each scan and on the view's timer — a terminal closing writes to no
+    /// session file, so the filesystem watcher would never notice the dot going out.
+    /// Cheap enough to poll: a handful of small registry files plus a pid lookup each.
+    /// </summary>
+    public async Task RefreshLiveAsync()
+    {
+        HashSet<string> live;
+        try
+        {
+            live = await Task.Run(() =>
+                LiveSessions.Scan().Keys.ToHashSet(StringComparer.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return;   // registry unreadable — leave the dots as they were
+        }
+
+        foreach (var row in Rows) row.IsLive = live.Contains(row.Info.SessionId);
     }
 
     /// <summary>
