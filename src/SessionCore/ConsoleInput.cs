@@ -134,16 +134,31 @@ public static class ConsoleInput
     private static void RestoreOwnConsole(bool had)
     {
         if (!had) return;
+
+        // Read the encoding before re-attaching: a caller that asked for UTF-8 output must
+        // still get it on the streams we hand back, or the report comes out mojibake.
+        var encoding = TryGetOutputEncoding();
         if (!AttachConsole(ATTACH_PARENT_PROCESS)) return;
 
         try
         {
             if (!Console.IsOutputRedirected)
-                Console.SetOut(new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true });
+                Console.SetOut(Writer(Console.OpenStandardOutput(), encoding));
             if (!Console.IsErrorRedirected)
-                Console.SetError(new StreamWriter(Console.OpenStandardError()) { AutoFlush = true });
+                Console.SetError(Writer(Console.OpenStandardError(), encoding));
         }
         catch (IOException) { /* nothing left to write to; the caller's exit code still lands */ }
+    }
+
+    private static StreamWriter Writer(Stream stream, System.Text.Encoding? encoding) =>
+        encoding is null
+            ? new StreamWriter(stream) { AutoFlush = true }
+            : new StreamWriter(stream, encoding) { AutoFlush = true };
+
+    private static System.Text.Encoding? TryGetOutputEncoding()
+    {
+        try { return Console.OutputEncoding; }
+        catch { return null; }
     }
 
     private static void Write(IntPtr conin, string text)

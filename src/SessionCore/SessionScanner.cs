@@ -70,6 +70,34 @@ public sealed class SessionScanner
             .ToList();
     }
 
+    /// <summary>
+    /// Every session file whose id starts with <paramref name="prefix"/>, newest first.
+    ///
+    /// A session id is its file's base name, so finding one is a directory walk and not a
+    /// scan — no session file is opened, let alone parsed. That is what lets the CLI act on
+    /// a named session in milliseconds instead of paying for a full scan first, and it is
+    /// why a prefix works at all: `SessionCli done 4f2a` is the same gesture as a short
+    /// commit sha, and the caller decides what to do when it matches more than one.
+    /// </summary>
+    public IReadOnlyList<FileInfo> FindByPrefix(string prefix)
+    {
+        if (string.IsNullOrWhiteSpace(prefix) || !Directory.Exists(_projectsDir)) return [];
+
+        // A session id is a uuid; anything a caller could use to escape the directory or
+        // turn the prefix into a glob of its own is not one.
+        if (prefix.Any(c => c is '*' or '?' or '/' or '\\' or ':')) return [];
+
+        return new DirectoryInfo(_projectsDir)
+            .EnumerateDirectories()
+            .SelectMany(d => d.EnumerateFiles($"{prefix}*.jsonl"))
+            // Windows matches 8.3 short names against a pattern too, so confirm the long
+            // name really does start with what was asked for.
+            .Where(f => Path.GetFileNameWithoutExtension(f.Name)
+                .StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(f => f.LastWriteTime)
+            .ToList();
+    }
+
     /// <summary>Parse one file into a full display row.</summary>
     public SessionInfo BuildRow(FileInfo file, int contextWindow, string? largeModelId = null)
     {

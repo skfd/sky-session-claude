@@ -4,6 +4,12 @@
     <ProjectReference Include="..\SessionCore\SessionCore.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The verbs and the argument parser are internal; the tests exercise them directly
+         rather than through a process launch. -->
+    <InternalsVisibleTo Include="SessionCore.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>

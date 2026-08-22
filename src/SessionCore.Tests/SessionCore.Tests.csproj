@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SessionCore\SessionCore.csproj" />
+    <ProjectReference Include="..\SessionCli\SessionCli.csproj" />
   </ItemGroup>
 
 </Project>
