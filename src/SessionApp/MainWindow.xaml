@@ -119,7 +119,8 @@
                               SelectedItem="{Binding ProjectFilter}"/>
 
                     <CheckBox Content="Hide completed" VerticalAlignment="Center" Margin="0,0,10,0"
-                              IsChecked="{Binding HideCompleted}"/>
+                              IsChecked="{Binding HideCompleted}"
+                              ToolTip="Hides sessions the classifier called complete, and the ones you ticked done with D"/>
                     <CheckBox Content="Show abandoned" VerticalAlignment="Center" Margin="0,0,10,0"
                               IsChecked="{Binding ShowAbandoned}"
                               ToolTip="Sessions you crossed out with X — still unfinished, just not coming back to"/>
@@ -150,7 +151,10 @@
             <ListBox.ItemTemplate>
                 <DataTemplate>
                     <Grid Height="126">
-                        <!-- Abandoned cards read as set aside: dimmed, with a struck-out title. -->
+                        <!--
+                            Abandoned cards read as set aside: dimmed, with a struck-out title.
+                            Done cards read as finished: a green tick on the title line.
+                        -->
                         <Grid.Style>
                             <Style TargetType="Grid">
                                 <Style.Triggers>
@@ -197,6 +201,17 @@
                                          Fill="{DynamicResource Brush.Live.Dot}"
                                          Visibility="{Binding IsLive, Converter={StaticResource BoolToVis}}"
                                          ToolTip="Open in a terminal right now — double-click to jump to that window"/>
+                                <!--
+                                    Done tick: your verdict, not the classifier's. The status
+                                    stripe and the meta line keep saying what the session file
+                                    actually ended on.
+                                -->
+                                <TextBlock DockPanel.Dock="Left" Text="&#x2713;"
+                                           Margin="0,0,6,0" VerticalAlignment="Center"
+                                           FontSize="15" FontWeight="Bold"
+                                           Foreground="{DynamicResource Brush.Done.Tick}"
+                                           Visibility="{Binding Done, Converter={StaticResource BoolToVis}}"
+                                           ToolTip="You marked this done (D) — press D again to undo"/>
                                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="15"
                                            Foreground="{DynamicResource Brush.Text.Title}"
                                            TextTrimming="CharacterEllipsis">

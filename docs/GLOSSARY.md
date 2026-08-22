@@ -56,26 +56,40 @@ A record's JSON `type`/role doesn't tell the whole story; these names do.
 
 Everything above is **derived** — the scanner reads the session file and decides.
 A **disposition** is the opposite: it's what the *operator* decided about a
-session, and the scanner never sets it.
+session, and the scanner never sets it. A session carries at most one.
 
-| Term | Meaning |
-|---|---|
-| **Disposition** | What the operator decided to do about a session. Independent of Status. |
-| **Abandoned** | The one disposition: "this session is genuinely unfinished, and I'm not going back to it." |
+| Term | Key | Meaning |
+|---|---|---|
+| **Disposition** | | What the operator decided to do about a session. Independent of Status. |
+| **Abandoned** | **X** | "This session is genuinely unfinished, and I'm not going back to it." |
+| **Done** | **D** | "This session is finished — whatever the classifier says." |
+| **Settled** | | Collective term for a session with nothing left to do: Status `complete` *or* disposition Done. This, not `complete` alone, is what **Hide completed** hides and what the title's open count skips. |
 
-The rule that keeps the two axes honest: **abandoning does not change Status.**
-An abandoned `cut-off` session stays `cut-off` and stays **Unfinished** — the
-classifier's verdict was correct, the operator is only overriding what to *do*
-about it. Never fold Abandoned into `complete`; `complete` means the agent
-finished, which is the opposite of what abandoned records.
+The rule that keeps the two axes honest: **a disposition never changes Status.**
+An abandoned `cut-off` session stays `cut-off`; a Done `waiting-you` session
+stays `waiting-you`, and its card still says so. The classifier's verdict about
+the *file* was correct — the operator is only overriding what to *do* about it.
+Never fold either disposition into `complete`, which means the agent finished.
 
-Abandoned sessions are hidden by default and revealed by the **Show abandoned**
-filter, which renders them struck through — the strikethrough is what
-distinguishes the operator's judgment from the classifier's.
+Done exists because the classifier can be right about the file and still wrong
+about the work. An agent that lands the change and then asks "want me to push?"
+leaves the session `waiting-you`; an operator who hits Esc once the work is in
+leaves it `interrupted`. Both are finished in every sense the operator cares
+about, and Done is how they say so without pretending the file ended otherwise.
+The gap between "the file ends mid-sentence" and "the work is done" is exactly
+what these marks make measurable.
 
-Dispositions live in `abandoned.json` under `%APPDATA%\sky-session-claude`,
-keyed by `SessionId`. They are deliberately **not** in `sessions.json`, which is
-a regenerated scan artifact and would erase them on every scan.
+Abandoned cards are hidden until the **Show abandoned** filter reveals them, and
+render struck through and dimmed. Done cards follow **Hide completed** — they
+are settled, so by default they drop out of the list too — and carry a green
+tick on the title line. The strikethrough and the tick are what distinguish the
+operator's judgment from the classifier's.
+
+Dispositions live in `dispositions.json` under `%APPDATA%\sky-session-claude`,
+keyed by `SessionId`: `{"<id>": "abandoned" | "done"}`. They are deliberately
+**not** in `sessions.json`, which is a regenerated scan artifact and would erase
+them on every scan. The pre-1.9 store, `abandoned.json` — a bare array of ids —
+is migrated on first read and then left alone.
 
 ## Note on close-outs vs Status
 

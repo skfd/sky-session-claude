@@ -77,7 +77,7 @@ public partial class MainWindow : Window
         _liveTimer.Start();
     }
 
-    // A: hide/show completed · X: abandon/restore · R: refresh · F: fork. Ignore while typing.
+    // A: hide/show completed · D: done · X: abandon · R: refresh · F: fork. Ignore while typing.
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
         if (Keyboard.FocusedElement is TextBox) return;
@@ -88,8 +88,12 @@ public partial class MainWindow : Window
                 _vm.ToggleHideCompleted();
                 e.Handled = true;
                 break;
+            case Key.D:
+                _vm.Mark(Grid.SelectedItems.OfType<SessionRow>().ToList(), Disposition.Done);
+                e.Handled = true;
+                break;
             case Key.X:
-                _vm.ToggleAbandoned(Grid.SelectedItems.OfType<SessionRow>().ToList());
+                _vm.Mark(Grid.SelectedItems.OfType<SessionRow>().ToList(), Disposition.Abandoned);
                 e.Handled = true;
                 break;
             case Key.R:
