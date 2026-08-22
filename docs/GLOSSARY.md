@@ -91,6 +91,14 @@ keyed by `SessionId`: `{"<id>": "abandoned" | "done"}`. They are deliberately
 them on every scan. The pre-1.9 store, `abandoned.json` — a bare array of ids —
 is migrated on first read and then left alone.
 
+Two processes write the file: the app on a keystroke, and `SessionCli` on an
+agent's behalf. So a write is a reload-merge-replace under a machine-local mutex
+rather than a dump of what the writer loaded at startup, and the new file is
+moved over the old one rather than truncating it in place. A store that will not
+parse is set aside as `dispositions.json.corrupt` and reported — never answered
+with the legacy `abandoned.json`, which would silently revert every Done mark to
+the pre-1.9 abandon list.
+
 ## Note on close-outs vs Status
 
 A **close-out** does not currently change Status. In practice the agent almost

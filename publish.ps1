@@ -51,6 +51,13 @@ if (-not $SkipInstall) {
 
     Copy-Item "$root/$OutDir/SkySessionClaude.exe" $targetExe -Force
     Write-Host "Installed: $targetExe"
+
+    # The CLI ships to the same stable place. It is the path the sky-session skill names,
+    # so an agent that reads the skill finds the build that was last released rather than
+    # whatever happens to be sitting in dist.
+    $targetCli = Join-Path $installDir 'SessionCli.exe'
+    Copy-Item "$root/$OutDir/SessionCli.exe" $targetCli -Force
+    Write-Host "Installed: $targetCli"
 } else {
     Write-Host "Skipped install (-SkipInstall); stable Start-menu app not updated."
 }

@@ -55,7 +55,7 @@ So: last real turn is an agent turn → `complete` (or `waiting-you` if it ends 
 - **Filter** by search text, status, or project; hide completed sessions; scope to the current project or all projects; cap how many sessions load (defaults to **All**, so an old unfinished session can never hide just past a cut-off; drop to 50 → 500 if you want a shorter scan).
 - **Mark a session done** (**D**) → ticks off sessions whose work actually landed, whatever the file ended on. The classifier reads the last turn, so an agent that finishes and then asks "want me to push?" leaves `waiting-you`, and hitting Esc once the change is in leaves `interrupted` — both still nag from the list. **D** settles them: the card keeps its real status and gains a green tick, and it drops out of the list with the completed ones until you untick **Hide completed**.
 - **Abandon a session** (**X**) → crosses out sessions you're *not* going back to. They stay honestly classified as unfinished — abandoning is your judgment, not the classifier's, so it never changes the status. Abandoned cards are hidden until you tick **Show abandoned**, which shows them struck through.
-- Both marks are yours, not the scanner's; pressing the same key again clears one. They persist in `%APPDATA%\sky-session-claude\dispositions.json` (migrated from the older `abandoned.json`) and never touch `sessions.json`, which every scan regenerates.
+- Both marks are yours, not the scanner's; pressing the same key again clears one. They persist in `%APPDATA%\sky-session-claude\dispositions.json` (migrated from the older `abandoned.json`) and never touch `sessions.json`, which every scan regenerates. The file has more than one writer — the window on a keystroke, `SessionCli done` on an agent's behalf — so a mark is merged into whatever is on disk rather than dumped over it, and a mark made elsewhere lights up on the card within a few seconds without a refresh.
 - **Dark mode** → follows the Windows apps theme, title bar included, and switches live when you flip the system setting — no restart, and no in-app toggle to keep in sync. The window and taskbar icon switch too: by night the cloud gets a moon and stars <img src="docs/icon-night.png" width="20" align="top" alt="">.
 
 ### Keyboard shortcuts
@@ -92,26 +92,56 @@ dotnet run --project src/SessionApp
 
 ## Headless mode
 
-Some tools (like the morning brief) run in a sandbox that can't read `~/.claude/projects` directly. For them, **`SessionCli.exe`** scans the same sessions and writes the list as JSON — no window, no UI. It shares `SessionCore` with the app, so both classify status the same way.
+Everything the window does, **`SessionCli.exe`** does from a command line — no window, no UI, output as JSON. It shares `SessionCore` with the app, so the two agree on how a session's status is classified, when a restart is safe, and where your marks live; there is no second implementation of any of it to drift.
+
+That covers two rather different callers. Some tools (like the morning brief) run in a sandbox that can't read `~/.claude/projects` directly, and just want the list: a scheduled task on the host runs `SessionCli.exe --json <path>` to refresh a file the sandbox can then read — see `schedule-add.ps1`. And an agent sitting in one session can look at all the others, and act on them.
 
 ```powershell
-SessionCli.exe                       # JSON to stdout
-SessionCli.exe --json <path>         # JSON to a file (parent dirs created)
-SessionCli.exe --top <n>             # cap sessions (default 50)
-SessionCli.exe --newest-per-project  # one session per project (default: all)
-SessionCli.exe --context-window <n>  # token budget for Ctx% (default 200000)
+# Reading
+SessionCli                          # every session as JSON (same as `list`)
+SessionCli list --unfinished        # drop everything settled — the useful default
+SessionCli list --status waiting-you --project foo --search migration
+SessionCli list --live              # open in a terminal right now
+SessionCli list --stale             # live, but behind the installed build
+SessionCli show <id>                # one session in full, with its fork points
+SessionCli live                     # what's running, straight from the registry
+
+# Marking — yours, not the classifier's; the app picks these up within seconds
+SessionCli done <id>...             # and undone, abandon, restore
+
+# Acting
+SessionCli fork <id> --at-prompt 3  # writes the branch; no terminal, original untouched
+SessionCli fork <id> --tip          # the official --fork-session, in a new terminal
+SessionCli restart <id>...          # restart in the terminal it already sits in
+SessionCli restart --stale          # prints the plan; add --yes to actually do it
+SessionCli resume <id>              # open a terminal and resume
 ```
+
+`SessionCli help` prints the lot, including the `list` filters (`--disposition`, `--limit`, `--top`, `--newest-per-project`, `--context-window`, `--json <path>`).
+
+A session id can be shortened to any unique prefix, like a short commit sha — resolved by a directory walk, so acting on one named session never pays for a scan of all of them. Every verb answers with the same `{ Ok, Action, Message, Items }` envelope and sets an exit code to match, and every acting verb takes `--dry-run`.
+
+Two things these verbs will not do without being told twice, because they drive real terminals:
+
+- **`restart --stale` states its plan and stops.** It only acts on `--yes`. The sweep takes only the sessions where nothing can be lost — running an older build, provably idle, finished — and reports each one it skipped with the reason, exactly as the button does.
+- **Nothing touches the session the command is running inside** without `--force`. An agent restarting its own session kills itself mid-sentence.
 
 Ctx% switches to a 1M budget for sessions detected on the extended context window: either a turn exceeded 200k tokens, or the session ran on the model configured with the `[1m]` suffix in `~/.claude/settings.json` (transcripts don't record the window themselves).
 
-A scheduled task on the host runs `SessionCli.exe --json <path>` to refresh a file the sandbox can then read — see `schedule-add.ps1`.
+The pre-verb command line still works exactly as it did — `SessionCli --json <path> --top 50` emits the same fields in the same order, with the new ones (`Disposition`, `Settled`, `Live`) appended where no reader of named fields will notice.
+
+### From an agent
+
+`~/.claude/skills/sky-session/` teaches an agent the surface above, and — more usefully — the distinction the tool is built on that a transcript alone won't teach: **Status** is what the classifier read from the file, **Disposition** is what you decided, and **Settled** is the two combined. Filtering on Settled is what answers "what am I still on the hook for?" without the noise of sessions that ended on a question you've long since acted on.
 
 ## Project layout
 
-- **`src/SessionCore`** — session scanning, session-file parsing, status detection, live-refresh cache/watcher (no UI dependencies).
-- **`src/SessionApp`** — the WPF card list and view model; `Theme/` holds the light/dark palettes, the themed control chrome, and the system-theme watcher.
-- **`src/SessionCli`** — headless JSON scanner for the morning brief (shares `SessionCore`).
-- **`src/SessionCore.Tests`** — unit tests for the core.
+The split between the core and the app is "does this need a desktop?", not "is this the model?". Scanning, classifying, forking, deciding whether a restart is safe, typing into someone's terminal, and remembering your marks all work with no window in sight, so they live in the core and both front ends share them. What genuinely needs a desktop — raising a window, picking the right Windows Terminal tab — is the only thing left in the app.
+
+- **`src/SessionCore`** — session scanning, session-file parsing, status detection, live-refresh cache/watcher; the live-session registry and process tree, the console-input writer that restarts a session in place, the fork writer, the restart policy, and the disposition store.
+- **`src/SessionApp`** — the WPF card list and view model; `SessionWindows` raises the terminal showing a live session; `Theme/` holds the light/dark palettes, the themed control chrome, and the system-theme watcher.
+- **`src/SessionCli`** — the headless front end: the JSON scan the morning brief reads, and the verbs an agent drives.
+- **`src/SessionCore.Tests`** — unit tests for the core and the CLI's argument parsing.
 - **`schedule-add.ps1`** / **`schedule-remove.ps1`** — register/remove the daily task that refreshes `sessions.json` for the morning brief.
 
 ## License
