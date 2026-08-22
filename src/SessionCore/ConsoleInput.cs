@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Threading;
 
-namespace SessionApp;
+namespace SessionCore;
 
 /// <summary>
 /// Types into a terminal we do not own, without touching the foreground.
@@ -16,7 +16,7 @@ namespace SessionApp;
 /// Two gestures are enough to restart a session in place: make Claude quit, then type the
 /// resume command at the shell it hands the terminal back to.
 /// </summary>
-internal static class ConsoleInput
+public static class ConsoleInput
 {
     /// <summary>
     /// One process may be attached to one console at a time, and title reads share the same
@@ -55,6 +55,33 @@ internal static class ConsoleInput
     });
 
     /// <summary>
+    /// The title the CLI painted on its terminal, read by borrowing the session's own
+    /// console. It is what names the exact Windows Terminal tab a session sits in, since
+    /// no edge of the process tree does.
+    /// </summary>
+    public static string ReadTitle(int pid)
+    {
+        lock (Gate)
+        {
+            bool had = HasOwnConsole;
+            try
+            {
+                FreeConsole();                   // drop whatever a previous borrow left attached
+                if (!AttachConsole((uint)pid)) return "";
+                try
+                {
+                    var buffer = new System.Text.StringBuilder(1024);
+                    GetConsoleTitle(buffer, (uint)buffer.Capacity);
+                    return buffer.ToString();
+                }
+                finally { FreeConsole(); }
+            }
+            catch { return ""; }
+            finally { RestoreOwnConsole(had); }
+        }
+    }
+
+    /// <summary>
     /// Borrow the console owning <paramref name="pid"/> for the duration of <paramref name="body"/>,
     /// which is handed a writer for that console's input buffer.
     /// </summary>
@@ -64,8 +91,9 @@ internal static class ConsoleInput
         {
             IgnoreCtrlC.Arm();
 
+            bool had = HasOwnConsole;
             FreeConsole();                       // drop whatever a previous borrow left attached
-            if (!AttachConsole((uint)pid)) return false;
+            if (!AttachConsole((uint)pid)) { RestoreOwnConsole(had); return false; }
             try
             {
                 var conin = CreateFileW("CONIN$", GENERIC_READ | GENERIC_WRITE,
@@ -76,8 +104,46 @@ internal static class ConsoleInput
                 finally { CloseHandle(conin); }
             }
             catch { return false; }
-            finally { FreeConsole(); }
+            finally
+            {
+                FreeConsole();
+                RestoreOwnConsole(had);
+            }
         }
+    }
+
+    // --- giving our own console back ----------------------------------------
+
+    /// <summary>
+    /// True when this process has a console of its own to lose. The WPF app has none, so
+    /// borrowing costs it nothing; SessionCli is a console program printing to the very
+    /// console that <see cref="FreeConsole"/> is about to detach it from.
+    /// </summary>
+    private static bool HasOwnConsole => GetConsoleWindow() != IntPtr.Zero;
+
+    /// <summary>
+    /// Re-attach to the console we were sharing before the borrow and reopen the standard
+    /// streams onto it. Without this a console program that restarts a session goes mute
+    /// halfway through: its stdout handle refers to a console it is no longer attached to,
+    /// so everything it prints afterwards — the result of the very operation — is dropped.
+    ///
+    /// The parent's console is the right one to come back to: a console program launched
+    /// from a shell shares that shell's console rather than owning one. Redirected output
+    /// is a pipe, unaffected by any of this, and is left alone.
+    /// </summary>
+    private static void RestoreOwnConsole(bool had)
+    {
+        if (!had) return;
+        if (!AttachConsole(ATTACH_PARENT_PROCESS)) return;
+
+        try
+        {
+            if (!Console.IsOutputRedirected)
+                Console.SetOut(new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true });
+            if (!Console.IsErrorRedirected)
+                Console.SetError(new StreamWriter(Console.OpenStandardError()) { AutoFlush = true });
+        }
+        catch (IOException) { /* nothing left to write to; the caller's exit code still lands */ }
     }
 
     private static void Write(IntPtr conin, string text)
@@ -136,6 +202,7 @@ internal static class ConsoleInput
     private const uint GENERIC_READ = 0x80000000, GENERIC_WRITE = 0x40000000;
     private const uint FILE_SHARE_READ = 1, FILE_SHARE_WRITE = 2, OPEN_EXISTING = 3;
     private const uint CTRL_C_EVENT = 0, CTRL_BREAK_EVENT = 1;
+    private const uint ATTACH_PARENT_PROCESS = 0xFFFFFFFF;
     private static readonly IntPtr InvalidHandle = new(-1);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -161,6 +228,12 @@ internal static class ConsoleInput
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool FreeConsole();
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetConsoleWindow();
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint GetConsoleTitle(System.Text.StringBuilder title, uint size);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr handle);

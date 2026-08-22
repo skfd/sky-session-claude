@@ -158,6 +158,7 @@ public partial class MainViewModel : ObservableObject
             KeepingSelection(() =>
             {
                 Merge(infos);
+                SyncDispositions();
                 RebuildFilterOptions();
                 RowsView.Refresh();
             });
@@ -166,6 +167,9 @@ public partial class MainViewModel : ObservableObject
             StatusLine = $"{infos.Count} session(s)  ·  {DateTime.Now:HH:mm:ss}"
                 + "  —  double-click to resume · A: hide/show completed · D: done · X: abandon"
                 + " · R: refresh · Ctrl+R: restart · F: fork";
+
+            if (_dispositions.LoadWarning is { Length: > 0 } warning)
+                StatusLine = $"Dispositions: {warning}.  ·  {StatusLine}";
         }
         finally
         {
@@ -197,6 +201,26 @@ public partial class MainViewModel : ObservableObject
                 : null;
 
         UpdateStaleCount();
+
+        // The dispositions file has another writer — `SessionCli done <id>` on an agent's
+        // behalf — and a mark made there changes no session file, so the watcher would
+        // never hear about it. One stat per tick is what makes it show up on the card.
+        if (_dispositions.ReloadIfChanged())
+        {
+            KeepingSelection(() =>
+            {
+                SyncDispositions();
+                RowsView.Refresh();
+            });
+            UpdateWindowTitle();
+        }
+    }
+
+    /// <summary>Push the store's marks onto every row, whoever wrote them.</summary>
+    private void SyncDispositions()
+    {
+        foreach (var row in Rows)
+            row.Disposition = _dispositions.Get(row.Info.SessionId);
     }
 
     // --- restarting ---------------------------------------------------------
@@ -357,11 +381,9 @@ public partial class MainViewModel : ObservableObject
         }
 
         var target = rows.Any(r => r.Disposition != disposition) ? disposition : Disposition.None;
-        foreach (var r in rows)
-        {
-            r.Disposition = target;
-            _dispositions.Set(r.Info.SessionId, target);
-        }
+        // One reload-merge-replace for the whole selection, not one per row.
+        _dispositions.SetMany(rows.Select(r => r.Info.SessionId), target);
+        foreach (var r in rows) r.Disposition = target;
 
         RefreshView();
         UpdateWindowTitle();

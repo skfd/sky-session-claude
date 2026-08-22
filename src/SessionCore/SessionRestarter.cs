@@ -1,10 +1,9 @@
 using System.Diagnostics;
-using SessionCore;
 
-namespace SessionApp;
+namespace SessionCore;
 
 /// <summary>What happened to one restart, in a sentence fit for the status line.</summary>
-internal readonly record struct RestartResult(bool Ok, string Message)
+public readonly record struct RestartResult(bool Ok, string Message)
 {
     public static RestartResult Fail(string why) => new(false, why);
     public static RestartResult Done(string what) => new(true, what);
@@ -22,7 +21,7 @@ internal readonly record struct RestartResult(bool Ok, string Message)
 /// the terminal back to. Nothing is killed and no window is raised; if any step does not
 /// land, the session is left exactly as it was and the operator is told what to type.
 /// </summary>
-internal static class SessionRestarter
+public static class SessionRestarter
 {
     private static readonly TimeSpan ExitTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan ReturnTimeout = TimeSpan.FromSeconds(45);

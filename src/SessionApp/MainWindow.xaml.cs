@@ -201,7 +201,7 @@ public partial class MainWindow : Window
         try
         {
             if (!LiveSessions.Scan().TryGetValue(row.Info.SessionId, out var running)) return false;
-            return running.Any(session => LiveSessions.TryFocus(session.Pid));
+            return running.Any(session => SessionWindows.TryFocus(session.Pid));
         }
         catch
         {
