@@ -164,7 +164,7 @@ public partial class MainViewModel : ObservableObject
             await RefreshLiveAsync();
             UpdateWindowTitle();
             StatusLine = $"{infos.Count} session(s)  ·  {DateTime.Now:HH:mm:ss}"
-                + "  —  double-click to resume · A: hide/show completed · X: abandon/restore · R: refresh · F: fork";
+                + "  —  double-click to resume · A: hide/show completed · X: abandon/restore · R: refresh · Ctrl+R: restart · F: fork";
         }
         finally
         {
@@ -180,19 +180,132 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public async Task RefreshLiveAsync()
     {
-        HashSet<string> live;
+        Dictionary<string, List<LiveSession>> live;
         try
         {
-            live = await Task.Run(() =>
-                LiveSessions.Scan().Keys.ToHashSet(StringComparer.OrdinalIgnoreCase));
+            live = await Task.Run(LiveSessions.Scan);
         }
         catch
         {
             return;   // registry unreadable — leave the dots as they were
         }
 
-        foreach (var row in Rows) row.IsLive = live.Contains(row.Info.SessionId);
+        foreach (var row in Rows)
+            row.Live = live.TryGetValue(row.Info.SessionId, out var running) && running.Count > 0
+                ? running[0]
+                : null;
+
+        UpdateStaleCount();
     }
+
+    // --- restarting ---------------------------------------------------------
+
+    /// <summary>
+    /// How many running sessions are behind the installed build and can be swept up without
+    /// asking. Drives the toolbar button's label, so it says what the button will actually do.
+    /// </summary>
+    [ObservableProperty] private int _staleCount;
+
+    [ObservableProperty] private bool _isRestarting;
+
+    /// <summary>A restart drives someone's terminal; two at once would fight over it.</summary>
+    public bool NotRestarting => !IsRestarting;
+
+    public string RestartStaleLabel =>
+        StaleCount > 0 ? $"Restart stale ({StaleCount})" : "Restart stale";
+
+    partial void OnStaleCountChanged(int value) =>
+        OnPropertyChanged(nameof(RestartStaleLabel));
+
+    partial void OnIsRestartingChanged(bool value) =>
+        OnPropertyChanged(nameof(NotRestarting));
+
+    private void UpdateStaleCount() => StaleCount = Sweepable().Count;
+
+    /// <summary>
+    /// The sessions a sweep may take: running, behind the installed build, provably idle,
+    /// and not ones you have crossed out. Anything merely plausible is left for you to
+    /// restart yourself — see <see cref="RestartPolicy"/>.
+    /// </summary>
+    private List<SessionRow> Sweepable() =>
+        Rows.Where(r => r.IsLive && r.IsStale && !r.Abandoned && r.Verdict.CanSweep).ToList();
+
+    /// <summary>Restart the rows the operator picked, including the ones only offered.</summary>
+    public async Task RestartSelectedAsync(IReadOnlyList<SessionRow> rows)
+    {
+        var targets = rows.Where(r => r.CanRestart).ToList();
+        if (targets.Count == 0)
+        {
+            var blocked = rows.FirstOrDefault(r => r.IsLive);
+            StatusLine = blocked is not null
+                ? $"Cannot restart \"{blocked.Name}\": {blocked.Verdict.Reason}."
+                : "Select a session that is open in a terminal.";
+            return;
+        }
+
+        await RestartAll(targets, Array.Empty<SessionRow>());
+    }
+
+    /// <summary>
+    /// Restart every stale session that is provably idle, and account for the ones skipped —
+    /// silence about them would read as "all done" when half the terminals still nag.
+    /// </summary>
+    public async Task RestartStaleAsync()
+    {
+        var targets = Sweepable();
+        var skipped = Rows.Where(r => r.IsLive && r.IsStale && !r.Abandoned && !r.Verdict.CanSweep).ToList();
+
+        if (targets.Count == 0)
+        {
+            StatusLine = skipped.Count == 0
+                ? "Nothing to restart — every running session is on the installed build."
+                : $"Nothing can be restarted unattended right now: {Tally(skipped)}.";
+            return;
+        }
+
+        await RestartAll(targets, skipped);
+    }
+
+    private async Task RestartAll(IReadOnlyList<SessionRow> targets, IReadOnlyList<SessionRow> skipped)
+    {
+        if (IsRestarting) return;
+        IsRestarting = true;
+        try
+        {
+            int done = 0;
+            var failures = new List<string>();
+
+            for (int i = 0; i < targets.Count; i++)
+            {
+                var row = targets[i];
+                if (row.Live is not { } live) continue;
+
+                StatusLine = $"Restarting \"{row.Name}\" ({i + 1} of {targets.Count})…";
+
+                var result = await SessionRestarter.RestartAsync(live);
+                if (result.Ok) done++;
+                else failures.Add($"\"{row.Name}\" — {result.Message}");
+
+                await RefreshLiveAsync();
+            }
+
+            var parts = new List<string> { $"Restarted {done} of {targets.Count}" };
+            if (skipped.Count > 0) parts.Add($"skipped {skipped.Count} ({Tally(skipped)})");
+            if (failures.Count > 0) parts.Add(string.Join("; ", failures));
+            StatusLine = string.Join("  ·  ", parts) + ".";
+        }
+        finally
+        {
+            IsRestarting = false;
+        }
+    }
+
+    /// <summary>"2 busy, 4 run under the desktop app" — the reasons, counted.</summary>
+    private static string Tally(IEnumerable<SessionRow> rows) =>
+        string.Join(", ", rows
+            .GroupBy(r => r.Verdict.Reason)
+            .OrderByDescending(g => g.Count())
+            .Select(g => $"{g.Count()} {g.Key}"));
 
     /// <summary>
     /// Reconcile the incoming scan into <see cref="Rows"/> in place, keyed by SessionId,

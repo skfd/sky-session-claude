@@ -46,23 +46,73 @@ public sealed class SessionRow : INotifyPropertyChanged
     private bool _abandoned;
 
     /// <summary>
-    /// True while an interactive CLI is running this session in a terminal right now
-    /// (see <see cref="LiveSessions"/>). Lights the dot on the card, and is the same
-    /// condition under which a double-click jumps to that window instead of resuming.
+    /// The interactive CLI running this session in a terminal right now, or null when none
+    /// is (see <see cref="LiveSessions"/>). Everything the card can say about a running
+    /// session — the dot, the build it is on, whether Remote Control is connected, whether
+    /// it is safe to restart — comes from here.
+    ///
     /// Refreshed on a timer, not by the file watcher: closing a terminal writes nothing.
     /// </summary>
-    public bool IsLive
+    public LiveSession? Live
     {
-        get => _isLive;
+        get => _live;
         set
         {
-            if (_isLive == value) return;
-            _isLive = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLive)));
+            if (_live?.Pid == value?.Pid
+                && _live?.Version == value?.Version
+                && _live?.Status == value?.Status
+                && _live?.RemoteControl == value?.RemoteControl) return;
+
+            _live = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
         }
     }
 
-    private bool _isLive;
+    private LiveSession? _live;
+
+    /// <summary>
+    /// Open in a terminal right now. Lights the dot on the card, and is the same condition
+    /// under which a double-click jumps to that window instead of resuming.
+    /// </summary>
+    public bool IsLive => _live is not null;
+
+    /// <summary>Remote Control is connected, so this session is reachable from your phone.</summary>
+    public bool RemoteControl => _live?.RemoteControl == true;
+
+    /// <summary>
+    /// Running an older build than the one installed — this is the session that keeps asking
+    /// to be restarted.
+    /// </summary>
+    public bool IsStale => ClaudeInstall.IsStale(_live?.Version, ClaudeInstall.InstalledVersion);
+
+    /// <summary>The build it is stuck on, for the chip on the card.</summary>
+    public string StaleDisplay => _live?.Version ?? "";
+
+    public string StaleTooltip =>
+        $"Running {_live?.Version}; {ClaudeInstall.InstalledVersion} is installed. Restart to pick it up.";
+
+    /// <summary>
+    /// Whether this session may be restarted for you, and why not when it may not.
+    /// Recomputed on read because "only just went idle" is a fact about the clock.
+    /// </summary>
+    public RestartVerdict Verdict => _live is null
+        ? new RestartVerdict(RestartSafety.Unsafe, "not running")
+        : RestartPolicy.Judge(_live, _info.Status, DateTime.Now);
+
+    /// <summary>Restart is offered for anything not flatly refused; the sweep takes only the safe ones.</summary>
+    public bool CanRestart => IsLive && Verdict.Safety != RestartSafety.Unsafe;
+
+    public string RestartTooltip => _live is null
+        ? "Not running in a terminal"
+        : Verdict.Safety switch
+        {
+            RestartSafety.Safe => $"Restart in place (Ctrl+R){RemoteControlNote}",
+            RestartSafety.Ask => $"Restartable, but: {Verdict.Reason}{RemoteControlNote}",
+            _ => $"Cannot restart: {Verdict.Reason}",
+        };
+
+    private string RemoteControlNote =>
+        RemoteControl ? "\nRemote Control is on and will be reconnected." : "";
 
     public DateTime LastActive => _info.LastActive;
     public string Timestamp => _info.LastActive.ToString("yyyy-MM-dd HH:mm");

@@ -32,46 +32,70 @@ namespace SessionApp;
 internal static class LiveSessions
 {
     /// <summary>
-    /// Session id → the pids of every interactive CLI currently running it.
-    /// A session normally maps to one pid; the list guards the rare duplicate
+    /// Session id → every interactive CLI currently running it.
+    /// A session normally maps to one process; the list guards the rare duplicate
     /// (e.g. two terminals resumed the same id) so focusing can try each.
     /// </summary>
-    public static Dictionary<string, List<int>> Scan()
+    public static Dictionary<string, List<LiveSession>> Scan()
     {
-        var map = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, List<LiveSession>>(StringComparer.OrdinalIgnoreCase);
 
-        var dir = SessionsDir();
-        if (!Directory.Exists(dir)) return map;
-
-        foreach (var path in Directory.EnumerateFiles(dir, "*.json"))
+        foreach (var session in LiveSessionRegistry.Read(LiveSessionRegistry.DefaultDir()))
         {
-            try
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllBytes(path));
-                var root = doc.RootElement;
+            // Only interactive terminals have a window to focus.
+            if (!string.Equals(session.Kind, "interactive", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!IsLiveClaude(session.Pid)) continue;   // skip stale registry files
 
-                // Only interactive terminals have a window to focus.
-                if (root.TryGetProperty("kind", out var kind) &&
-                    kind.ValueKind == JsonValueKind.String &&
-                    !string.Equals(kind.GetString(), "interactive", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                if (!root.TryGetProperty("sessionId", out var sidEl) ||
-                    sidEl.GetString() is not { Length: > 0 } sid)
-                    continue;
-                if (!root.TryGetProperty("pid", out var pidEl) || !pidEl.TryGetInt32(out int pid))
-                    continue;
-
-                if (!IsLiveClaude(pid)) continue;   // skip stale registry files
-
-                if (!map.TryGetValue(sid, out var pids)) map[sid] = pids = new List<int>();
-                if (!pids.Contains(pid)) pids.Add(pid);
-            }
-            catch { /* unreadable/racing/partial file — skip it */ }
+            if (!map.TryGetValue(session.SessionId, out var running))
+                map[session.SessionId] = running = new List<LiveSession>();
+            if (!running.Any(r => r.Pid == session.Pid)) running.Add(session);
         }
 
         return map;
     }
+
+    /// <summary>
+    /// The shell that will still be there once the session at <paramref name="pid"/> quits —
+    /// the process the terminal hands control back to, and so the one to type the resume
+    /// command at.
+    ///
+    /// Null when nothing survives: a Claude started as the tab's own root process takes the
+    /// tab down with it, and a shell we cannot write a PowerShell command line to is no
+    /// better than none. Either way the caller must open a fresh terminal instead.
+    /// </summary>
+    public static int? ShellFor(int pid)
+    {
+        var (parents, all) = SnapshotProcessTree();
+        var names = new Dictionary<int, string>();
+        foreach (var kids in all.Values)
+            foreach (var kid in kids)
+                names[kid.Pid] = kid.Name;
+
+        int cur = pid;
+        var seen = new HashSet<int>();
+        for (int depth = 0; depth < 16 && cur != 0 && seen.Add(cur); depth++)
+        {
+            if (!parents.TryGetValue(cur, out int parent) || parent == 0) return null;
+
+            var name = names.TryGetValue(parent, out var n) ? n : "";
+            if (IsPowerShell(name)) return parent;
+            if (!IsClaudeLayer(name)) return null;   // terminal host, explorer, cmd.exe, ...
+
+            cur = parent;
+        }
+        return null;
+    }
+
+    // The launcher and its node runtime sit between the session and its shell.
+    private static bool IsClaudeLayer(string name) =>
+        name.Equals("claude.exe", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("node.exe", StringComparison.OrdinalIgnoreCase);
+
+    // PowerShell only: the relaunch is one PowerShell command line, and cmd.exe would
+    // read its "cd 'x'; claude ..." as something else entirely.
+    private static bool IsPowerShell(string name) =>
+        name.Equals("powershell.exe", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("pwsh.exe", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Bring the terminal showing <paramref name="pid"/> to the foreground, switching
@@ -86,9 +110,6 @@ internal static class LiveSessions
         TrySelect(target.Tab);          // no-op unless the host has tabs
         return Activate(target.Hwnd);
     }
-
-    private static string SessionsDir() =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "sessions");
 
     // A registry file can outlive its process; confirm the pid is a running claude
     // before trusting it, so we never focus a window that reused the pid.
@@ -194,13 +215,12 @@ internal static class LiveSessions
     // --- console title ------------------------------------------------------
 
     // The title the CLI painted on its terminal, read by borrowing the session's own
-    // console. A process may be attached to one console at a time, hence the lock; we
-    // are a WPF app and own none, so there is nothing to lose by detaching after.
-    private static readonly object ConsoleGate = new();
-
+    // console. A process may be attached to one console at a time, so this shares the
+    // gate with the keystroke writer; we are a WPF app and own no console, so there is
+    // nothing to lose by detaching after.
     private static string ConsoleTitle(int pid)
     {
-        lock (ConsoleGate)
+        lock (ConsoleInput.Gate)
         {
             try
             {

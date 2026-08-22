@@ -47,4 +47,14 @@
     <!-- "Open in a terminal right now" dot. Not a status, so it sits outside the stripe set. -->
     <SolidColorBrush x:Key="Brush.Live.Dot" Color="#4ADE80"/>
 
+    <!--
+        Chips on the meta line: the build a running session is stuck on, and whether Remote
+        Control is connected. Both read as information rather than alarm, so they carry a
+        tinted ground rather than a status colour.
+    -->
+    <SolidColorBrush x:Key="Brush.Chip.Stale.Background" Color="#3B3117"/>
+    <SolidColorBrush x:Key="Brush.Chip.Stale.Text" Color="#FBBF24"/>
+    <SolidColorBrush x:Key="Brush.Chip.Remote.Background" Color="#1E3A5F"/>
+    <SolidColorBrush x:Key="Brush.Chip.Remote.Text" Color="#7DD3FC"/>
+
 </ResourceDictionary>

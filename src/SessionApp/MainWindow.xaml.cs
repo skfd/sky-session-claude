@@ -77,10 +77,19 @@ public partial class MainWindow : Window
         _liveTimer.Start();
     }
 
-    // A: hide/show completed · X: abandon/restore · R: refresh · F: fork. Ignore while typing.
+    // A: hide/show completed · X: abandon/restore · R: refresh · Ctrl+R: restart · F: fork.
+    // Ignore while typing.
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
         if (Keyboard.FocusedElement is TextBox) return;
+
+        // Ctrl+R before plain R, or the refresh would swallow it.
+        if (e.Key == Key.R && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+        {
+            _ = _vm.RestartSelectedAsync(Grid.SelectedItems.OfType<SessionRow>().ToList());
+            e.Handled = true;
+            return;
+        }
 
         switch (e.Key)
         {
@@ -187,14 +196,17 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (!LiveSessions.Scan().TryGetValue(row.Info.SessionId, out var pids)) return false;
-            return pids.Any(LiveSessions.TryFocus);
+            if (!LiveSessions.Scan().TryGetValue(row.Info.SessionId, out var running)) return false;
+            return running.Any(session => LiveSessions.TryFocus(session.Pid));
         }
         catch
         {
             return false;
         }
     }
+
+    private void RestartStaleBtn_Click(object sender, RoutedEventArgs e) =>
+        _ = _vm.RestartStaleAsync();
 
     private void CopyBtn_Click(object sender, RoutedEventArgs e)
     {
