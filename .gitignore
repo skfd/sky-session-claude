@@ -8,3 +8,6 @@ sessions.json
 # Release publish output
 dist/
 
+# Scratch git worktrees live inside the repo, so keep them out of its own status
+.claude/worktrees/
+
