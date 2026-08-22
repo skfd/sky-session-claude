@@ -124,10 +124,15 @@ SessionCli restart --stale          # prints the plan; add --yes to actually do 
 SessionCli close <id>...            # quit it, and close the terminal it sat in
 SessionCli close --finished         # end of day; prints the plan, add --yes to do it
 SessionCli resume <id>              # open a terminal and resume
+SessionCli resume <id> --force      # end whatever holds it, then resume
 SessionCli new --in <path> --trust  # start one, and take its trust prompt for you
 SessionCli standby                  # a phone-reachable session per recent project
 SessionCli trust <id>               # answer the trust prompt a session is sitting on
 ```
+
+`resume` refuses when a session is already open, and it is right to: two `--resume`s of one conversation are two processes writing one file. But that check reads the registry, and the registry only holds sessions that got far enough to write an entry — a CLI that starts and then hangs holds a terminal nothing in the registry knows about. Every verb then calls it "not open in a terminal", and the session is stranded with no way back through the tool that stranded it.
+
+So the holder is looked up by command line as well: a resumed session carries `--resume <id>` from the moment the process exists, whether or not startup ever finishes. `resume` says which of the two found it — *already open in a terminal (pid 36988)* versus *running (pid 51380) but never registered — it may be stuck starting up* — and `--force` ends the holder and resumes in the terminal it vacated. Unlike `restart` it does not ask Claude to quit first: a hung process is precisely the one that will not answer a Ctrl+C. The conversation is on disk either way, so a kill costs only what lived in the process — a turn in flight, an unsent draft — which is why it takes `--force` to say so.
 
 `peek` reads a live session's screen — the visible window of its console, borrowed the same way a restart borrows it, with nothing focused and nothing typed. It answers the question the session file cannot: a terminal blocked on Claude Code's "do you trust this folder?", a permission it is waiting to be granted, a draft sitting in its input box — none of that is written anywhere until it is answered. It resolves ids against the live registry rather than the projects folder, so a session that has been opened but not yet typed into (which has no file at all) can still be looked at.
 

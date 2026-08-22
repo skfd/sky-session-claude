@@ -609,7 +609,7 @@ internal static class Commands
 
     public static int Resume(Args args)
     {
-        args.RejectUnknown("dry-run", "remote-control", "rc");
+        args.RejectUnknown("dry-run", "force", "remote-control", "rc");
 
         var scanner = RequireScanner();
         var file = Resolve(scanner, OneId(args, "resume"));
@@ -618,14 +618,36 @@ internal static class Commands
         if (string.IsNullOrEmpty(info.Command))
             throw new UsageException($"{info.SessionId} has no resumable command (no recorded cwd).");
 
-        // Already up: a second `claude --resume` against the same session would be a
-        // duplicate, and this side of the app cannot raise the window it is already in.
-        if (LiveSessions.Find(info.SessionId) is { } running)
+        bool force = args.Has("force");
+        bool dry = args.Has("dry-run");
+        var label = info.Name ?? info.SessionId;
+
+        if (force && IsSelf(info.SessionId))
+            throw new UsageException(
+                "That is the session this command is running in; force-resuming it would kill this "
+                + "process mid-sentence. Do it from the app or another session.");
+
+        // Who has it, by registry and by command line both. The command line is what makes
+        // this honest: a session that hung before registering holds a terminal that the
+        // registry knows nothing about, and saying "not open" about it is how one gets
+        // stranded with no way back.
+        var holders = SessionReviver.Holders(info.SessionId);
+
+        if (holders.Count > 0 && !force)
             return Cli.EmitResult(new ActionResult
             {
                 Ok = true,
                 Action = "resume",
-                Message = $"\"{info.Name ?? info.SessionId}\" is already open in a terminal (pid {running.Pid}).",
+                Message = Held(label, holders),
+                Items = holders.Select(h => new ActionItem
+                {
+                    SessionId = info.SessionId,
+                    Name = label,
+                    Ok = true,
+                    Message = h.Registered
+                        ? $"pid {h.Pid} is running it"
+                        : $"pid {h.Pid} is running it but never registered — it may be stuck starting up",
+                }).ToList(),
             });
 
         // The name comes from the policy, not from this verb. A launch that composed its own
@@ -635,23 +657,43 @@ internal static class Commands
         var inputs = SessionNaming.InputsFor(info, live: null, SessionNaming.LiveNamesOf(LiveSessions.Scan()));
 
         // A dry run promises to change nothing, and names.json is something.
-        var name = args.Has("dry-run")
+        var name = dry
             ? SessionNaming.PlanLaunch(inputs, store).Name!
             : SessionNaming.NameForLaunch(inputs, store);
 
         var command = info.CommandNamed(name)
             + (WantsRemoteControl(args) ? " --remote-control" : "");
-        if (!args.Has("dry-run")) StartTerminal(command);
 
+        if (dry)
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = true,
+                Action = "resume",
+                Message = holders.Count == 0
+                    ? $"Would run: {command}"
+                    : $"Would end {Listed(holders)}, then run: {command}",
+            });
+
+        if (holders.Count == 0)
+        {
+            StartTerminal(command);
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = true,
+                Action = "resume",
+                Message = $"Opened a terminal running: {command}",
+            });
+        }
+
+        var result = SessionReviver.Revive(info.SessionId, command, holders);
         return Cli.EmitResult(new ActionResult
         {
-            Ok = true,
+            Ok = result.Ok,
             Action = "resume",
-            Message = args.Has("dry-run")
-                ? $"Would run: {command}"
-                : $"Opened a terminal running: {command}",
+            Message = result.Ok ? result.Message : $"Could not force-resume \"{label}\": {result.Message}.",
         });
     }
+
 
     // --- renaming -----------------------------------------------------------
 
@@ -913,6 +955,20 @@ internal static class Commands
             Screen = screen,
         });
     }
+
+    /// <summary>
+    /// How a session is being held, said the way it matters: "already open" is a reason to
+    /// leave it alone, "running but never registered" is a reason to reach for --force.
+    /// </summary>
+    private static string Held(string name, IReadOnlyList<SessionHolder> holders) =>
+        holders.All(h => h.Registered)
+            ? $"\"{name}\" is already open in a terminal ({Listed(holders)}). "
+              + "Add --force to end it and resume."
+            : $"\"{name}\" is running ({Listed(holders)}) but never registered — it may be stuck "
+              + "starting up. Add --force to end it and resume.";
+
+    private static string Listed(IReadOnlyList<SessionHolder> holders) =>
+        holders.Count == 1 ? $"pid {holders[0].Pid}" : "pids " + string.Join(", ", holders.Select(h => h.Pid));
 
     // --- launching ----------------------------------------------------------
 

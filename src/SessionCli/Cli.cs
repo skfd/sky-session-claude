@@ -171,6 +171,7 @@ internal static class Cli
           SessionCli close <id>...               quit it, and close its terminal
           SessionCli close --finished            end of day: close every session that is over
           SessionCli resume <id>                 open a terminal and resume it
+          SessionCli resume <id> --force         end whatever holds it, then resume
           SessionCli new [--in <path>]           open a terminal on a brand-new session
           SessionCli standby                     a phone-reachable session per recent project
           SessionCli trust <id>                  answer the trust prompt it is sitting on
