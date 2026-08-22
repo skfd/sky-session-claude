@@ -118,7 +118,7 @@ internal static class LiveSessions
         try
         {
             using var p = Process.GetProcessById(pid);
-            return p.ProcessName.Equals("claude", StringComparison.OrdinalIgnoreCase);
+            return ClaudeInstall.IsClaudeProcess(p.ProcessName);
         }
         catch { return false; }
     }

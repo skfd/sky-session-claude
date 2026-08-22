@@ -61,6 +61,12 @@ public static class RestartPolicy
         if (string.Equals(live.Status, "busy", StringComparison.OrdinalIgnoreCase))
             return new(RestartSafety.Unsafe, "a turn is in flight");
 
+        // "waiting" is its own state, distinct from idle: the CLI is blocked on an answer
+        // from you — a permission prompt, or a question mid-turn. Nothing is running, so a
+        // restart works, but it drops whatever was waiting to be approved.
+        if (string.Equals(live.Status, "waiting", StringComparison.OrdinalIgnoreCase))
+            return new(RestartSafety.Ask, "it is waiting on an answer from you — a pending approval would be dropped");
+
         if (!string.Equals(live.Status, "idle", StringComparison.OrdinalIgnoreCase))
             return new(RestartSafety.Unsafe, $"unrecognised state \"{live.Status}\"");
 

@@ -62,6 +62,20 @@ public static class ClaudeInstall
         return 0;
     }
 
+    /// <summary>
+    /// Whether a process name belongs to a Claude CLI.
+    ///
+    /// Updating renames the binary that is still running: <c>claude.exe</c> becomes
+    /// <c>claude.exe.old.&lt;timestamp&gt;</c> so the new build can take the name, and every
+    /// process started before the update reports the renamed image from then on. Matching
+    /// only "claude" therefore loses sight of a session at the exact moment it falls behind
+    /// — which is the moment this app most needs to see it.
+    /// </summary>
+    public static bool IsClaudeProcess(string? processName) =>
+        processName is not null
+        && (processName.Equals("claude", StringComparison.OrdinalIgnoreCase)
+            || processName.StartsWith("claude.exe.old.", StringComparison.OrdinalIgnoreCase));
+
     /// <summary>Dotted digits only; anything else is not a version we can reason about.</summary>
     private static int[]? Parse(string? text)
     {

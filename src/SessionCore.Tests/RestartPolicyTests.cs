@@ -98,6 +98,21 @@ public class RestartPolicyTests
         Assert.Contains("mid-step", verdict.Reason);
     }
 
+    /// <summary>
+    /// The CLI publishes a third state beside busy and idle: "waiting", meaning it is
+    /// blocked on the operator — a permission prompt, or a question mid-turn. Nothing is
+    /// running, so a restart would work; it would just throw away whatever was waiting to
+    /// be approved. That is a decision to offer, not one to make for someone.
+    /// </summary>
+    [Fact]
+    public void WaitingOnAnAnswer_IsOfferedNotSwept()
+    {
+        var verdict = RestartPolicy.Judge(Live(status: "waiting"), SessionStatus.CutOff, Now);
+        Assert.Equal(RestartSafety.Ask, verdict.Safety);
+        Assert.False(verdict.CanSweep);
+        Assert.Contains("pending approval", verdict.Reason);
+    }
+
     [Fact]
     public void AnUnknownStateIsNeverAssumedIdle() =>
         Assert.Equal(RestartSafety.Unsafe, RestartPolicy.Judge(Live(status: "reconnecting"), null, Now).Safety);

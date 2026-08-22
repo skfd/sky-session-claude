@@ -150,6 +150,23 @@ public class ClaudeInstallTests
         finally { Directory.Delete(dir, true); }
     }
 
+    /// <summary>
+    /// Updating renames the binary out from under the processes still running it, so a
+    /// session reports <c>claude.exe.old.&lt;timestamp&gt;</c> from the moment it falls
+    /// behind. Matching only "claude" drops every session the instant it becomes the one
+    /// worth restarting — which is how this was found: no dots, and a sweep of nothing.
+    /// </summary>
+    [Theory]
+    [InlineData("claude", true)]
+    [InlineData("CLAUDE", true)]
+    [InlineData("claude.exe.old.1787410246719", true)]
+    [InlineData("node", false)]
+    [InlineData("claudette", false)]
+    [InlineData("powershell", false)]
+    [InlineData(null, false)]
+    public void AClaudeThatOutlivedItsOwnBinaryIsStillAClaude(string? processName, bool expected) =>
+        Assert.Equal(expected, ClaudeInstall.IsClaudeProcess(processName));
+
     [Fact]
     public void NoVersionsDirectoryMeansWeDoNotKnow() =>
         Assert.Null(ClaudeInstall.NewestVersion(Path.Combine(Path.GetTempPath(), "nope-" + Guid.NewGuid())));
