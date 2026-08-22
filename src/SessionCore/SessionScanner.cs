@@ -106,6 +106,7 @@ public sealed class SessionScanner
             FilePath = file.FullName,
             LastActive = lastActive,
             LastTouched = file.LastWriteTime,
+            PreviousActive = PreviousActiveOf(fields, lastActive),
             AgeDays = Math.Round((DateTime.Now - lastActive).TotalDays, 1),
             SizeKB = Math.Round(file.Length / 1024.0, 1),
             Project = LeafOf(cwd),
@@ -129,6 +130,18 @@ public sealed class SessionScanner
         if (fields.LastTurnUtc is not { } utc) return file.LastWriteTime;
         var turn = utc.ToLocalTime();
         return turn > file.CreationTime ? turn : file.CreationTime;
+    }
+
+    /// <summary>
+    /// End of the sitting before the current one, dropped when it doesn't sit strictly
+    /// behind <paramref name="lastActive"/> — which is how a fork, whose age is floored
+    /// at its own creation time, avoids advertising the original's older sittings.
+    /// </summary>
+    private static DateTime? PreviousActiveOf(SessionFileFields fields, DateTime lastActive)
+    {
+        if (fields.PreviousSittingUtc is not { } utc) return null;
+        var prev = utc.ToLocalTime();
+        return prev < lastActive ? prev : null;
     }
 
     /// <summary>Full synchronous scan (parity with the original one-shot run).</summary>

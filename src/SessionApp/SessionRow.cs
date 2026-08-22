@@ -49,16 +49,27 @@ public sealed class SessionRow : INotifyPropertyChanged
     public string Timestamp => _info.LastActive.ToString("yyyy-MM-dd HH:mm");
 
     /// <summary>
-    /// Age as shown on the card: "2 days ago", or "2 days ago -> 1h ago" when the
-    /// session was opened again after that without a turn coming out of it.
+    /// Age as shown on the card: "1h ago", or "2 days ago -> 1h ago" when an earlier
+    /// sitting preceded this one. Reopening the session moves neither date.
     /// </summary>
-    public string AgeDisplay => TextUtil.AgeDisplay(_info.LastActive, _info.LastTouched);
+    public string AgeDisplay => TextUtil.AgeDisplay(_info.LastActive, _info.PreviousActive);
 
-    /// <summary>Spells out both ends of <see cref="AgeDisplay"/> on hover.</summary>
-    public string AgeTooltip => _info.LastTouched - _info.LastActive >= TextUtil.VisitGap
-        ? $"Last turn: {Timestamp}" + Environment.NewLine
-            + $"Last opened: {_info.LastTouched:yyyy-MM-dd HH:mm} (nothing said since)"
-        : Timestamp;
+    /// <summary>
+    /// Absolute times behind the card's age, plus the one fact the card deliberately
+    /// leaves out: when the session was last opened, which says nothing was said since.
+    /// </summary>
+    public string AgeTooltip
+    {
+        get
+        {
+            var lines = new List<string>();
+            if (_info.PreviousActive is { } prev) lines.Add($"Worked on: {prev:yyyy-MM-dd HH:mm}");
+            lines.Add($"Last turn: {Timestamp}");
+            if (_info.LastTouched - _info.LastActive >= TextUtil.SittingGap)
+                lines.Add($"Last opened: {_info.LastTouched:yyyy-MM-dd HH:mm} (nothing said since)");
+            return string.Join(Environment.NewLine, lines);
+        }
+    }
 
     public string Name => _info.Name ?? "(untitled)";
     public string Project => _info.Project;

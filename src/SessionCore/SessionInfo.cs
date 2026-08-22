@@ -29,6 +29,12 @@ public sealed class SessionInfo
     /// </summary>
     public DateTime LastTouched { get; init; }
 
+    /// <summary>
+    /// When the sitting before the current one ended, for the "previous -> latest" age
+    /// on a card. Null when the session is one unbroken stretch of work.
+    /// </summary>
+    public DateTime? PreviousActive { get; init; }
+
     public double AgeDays { get; init; }
     public double SizeKB { get; init; }
 

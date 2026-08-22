@@ -141,20 +141,55 @@ public class LastActiveTests
     // --- the two-age card label ----------------------------------------------
 
     [Fact]
-    public void AgeDisplay_ShowsBothEnds_WhenTheSessionWasOpenedWithoutATurn()
+    public void PreviousSitting_IsTheTurnBeforeTheGap()
     {
-        var now = new DateTime(2026, 8, 21, 12, 0, 0);
-        var display = TextUtil.AgeDisplay(now.AddDays(-2), now.AddHours(-1), now);
-        Assert.Equal("2 days ago → 1h ago", display);
+        var f = SessionFileParser.Parse([
+            User("2026-08-01T09:00:00.000Z", "start"),
+            Asst("2026-08-01T09:30:00.000Z", "first sitting done"),
+            User("2026-08-03T14:00:00.000Z", "back again"),
+            Asst("2026-08-03T14:05:00.000Z", "second sitting done"),
+        ]);
+        Assert.Equal(DateTime.Parse("2026-08-01T09:30:00.000Z").ToUniversalTime(), f.PreviousSittingUtc);
+        Assert.Equal(DateTime.Parse("2026-08-03T14:05:00.000Z").ToUniversalTime(), f.LastTurnUtc);
     }
 
     [Fact]
-    public void AgeDisplay_StaysSingle_WhileTheSessionIsBeingWorkedOn()
+    public void PreviousSitting_IsNull_ForOneUnbrokenStretch()
     {
-        // Every turn rewrites the file seconds later; that is not a visit.
+        var f = SessionFileParser.Parse([
+            User("2026-08-01T09:00:00.000Z", "start"),
+            Asst("2026-08-01T09:30:00.000Z", "thinking hard"),
+            Asst("2026-08-01T10:15:00.000Z", "done"),
+        ]);
+        Assert.Null(f.PreviousSittingUtc);
+    }
+
+    [Fact]
+    public void ReopeningDoesNotOpenANewSitting()
+    {
+        // Bookkeeping records carry no timestamp, so they cannot split a sitting —
+        // the pair of dates is unchanged whether or not the session was reopened.
+        var worked = new[] { User(EarlierTurnAt, "go"), Asst(TurnAt, "done") };
+        var reopened = SessionFileParser.Parse([.. worked, .. ResumeNoise]);
+        var untouched = SessionFileParser.Parse(worked);
+
+        Assert.Equal(untouched.LastTurnUtc, reopened.LastTurnUtc);
+        Assert.Equal(untouched.PreviousSittingUtc, reopened.PreviousSittingUtc);
+    }
+
+    [Fact]
+    public void AgeDisplay_ShowsPreviousThenLatest()
+    {
         var now = new DateTime(2026, 8, 21, 12, 0, 0);
-        var turn = now.AddMinutes(-30);
-        Assert.Equal("30m ago", TextUtil.AgeDisplay(turn, turn.AddSeconds(2), now));
+        Assert.Equal("2 days ago → 1h ago",
+            TextUtil.AgeDisplay(now.AddHours(-1), now.AddDays(-2), now));
+    }
+
+    [Fact]
+    public void AgeDisplay_StaysSingle_WithoutAnEarlierSitting()
+    {
+        var now = new DateTime(2026, 8, 21, 12, 0, 0);
+        Assert.Equal("30m ago", TextUtil.AgeDisplay(now.AddMinutes(-30), null, now));
     }
 
     /// <summary>
@@ -183,7 +218,9 @@ public class LastActiveTests
             // Reopen the older one: bookkeeping records appended, nothing said.
             File.AppendAllLines(older, ResumeNoise);
             File.SetLastWriteTime(older, DateTime.Now);
-            Assert.Equal(Path.GetFileNameWithoutExtension(newer), scanner.Scan(new ScanOptions())[0].SessionId);
+            var afterReopen = scanner.Scan(new ScanOptions());
+            Assert.Equal(Path.GetFileNameWithoutExtension(newer), afterReopen[0].SessionId);
+            Assert.All(afterReopen, r => Assert.Null(r.PreviousActive));   // no new sitting opened
 
             // Now actually say something.
             File.AppendAllLines(older, [User("2026-08-10T08:00:00.000Z", "carry on")]);

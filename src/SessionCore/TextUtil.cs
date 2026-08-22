@@ -12,22 +12,23 @@ public static partial class TextUtil
         string.IsNullOrEmpty(text) ? "" : Whitespace().Replace(text, " ").Trim();
 
     /// <summary>
-    /// How far after the last turn a file write counts as a separate visit. During live
-    /// work the file is rewritten within seconds of every turn; only a write well after
-    /// the fact means someone opened the session and left it alone.
+    /// A pause this long means you left the session and came back: the turns either
+    /// side of it belong to different sittings. Anything shorter is one stretch of
+    /// work with thinking time in it.
     /// </summary>
-    public static readonly TimeSpan VisitGap = TimeSpan.FromMinutes(5);
+    public static readonly TimeSpan SittingGap = TimeSpan.FromHours(1);
 
     /// <summary>
-    /// "2 days ago" normally; "2 days ago -> 1h ago" when the session was opened again
-    /// without producing a turn. The arrow runs from the last real work to that visit,
-    /// so a session you reopened and did nothing in still shows how long it has sat.
+    /// "1h ago" for a session worked on once; "2 days ago -> 1h ago" when there was an
+    /// earlier sitting — previous work on the left, latest on the right. Both ends are
+    /// real turns: opening a session (or answering Claude Code's restore prompt) writes
+    /// no turn, so neither date moves until you actually say something.
     /// </summary>
-    public static string AgeDisplay(DateTime lastActive, DateTime lastTouched, DateTime? now = null)
+    public static string AgeDisplay(DateTime lastActive, DateTime? previousActive, DateTime? now = null)
     {
         var age = RelativeAge(lastActive, now);
-        return lastTouched - lastActive >= VisitGap
-            ? $"{age} → {RelativeAge(lastTouched, now)}"
+        return previousActive is { } prev && prev < lastActive
+            ? $"{RelativeAge(prev, now)} → {age}"
             : age;
     }
 

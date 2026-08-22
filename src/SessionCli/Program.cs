@@ -122,6 +122,7 @@ sealed class SessionDto
 {
     public required DateTime LastActive { get; init; }
     public required DateTime LastTouched { get; init; }
+    public required DateTime? PreviousActive { get; init; }
     public required double AgeDays { get; init; }
     public required string Name { get; init; }
     public required string Project { get; init; }
@@ -142,6 +143,7 @@ sealed class SessionDto
     {
         LastActive = s.LastActive,
         LastTouched = s.LastTouched,
+        PreviousActive = s.PreviousActive,
         AgeDays = s.AgeDays,
         Name = s.Name ?? "(untitled)",
         Project = s.Project,

@@ -27,6 +27,13 @@ public sealed record SessionFileFields
     /// happens — unlike the file's last-write time.
     /// </summary>
     public DateTime? LastTurnUtc { get; init; }
+
+    /// <summary>
+    /// UTC end of the sitting before the current one — the last turn taken more than
+    /// <see cref="TextUtil.SittingGap"/> before work picked up again. Null when the
+    /// whole session is one stretch of work.
+    /// </summary>
+    public DateTime? PreviousSittingUtc { get; init; }
 }
 
 /// <summary>
@@ -51,7 +58,7 @@ public static class SessionFileParser
         bool lastToolResult = false, lastInterrupt = false;
         int ctxTokens = 0, maxCtxTokens = 0;
         bool sawLargeModel = false;
-        DateTime? lastTurnUtc = null;
+        DateTime? lastTurnUtc = null, previousSittingUtc = null;
 
         foreach (var line in lines)
         {
@@ -91,13 +98,13 @@ public static class SessionFileParser
                     break;
                 case "user":
                     if (HandleUser(o, ref userText, ref lastRole, ref lastToolResult, ref lastInterrupt))
-                        Advance(ref lastTurnUtc, recordUtc);
+                        Advance(ref lastTurnUtc, ref previousSittingUtc, recordUtc);
                     break;
                 case "assistant":
                     HandleAssistant(o, largeModelId, ref lastText, ref errText, ref lastRole, ref lastStop,
                         ref lastSynthetic, ref lastHasTool, ref lastEndsQ, ref ctxTokens, ref maxCtxTokens,
                         ref sawLargeModel);
-                    Advance(ref lastTurnUtc, recordUtc);
+                    Advance(ref lastTurnUtc, ref previousSittingUtc, recordUtc);
                     break;
             }
         }
@@ -131,6 +138,7 @@ public static class SessionFileParser
             EffectiveContextWindow = effectiveWindow,
             IsLargeContext = isLarge,
             LastTurnUtc = lastTurnUtc,
+            PreviousSittingUtc = previousSittingUtc,
         };
     }
 
@@ -269,10 +277,16 @@ public static class SessionFileParser
             || t.StartsWith("<task-notification>", StringComparison.Ordinal);
     }
 
-    /// <summary>Records are written in order but can carry near-equal clock readings, so keep the max.</summary>
-    private static void Advance(ref DateTime? latest, DateTime? candidate)
+    /// <summary>
+    /// Fold one turn's timestamp into the running pair. Records are written in order but
+    /// can carry near-equal clock readings, so the latest only moves forward; a jump of
+    /// more than a sitting's gap closes the previous sitting at the turn before it.
+    /// </summary>
+    private static void Advance(ref DateTime? latest, ref DateTime? previousSitting, DateTime? candidate)
     {
-        if (candidate is { } c && (latest is null || c > latest)) latest = c;
+        if (candidate is not { } c || (latest is { } l && c <= l)) return;
+        if (latest is { } prev && c - prev >= TextUtil.SittingGap) previousSitting = prev;
+        latest = c;
     }
 
     private static DateTime? ReadTimestampUtc(JsonElement o) =>

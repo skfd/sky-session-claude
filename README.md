@@ -25,7 +25,7 @@ Cards are a fixed height, so one long recap can never push the rest of the list 
 
 The age is the **last real turn** in the session file, not the file's timestamp on disk. Resuming a session appends bookkeeping records (mode, titles, last prompt) the moment it opens, so a file's last-write time says "just now" even when you opened a session, looked at it, and typed nothing — which is exactly when you most want to know it has been sitting for three weeks. A fork still reads as new, though — the age is floored at the file's own creation time, so a fresh file full of copied records doesn't inherit the age of the conversation it branched from.
 
-When a session *was* opened after its last turn and nothing came of it, the card shows both ends: **`2 days ago → 1h ago`** — last worked on two days ago, last opened an hour ago. Hover for the exact times. Sessions being actively worked on show one age, since there the file is rewritten seconds after every turn.
+A session you have come back to shows both sittings: **`2 days ago → 1h ago`** — worked on two days ago, then again an hour ago. A pause of over an hour between turns is what separates one sitting from the next. Both dates are real turns, so opening a session (or answering Claude Code's restore prompt) moves neither; hover for the exact times, and for when it was last opened.
 
 ## How Status is decided
 
