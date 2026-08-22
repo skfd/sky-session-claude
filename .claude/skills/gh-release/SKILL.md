@@ -1,25 +1,16 @@
 # gh-release — project specifics for Sky Session Claude
 
-## Versioning: dev builds carry `-dev`, releases drop it
+## Versioning
 
-One `<Version>` for the whole product lives in `src/Directory.Build.props` — the
-app and the CLI ship in the same GitHub release and must never drift apart.
+The global gh-release skill carries the `-dev` rule itself. What is specific here:
 
-Between releases it is the **next patch with a `-dev` suffix**: the moment v1.7.0
-ships, main moves to `1.7.1-dev`. The footer renders that straight from
-InformationalVersion, so a dev build reads `v1.7.1-dev · 25224cf` and can never be
-mistaken for the release it followed.
-
-Patch, not minor, is deliberate: `1.7.1-dev` sorts below both `1.7.1` and `1.8.0`,
-so whichever number the next release takes, the dev build never claimed a higher
-one. `1.7.1-dev` never getting a `1.7.1` release is fine — the suffix marks it as
-not-a-version.
-
-**Never bump in a feature commit.** The two moments a version changes are step 2
-of a release (drop the suffix, or bump further) and step 8 (open the next `-dev`).
-That keeps the invariant: every **stable** version has exactly one matching tag and
-GitHub release. (v1.4.0 and v1.6.0 were skipped by bumping mid-development back
-when dev builds carried a bare release number. The suffix is what prevents that.)
+- One `<Version>` for the whole product lives in `src/Directory.Build.props` — the app
+  and the CLI ship in the same GitHub release and must never drift apart.
+- The footer renders it straight from InformationalVersion, so a dev build reads
+  `v1.7.1-dev · 25224cf` (`MainViewModel.BuildVersionLabel`).
+- v1.4.0 and v1.6.0 were skipped by bumping mid-development, back when dev builds
+  carried a bare release number. If a number ever looks off, check `git tag` against
+  the props file.
 
 ## Release procedure
 
