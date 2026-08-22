@@ -60,6 +60,10 @@ public sealed class SessionScanner
                 .Select(g => g.OrderByDescending(f => f.LastWriteTime).First());
         }
 
+        // Ordered/capped by last-write here because the real last-active time is only
+        // known after parsing, and a file's last write can never precede its newest
+        // record — so the top-N by last-write is a superset of the top-N by activity.
+        // Scan re-sorts on the parsed times.
         return selected
             .OrderByDescending(f => f.LastWriteTime)
             .Take(options.Top)
@@ -86,6 +90,8 @@ public sealed class SessionScanner
         bool openQ = !string.IsNullOrEmpty(fields.Recap) && fields.Recap.TrimEnd().EndsWith('?');
         bool noReply = !string.IsNullOrEmpty(fields.LastPrompt) && string.IsNullOrEmpty(fields.Recap);
 
+        var lastActive = LastActiveOf(file, fields);
+
         return new SessionInfo
         {
             Cwd = cwd,
@@ -98,8 +104,8 @@ public sealed class SessionScanner
             IsLargeContext = fields.IsLargeContext,
             SessionId = Path.GetFileNameWithoutExtension(file.Name),
             FilePath = file.FullName,
-            LastActive = file.LastWriteTime,
-            AgeDays = Math.Round((DateTime.Now - file.LastWriteTime).TotalDays, 1),
+            LastActive = lastActive,
+            AgeDays = Math.Round((DateTime.Now - lastActive).TotalDays, 1),
             SizeKB = Math.Round(file.Length / 1024.0, 1),
             Project = LeafOf(cwd),
             Command = $"cd \"{cwd}\"; claude --resume {Path.GetFileNameWithoutExtension(file.Name)}",
@@ -108,11 +114,28 @@ public sealed class SessionScanner
         };
     }
 
+    /// <summary>
+    /// When the session was last actually worked on. Resuming a session appends
+    /// untimestamped metadata records, which bumps the file's last-write time to now
+    /// and would otherwise erase how long the session has really been sitting — so the
+    /// last real turn in the file wins, and last-write is only the fallback for files
+    /// that carry no timestamped turn at all. Floored at the file's creation time so a
+    /// freshly written file (a fork, which copies the original's older records) still
+    /// reads as new rather than as old as the conversation it branched from.
+    /// </summary>
+    private static DateTime LastActiveOf(FileInfo file, SessionFileFields fields)
+    {
+        if (fields.LastTurnUtc is not { } utc) return file.LastWriteTime;
+        var turn = utc.ToLocalTime();
+        return turn > file.CreationTime ? turn : file.CreationTime;
+    }
+
     /// <summary>Full synchronous scan (parity with the original one-shot run).</summary>
     public IReadOnlyList<SessionInfo> Scan(ScanOptions options)
     {
         return SelectFiles(options)
             .Select(f => BuildRow(f, options.ContextWindow, options.LargeModelId))
+            .OrderByDescending(r => r.LastActive)
             .ToList();
     }
 

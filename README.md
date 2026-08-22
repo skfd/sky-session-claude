@@ -16,12 +16,14 @@ Each card is one session, four lines tall:
 
 | Line | Meaning |
 |---|---|
-| **Title** | Session name, plus the repo it belongs to and how long ago it was last written to |
+| **Title** | Session name, plus the repo it belongs to and how long ago it was last worked on |
 | **Prompt** *(italic)* | Your most recent message in that session |
 | **Recap** | A short summary of what the agent last did, clipped to two lines (hover for the rest) |
 | **Meta** | `complete`, `waiting-you`, `waiting-agent`, `cut-off`, `limit`, `error`, `interrupted` · how full the context window is (auto-detects 1M-token sessions) · session file size on disk |
 
 Cards are a fixed height, so one long recap can never push the rest of the list off screen. Unfinished sessions get a coloured stripe down their left edge so your eye lands on the ones still waiting on you; completed ones have none. ("Unfinished" = every Status except `complete`.)
+
+The age is the **last real turn** in the session file, not the file's timestamp on disk. Resuming a session appends bookkeeping records (mode, titles, last prompt) the moment it opens, so a file's last-write time says "just now" even when you opened a session, looked at it, and typed nothing — which is exactly when you most want to know it has been sitting for three weeks. A fork still reads as new, though — the age is floored at the file's own creation time, so a fresh file full of copied records doesn't inherit the age of the conversation it branched from.
 
 ## How Status is decided
 

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace SessionCore;
@@ -18,6 +19,14 @@ public sealed record SessionFileFields
 
     /// <summary>True when the session ran with an extended (1M) context window.</summary>
     public bool IsLargeContext { get; init; }
+
+    /// <summary>
+    /// UTC timestamp of the last real turn (operator or agent), null when the file
+    /// carries none. Resuming a session appends untimestamped metadata records
+    /// (mode, atis-latch, last-prompt, titles), so this stays put until real work
+    /// happens — unlike the file's last-write time.
+    /// </summary>
+    public DateTime? LastTurnUtc { get; init; }
 }
 
 /// <summary>
@@ -42,6 +51,7 @@ public static class SessionFileParser
         bool lastToolResult = false, lastInterrupt = false;
         int ctxTokens = 0, maxCtxTokens = 0;
         bool sawLargeModel = false;
+        DateTime? lastTurnUtc = null;
 
         foreach (var line in lines)
         {
@@ -62,6 +72,7 @@ public static class SessionFileParser
             if (cwd is null && TryGetString(o, "cwd", out var c) && c.Length > 0) cwd = c;
 
             var type = GetString(o, "type");
+            var recordUtc = ReadTimestampUtc(o);
             switch (type)
             {
                 case "ai-title":
@@ -79,12 +90,14 @@ public static class SessionFileParser
                         summary = content;
                     break;
                 case "user":
-                    HandleUser(o, ref userText, ref lastRole, ref lastToolResult, ref lastInterrupt);
+                    if (HandleUser(o, ref userText, ref lastRole, ref lastToolResult, ref lastInterrupt))
+                        Advance(ref lastTurnUtc, recordUtc);
                     break;
                 case "assistant":
                     HandleAssistant(o, largeModelId, ref lastText, ref errText, ref lastRole, ref lastStop,
                         ref lastSynthetic, ref lastHasTool, ref lastEndsQ, ref ctxTokens, ref maxCtxTokens,
                         ref sawLargeModel);
+                    Advance(ref lastTurnUtc, recordUtc);
                     break;
             }
         }
@@ -117,10 +130,12 @@ public static class SessionFileParser
             ContextPct = ctxPct,
             EffectiveContextWindow = effectiveWindow,
             IsLargeContext = isLarge,
+            LastTurnUtc = lastTurnUtc,
         };
     }
 
-    private static void HandleUser(JsonElement o, ref string? userText, ref string? lastRole,
+    /// <summary>Applies one user record; returns false when it was harness noise, not a real turn.</summary>
+    private static bool HandleUser(JsonElement o, ref string? userText, ref string? lastRole,
         ref bool lastToolResult, ref bool lastInterrupt)
     {
         string? utext = null;
@@ -154,12 +169,13 @@ public static class SessionFileParser
         // agent exchange, instead of misreading an injected record as waiting-agent.
         // These are always plain-string records; a real prompt carrying a trailing
         // reminder comes through as an array, so it is never caught here.
-        if (contentIsString && IsHarnessText(utext)) return;
+        if (contentIsString && IsHarnessText(utext)) return false;
 
         if (!string.IsNullOrEmpty(utext)) userText = utext;
         lastRole = "user";
         lastToolResult = hasToolResult;
         lastInterrupt = utext is not null && utext.Contains("[Request interrupted by user");
+        return true;
     }
 
     private static void HandleAssistant(JsonElement o, string? largeModelId, ref string? lastText,
@@ -252,6 +268,18 @@ public static class SessionFileParser
             || t.StartsWith("<system-reminder>", StringComparison.Ordinal)
             || t.StartsWith("<task-notification>", StringComparison.Ordinal);
     }
+
+    /// <summary>Records are written in order but can carry near-equal clock readings, so keep the max.</summary>
+    private static void Advance(ref DateTime? latest, DateTime? candidate)
+    {
+        if (candidate is { } c && (latest is null || c > latest)) latest = c;
+    }
+
+    private static DateTime? ReadTimestampUtc(JsonElement o) =>
+        TryGetString(o, "timestamp", out var raw)
+        && DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dto)
+            ? dto.UtcDateTime
+            : null;
 
     // --- small JSON helpers --------------------------------------------------
     private static string GetString(JsonElement o, string prop) =>
