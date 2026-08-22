@@ -21,6 +21,14 @@ public sealed class SessionInfo
     public string SessionId { get; init; } = "";     // session file base name
     public string FilePath { get; init; } = "";      // full path, for fork-from-point
     public DateTime LastActive { get; init; }
+
+    /// <summary>
+    /// When the session file was last written. Opening a session rewrites it, so this
+    /// runs ahead of <see cref="LastActive"/> for a session that was reopened and left
+    /// alone — which is the whole reason the two are separate fields.
+    /// </summary>
+    public DateTime LastTouched { get; init; }
+
     public double AgeDays { get; init; }
     public double SizeKB { get; init; }
 

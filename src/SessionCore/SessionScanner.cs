@@ -105,6 +105,7 @@ public sealed class SessionScanner
             SessionId = Path.GetFileNameWithoutExtension(file.Name),
             FilePath = file.FullName,
             LastActive = lastActive,
+            LastTouched = file.LastWriteTime,
             AgeDays = Math.Round((DateTime.Now - lastActive).TotalDays, 1),
             SizeKB = Math.Round(file.Length / 1024.0, 1),
             Project = LeafOf(cwd),

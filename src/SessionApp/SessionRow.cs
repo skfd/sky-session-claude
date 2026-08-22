@@ -46,8 +46,20 @@ public sealed class SessionRow : INotifyPropertyChanged
     private bool _abandoned;
 
     public DateTime LastActive => _info.LastActive;
-    public string RelativeAge => TextUtil.RelativeAge(_info.LastActive);
     public string Timestamp => _info.LastActive.ToString("yyyy-MM-dd HH:mm");
+
+    /// <summary>
+    /// Age as shown on the card: "2 days ago", or "2 days ago -> 1h ago" when the
+    /// session was opened again after that without a turn coming out of it.
+    /// </summary>
+    public string AgeDisplay => TextUtil.AgeDisplay(_info.LastActive, _info.LastTouched);
+
+    /// <summary>Spells out both ends of <see cref="AgeDisplay"/> on hover.</summary>
+    public string AgeTooltip => _info.LastTouched - _info.LastActive >= TextUtil.VisitGap
+        ? $"Last turn: {Timestamp}" + Environment.NewLine
+            + $"Last opened: {_info.LastTouched:yyyy-MM-dd HH:mm} (nothing said since)"
+        : Timestamp;
+
     public string Name => _info.Name ?? "(untitled)";
     public string Project => _info.Project;
     public string Status => _info.Status.ToWire();

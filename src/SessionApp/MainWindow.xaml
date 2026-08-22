@@ -182,8 +182,8 @@
                                     <Run Text="{Binding Project, Mode=OneWay}"
                                          Foreground="{DynamicResource Brush.Text.Emphasis}"/>
                                     <Run Text="·"/>
-                                    <Run Text="{Binding RelativeAge, Mode=OneWay}"
-                                         ToolTip="{Binding Timestamp}"/>
+                                    <Run Text="{Binding AgeDisplay, Mode=OneWay}"
+                                         ToolTip="{Binding AgeTooltip}"/>
                                 </TextBlock>
                                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="15"
                                            Foreground="{DynamicResource Brush.Text.Title}"

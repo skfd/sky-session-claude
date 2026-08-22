@@ -121,6 +121,78 @@ public class LastActiveTests
     }
 
     [Fact]
+    public void LastTouched_IsTheFilesLastWrite_EvenWhenNoTurnFollowed()
+    {
+        var (root, file) = WriteSession([Asst(TurnAt, "done"), .. ResumeNoise]);
+        try
+        {
+            var opened = DateTime.Now.AddHours(-1);
+            File.SetCreationTime(file.FullName, DateTime.Parse(TurnAt).ToLocalTime());
+            File.SetLastWriteTime(file.FullName, opened);
+
+            var row = new SessionScanner(root).Scan(new ScanOptions()).Single();
+
+            Assert.Equal(DateTime.Parse(TurnAt).ToUniversalTime(), row.LastActive.ToUniversalTime());
+            Assert.Equal(opened, row.LastTouched, TimeSpan.FromSeconds(1));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    // --- the two-age card label ----------------------------------------------
+
+    [Fact]
+    public void AgeDisplay_ShowsBothEnds_WhenTheSessionWasOpenedWithoutATurn()
+    {
+        var now = new DateTime(2026, 8, 21, 12, 0, 0);
+        var display = TextUtil.AgeDisplay(now.AddDays(-2), now.AddHours(-1), now);
+        Assert.Equal("2 days ago → 1h ago", display);
+    }
+
+    [Fact]
+    public void AgeDisplay_StaysSingle_WhileTheSessionIsBeingWorkedOn()
+    {
+        // Every turn rewrites the file seconds later; that is not a visit.
+        var now = new DateTime(2026, 8, 21, 12, 0, 0);
+        var turn = now.AddMinutes(-30);
+        Assert.Equal("30m ago", TextUtil.AgeDisplay(turn, turn.AddSeconds(2), now));
+    }
+
+    /// <summary>
+    /// The whole rule in one pass: reopening a session leaves it exactly where it was
+    /// in the list, and the first new turn — not the reopen — is what refloats it.
+    /// </summary>
+    [Fact]
+    public void ReopeningHoldsPosition_TheFirstNewTurnRefloats()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"sky-{Guid.NewGuid():N}", "C--Users-kk-Code-demo");
+        Directory.CreateDirectory(dir);
+        var root = Path.GetDirectoryName(dir)!;
+        try
+        {
+            var older = Path.Combine(dir, $"{Guid.NewGuid()}.jsonl");
+            File.WriteAllLines(older, [Asst(EarlierTurnAt, "older session")]);
+            File.SetCreationTime(older, DateTime.Parse(EarlierTurnAt).ToLocalTime());
+
+            var newer = Path.Combine(dir, $"{Guid.NewGuid()}.jsonl");
+            File.WriteAllLines(newer, [Asst(TurnAt, "newer session")]);
+            File.SetCreationTime(newer, DateTime.Parse(EarlierTurnAt).ToLocalTime());
+
+            var scanner = new SessionScanner(root);
+            Assert.Equal(Path.GetFileNameWithoutExtension(newer), scanner.Scan(new ScanOptions())[0].SessionId);
+
+            // Reopen the older one: bookkeeping records appended, nothing said.
+            File.AppendAllLines(older, ResumeNoise);
+            File.SetLastWriteTime(older, DateTime.Now);
+            Assert.Equal(Path.GetFileNameWithoutExtension(newer), scanner.Scan(new ScanOptions())[0].SessionId);
+
+            // Now actually say something.
+            File.AppendAllLines(older, [User("2026-08-10T08:00:00.000Z", "carry on")]);
+            Assert.Equal(Path.GetFileNameWithoutExtension(older), scanner.Scan(new ScanOptions())[0].SessionId);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public void Scan_SortsByLastActive_NotByLastWrite()
     {
         var dir = Path.Combine(Path.GetTempPath(), $"sky-{Guid.NewGuid():N}", "C--Users-kk-Code-demo");
