@@ -90,29 +90,38 @@ public static class RestartPolicy
     /// The command that brings this session back. Remote Control is opt-in per session and
     /// does not survive the restart, so a session that had it connected asks for it again
     /// on the way back up — otherwise restarting would quietly drop it off your phone.
-    /// A name you chose is carried over; a derived one is left to re-derive.
+    ///
+    /// A name you chose is carried over untouched. One the CLI invented is not: it would be
+    /// re-derived with a fresh suffix, so the session comes back under a name that changed
+    /// without meaning anything (see <see cref="SessionName"/>). <paramref name="title"/> is
+    /// the session's own title, which is what it deserves to be called instead.
+    ///
+    /// The name goes in under <c>--name</c>, never as the optional argument to
+    /// <c>--remote-control</c>. The two are separate flags inside the CLI and only
+    /// <c>--name</c> reaches the registry: a name passed to <c>--remote-control</c> is
+    /// accepted, ignored, and the session comes back derived anyway.
     /// </summary>
-    public static string ResumeCommand(LiveSession live)
+    public static string ResumeCommand(LiveSession live, string? title = null)
     {
-        var command = $"claude --resume {live.SessionId}";
-        if (!live.RemoteControl) return command;
+        var name = SessionName.IsChosen(live)
+            ? live.Name!
+            : SessionName.For(live.SessionId, live.Cwd, title);
 
-        return string.Equals(live.NameSource, "custom", StringComparison.OrdinalIgnoreCase)
-               && live.Name is { Length: > 0 } name
-            ? $"{command} --remote-control {Quote(name)}"
-            : $"{command} --remote-control";
+        // --name is written only to the live registry, never to the transcript, so naming a
+        // session here cannot shadow the title the app reads off its file.
+        var command = $"claude --resume {live.SessionId} --name {SessionName.Quote(name)}";
+        return live.RemoteControl ? $"{command} --remote-control" : command;
     }
 
     /// <summary>
     /// The full line typed into the terminal the session vacated: back to its folder first,
     /// because the shell may have been left somewhere else before Claude was started.
     /// </summary>
-    public static string RelaunchLine(LiveSession live) =>
+    public static string RelaunchLine(LiveSession live, string? title = null) =>
         live.Cwd is { Length: > 0 } cwd
-            ? $"cd {Quote(cwd)}; {ResumeCommand(live)}"
-            : ResumeCommand(live);
+            ? $"cd {SessionName.Quote(cwd)}; {ResumeCommand(live, title)}"
+            : ResumeCommand(live, title);
 
-    private static string Quote(string value) => $"'{value.Replace("'", "''")}'";
 
     private static string Host(string entrypoint) => entrypoint switch
     {

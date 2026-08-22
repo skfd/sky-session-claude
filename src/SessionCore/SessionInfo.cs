@@ -7,8 +7,19 @@ namespace SessionCore;
 public sealed class SessionInfo
 {
     // --- from the session file body -------------------------------------------
+    /// <summary>What the scanner writes for a session that has earned no title.</summary>
+    public const string Untitled = "(untitled)";
+
     public string? Cwd { get; init; }
     public string? Name { get; init; }          // custom title wins over AI title
+
+    /// <summary>
+    /// The session's own title, or null when it has none. <see cref="Name"/> is filled in
+    /// with <see cref="Untitled"/> so a column always has something to show, which makes it
+    /// the wrong field to ask whether a title exists — asking it that way once named a
+    /// restarted session "(untitled)".
+    /// </summary>
+    public string? Title => string.IsNullOrEmpty(Name) || Name == Untitled ? null : Name;
     public string LastPrompt { get; init; } = "";
     public string Recap { get; init; } = "";
     public SessionStatus Status { get; init; }
@@ -41,6 +52,16 @@ public sealed class SessionInfo
     // --- derived display fields ---------------------------------------------
     public string Project { get; init; } = "";
     public string Command { get; init; } = "";
+
+    /// <summary>
+    /// <see cref="Command"/> with the session named, for the paths that open a terminal on
+    /// this same session. Left off <see cref="Command"/> itself because forking appends
+    /// <c>--fork-session</c> to it, and the fork is a different session that has not earned
+    /// this one's name.
+    /// </summary>
+    public string NamedCommand => Command.Length == 0
+        ? ""
+        : $"{Command} --name {SessionName.Quote(SessionName.For(SessionId, Cwd, Title))}";
     public bool Unfinished { get; init; }
     public string WaitingOn { get; init; } = "";
 }

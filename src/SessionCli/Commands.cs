@@ -286,7 +286,7 @@ internal static class Commands
         var live = LiveSessions.Scan();
         bool dry = args.Has("dry-run");
 
-        List<(LiveSession Live, SessionStatus? Tail, string Name)> targets;
+        List<(LiveSession Live, SessionStatus? Tail, string Name, string? Title)> targets;
         List<ActionItem> skipped = new();
 
         if (args.Has("stale"))
@@ -298,7 +298,7 @@ internal static class Commands
             var infos = scanner.Scan(new ScanOptions { All = true, Top = int.MaxValue })
                 .ToDictionary(i => i.SessionId, StringComparer.OrdinalIgnoreCase);
 
-            targets = new List<(LiveSession, SessionStatus?, string)>();
+            targets = new List<(LiveSession, SessionStatus?, string, string?)>();
             foreach (var session in live.Values.SelectMany(v => v))
             {
                 var info = infos.GetValueOrDefault(session.SessionId);
@@ -316,7 +316,7 @@ internal static class Commands
                 // A sweep is the set where nothing can be lost, not the set that looks
                 // quiet — anything merely plausible is reported rather than taken.
                 if (!verdict.CanSweep) skipped.Add(Skip(session.SessionId, name, verdict.Reason));
-                else targets.Add((session, info?.Status, name));
+                else targets.Add((session, info?.Status, name, info?.Title));
             }
 
             // The sweep drives terminals nobody is looking at, so it states its plan and
@@ -328,7 +328,7 @@ internal static class Commands
             if (args.Positional.Count == 0)
                 throw new UsageException("'restart' needs a session id, or --stale.");
 
-            targets = new List<(LiveSession, SessionStatus?, string)>();
+            targets = new List<(LiveSession, SessionStatus?, string, string?)>();
             foreach (var id in args.Positional)
             {
                 var file = Resolve(scanner, id);
@@ -355,14 +355,14 @@ internal static class Commands
                     continue;
                 }
 
-                targets.Add((running[0], info.Status, name));
+                targets.Add((running[0], info.Status, name, info.Title));
             }
         }
 
         var items = new List<ActionItem>();
         int done = 0;
 
-        foreach (var (session, tail, name) in targets)
+        foreach (var (session, tail, name, title) in targets)
         {
             if (dry)
             {
@@ -371,12 +371,12 @@ internal static class Commands
                     SessionId = session.SessionId,
                     Name = name,
                     Ok = true,
-                    Message = $"would restart: {RestartPolicy.RelaunchLine(session)}",
+                    Message = $"would restart: {RestartPolicy.RelaunchLine(session, title)}",
                 });
                 continue;
             }
 
-            var result = SessionRestarter.RestartAsync(session).GetAwaiter().GetResult();
+            var result = SessionRestarter.RestartAsync(session, title).GetAwaiter().GetResult();
             if (result.Ok) done++;
             items.Add(new ActionItem
             {
@@ -412,12 +412,12 @@ internal static class Commands
     }
 
     /// <summary>
-    /// A real title, or null. The scanner fills an untitled session in with "(untitled)",
-    /// which is a placeholder rather than a name — the running CLI usually knows a better
-    /// one ("sky-session-claude-87"), and that is worth preferring over a shrug.
+    /// A real title, or null — <see cref="SessionInfo.Title"/> for a name that did not come
+    /// from a scanned <see cref="SessionInfo"/>. The placeholder is a shrug rather than a
+    /// name, and the running CLI usually knows a better one ("sky-session-claude-87").
     /// </summary>
     private static string? Titled(string? name) =>
-        string.IsNullOrEmpty(name) || name == "(untitled)" ? null : name;
+        string.IsNullOrEmpty(name) || name == SessionInfo.Untitled ? null : name;
 
     private static ActionItem Skip(string id, string name, string why) => new()
     {
@@ -450,15 +450,15 @@ internal static class Commands
                 Message = $"\"{info.Name ?? info.SessionId}\" is already open in a terminal (pid {running.Pid}).",
             });
 
-        if (!args.Has("dry-run")) StartTerminal(info.Command);
+        if (!args.Has("dry-run")) StartTerminal(info.NamedCommand);
 
         return Cli.EmitResult(new ActionResult
         {
             Ok = true,
             Action = "resume",
             Message = args.Has("dry-run")
-                ? $"Would run: {info.Command}"
-                : $"Opened a terminal running: {info.Command}",
+                ? $"Would run: {info.NamedCommand}"
+                : $"Opened a terminal running: {info.NamedCommand}",
         });
     }
 

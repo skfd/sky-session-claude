@@ -145,9 +145,13 @@ public class RestartPolicyTests
 
     // --- the command that brings it back ------------------------------------
 
+    /// <summary>
+    /// Without Remote Control the name still goes in, under --name: the point is that the
+    /// session comes back answering to the same thing, not that it is on a phone.
+    /// </summary>
     [Fact]
-    public void PlainSessionResumesPlainly() =>
-        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1",
+    public void ASessionWithNoTitleIsNamedForItsFolderAndId() =>
+        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9'",
             RestartPolicy.ResumeCommand(Live()));
 
     /// <summary>
@@ -156,36 +160,61 @@ public class RestartPolicyTests
     /// </summary>
     [Fact]
     public void RemoteControlIsRequestedAgainOnTheWayBackUp() =>
-        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --remote-control",
+        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9' --remote-control",
             RestartPolicy.ResumeCommand(Live(bridge: "session_01NpwuF1HVr5CRthp5YS8SWH")));
 
+    /// <summary>
+    /// The registry records a source only for names the CLI invented, so a name the operator
+    /// chose arrives with the field absent. That is the one case we do not touch.
+    /// </summary>
     [Fact]
     public void ANameYouChoseSurvivesTheRestart() =>
-        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --remote-control 'night shift'",
+        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'night shift' --remote-control",
             RestartPolicy.ResumeCommand(
-                Live(bridge: "session_x", name: "night shift", nameSource: "custom")));
+                Live(bridge: "session_x", name: "night shift", nameSource: null), title: "Some title"));
 
-    /// <summary>A derived name is the CLI's own slug; pinning it would freeze a stale label.</summary>
+    /// <summary>
+    /// A derived name carries the folder and a collision suffix drawn fresh at every launch,
+    /// so leaving it to re-derive is what made a restarted session change names for nothing.
+    /// </summary>
     [Fact]
-    public void ADerivedNameIsLeftToReDerive() =>
-        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --remote-control",
+    public void ADerivedNameGivesWayToTheSessionsOwnTitle() =>
+        Assert.Equal(
+            "claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'Add retry logic to address-vault download' --remote-control",
             RestartPolicy.ResumeCommand(
-                Live(bridge: "session_x", name: "demo-6c", nameSource: "derived")));
+                Live(bridge: "session_x", name: "demo-6c", nameSource: "derived"),
+                title: "Add retry logic to address-vault download"));
+
+    /// <summary>A yielded name is no more the operator's choice than a derived one.</summary>
+    [Fact]
+    public void ACollisionNameGivesWayToo() =>
+        Assert.Equal(
+            "claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'Art persona website design' --remote-control",
+            RestartPolicy.ResumeCommand(
+                Live(bridge: "session_x", name: "demo-2", nameSource: "collision"),
+                title: "Art persona website design"));
 
     [Fact]
     public void RelaunchReturnsTheShellToTheSessionFolder() =>
-        Assert.Equal(@"cd 'C:\Users\kk\Code\demo'; claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1",
+        Assert.Equal(
+            @"cd 'C:\Users\kk\Code\demo'; claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9'",
             RestartPolicy.RelaunchLine(Live()));
 
     [Fact]
     public void AQuoteInAPathCannotBreakOutOfTheCommand()
     {
         var line = RestartPolicy.RelaunchLine(Live(cwd: @"C:\it's\here"));
-        Assert.Equal(@"cd 'C:\it''s\here'; claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1", line);
+        Assert.StartsWith(@"cd 'C:\it''s\here'; claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1", line);
     }
+
+    /// <summary>A title is typed into a shell like anything else, so it is quoted like one.</summary>
+    [Fact]
+    public void AQuoteInATitleCannotBreakOutOfTheCommand() =>
+        Assert.EndsWith("--name 'it''s working'",
+            RestartPolicy.ResumeCommand(Live(), title: "it's working"));
 
     [Fact]
     public void NoRecordedFolderMeansJustResumeWhereTheShellStands() =>
-        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1",
+        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'session-b9'",
             RestartPolicy.RelaunchLine(Live(cwd: null)));
 }

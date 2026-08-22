@@ -157,6 +157,10 @@ public sealed class SessionRow : INotifyPropertyChanged
     }
 
     public string Name => _info.Name ?? "(untitled)";
+
+    /// <summary>The session's own title, or null when it has not earned one — what a
+    /// relaunch names it after, where <see cref="Name"/> is only for display.</summary>
+    public string? Title => _info.Title;
     public string Project => _info.Project;
     public string Status => _info.Status.ToWire();
     public bool Complete => _info.Complete;
@@ -167,6 +171,7 @@ public sealed class SessionRow : INotifyPropertyChanged
     public string Recap => _info.Recap;
     public double SizeKB => _info.SizeKB;
     public string Command => _info.Command;
+    public string NamedCommand => _info.NamedCommand;
 
     /// <summary>Third line of the card: status · context · file size.</summary>
     public string MetaLine

@@ -30,7 +30,12 @@ public static class SessionRestarter
     /// Restart <paramref name="live"/> in place. Safety is the caller's to decide
     /// (see <see cref="RestartPolicy"/>); this is only the mechanism.
     /// </summary>
-    public static async Task<RestartResult> RestartAsync(LiveSession live)
+    /// <remarks>
+    /// <paramref name="title"/> is the session's own title, read from its file by the caller
+    /// that has it. It only names the session on the way back up; a restart without it still
+    /// works, and falls back to the folder.
+    /// </remarks>
+    public static async Task<RestartResult> RestartAsync(LiveSession live, string? title = null)
     {
         // Find the shell first: with nothing to hand the terminal back to, quitting Claude
         // would close the tab and strand the session, which is worse than leaving it stale.
@@ -46,7 +51,7 @@ public static class SessionRestarter
 
         await Task.Delay(600);   // let the shell finish repainting its prompt
 
-        var line = RestartPolicy.RelaunchLine(live);
+        var line = RestartPolicy.RelaunchLine(live, title);
         if (!await Task.Run(() => ConsoleInput.SendLine(shell, line)))
             return RestartResult.Fail($"it quit, but the resume did not go in — type: {line}");
 

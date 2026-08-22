@@ -123,7 +123,7 @@ public sealed class SessionScanner
         return new SessionInfo
         {
             Cwd = cwd,
-            Name = string.IsNullOrEmpty(fields.Name) ? "(untitled)" : fields.Name,
+            Name = string.IsNullOrEmpty(fields.Name) ? SessionInfo.Untitled : fields.Name,
             LastPrompt = fields.LastPrompt,
             Recap = fields.Recap,
             Status = fields.Status,

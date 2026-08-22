@@ -307,7 +307,7 @@ public partial class MainViewModel : ObservableObject
 
                 StatusLine = $"Restarting \"{row.Name}\" ({i + 1} of {targets.Count})…";
 
-                var result = await SessionRestarter.RestartAsync(live);
+                var result = await SessionRestarter.RestartAsync(live, row.Title);
                 if (result.Ok) done++;
                 else failures.Add($"\"{row.Name}\" — {result.Message}");
 
