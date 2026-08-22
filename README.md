@@ -115,7 +115,10 @@ SessionCli fork <id> --tip          # the official --fork-session, in a new term
 SessionCli restart <id>...          # restart in the terminal it already sits in
 SessionCli restart --stale          # prints the plan; add --yes to actually do it
 SessionCli resume <id>              # open a terminal and resume
+SessionCli new --in <path>          # start a session that does not exist yet
 ```
+
+`new` is the one verb that names no session, because the id it would name does not exist until the CLI writes its first record. It opens a terminal in a folder at a fresh `claude` prompt — `--in` defaults to the folder you are in, `--name` to whatever the CLI derives — and the session joins `list` under its own id once you have typed something into it.
 
 `SessionCli help` prints the lot, including the `list` filters (`--disposition`, `--limit`, `--top`, `--newest-per-project`, `--context-window`, `--json <path>`).
 

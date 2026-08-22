@@ -133,6 +133,7 @@ internal static class Cli
           SessionCli restart <id>...             restart in the terminal it already sits in
           SessionCli restart --stale             restart every stale session that is idle
           SessionCli resume <id>                 open a terminal and resume it
+          SessionCli new [--in <path>]           open a terminal on a brand-new session
 
         Filters for `list`
           --status <s>          complete, waiting-you, waiting-agent, cut-off, limit,
@@ -150,6 +151,8 @@ internal static class Cli
           --json <path>         write to a file instead of stdout
 
         Flags for the acting verbs
+          --in <path>  folder `new` starts in (default: the folder you are in)
+          --name <n>   what a new session answers to (default: the CLI derives one)
           --yes        actually do it; `restart --stale` only reports the plan without it
           --force      act on the session this command is running inside (refused otherwise)
           --dry-run    say what would happen and change nothing
@@ -185,6 +188,7 @@ internal static class Cli
                 "fork" => Commands.Fork(rest),
                 "restart" => Commands.Restart(rest),
                 "resume" => Commands.Resume(rest),
+                "new" => Commands.New(rest),
                 "help" or "-h" or "-?" => Print(HelpText),
                 _ => throw new UsageException($"Unknown command: {args[0]}"),
             };

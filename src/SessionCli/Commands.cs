@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using SessionCore;
 
 namespace SessionCli;
@@ -462,6 +461,58 @@ internal static class Commands
         });
     }
 
+    // --- launching ----------------------------------------------------------
+
+    /// <summary>
+    /// Start a brand-new session: a terminal in a folder, sitting at a fresh
+    /// <c>claude</c> prompt.
+    ///
+    /// Every other acting verb names the session it acts on. This one cannot — the id does
+    /// not exist until the CLI writes its first record, long after this process has gone —
+    /// so the result reports the folder and the command instead, and the session appears in
+    /// `list` under its own id once it has something to say. There is likewise no
+    /// already-open check to make: two sessions in one repo is a normal way to work, unlike
+    /// two `--resume`s of the same conversation.
+    ///
+    /// The name is left to the CLI unless the caller supplies one. A new session has no
+    /// title to be called by yet, so the folder-derived name is genuinely the best there is;
+    /// the churn <see cref="SessionName"/> exists to prevent is a restart problem.
+    /// </summary>
+    public static int New(Args args)
+    {
+        args.RejectUnknown("in", "name", "dry-run");
+
+        // The only positional this verb could plausibly be given is a session id, which
+        // would mean the caller wanted `resume`. An unquoted multi-word --name lands here
+        // too, so say both.
+        if (args.Positional.Count > 0)
+            throw new UsageException(
+                $"'new' starts a session rather than naming one, so it takes no bare arguments (got '{args.Positional[0]}'). "
+                + "Use --in <path> for the folder, quote a --name that has spaces, and `resume <id>` to reopen an existing session.");
+
+        // No --in means here, which is what a person typing this inside a repo means.
+        var folder = Path.GetFullPath(args.Has("in") ? args.Require("in") : Directory.GetCurrentDirectory());
+        if (!Directory.Exists(folder))
+            throw new UsageException($"No such folder: {folder}");
+
+        var command = NewSessionLine(folder, args.Has("name") ? args.Require("name") : null);
+        if (!args.Has("dry-run")) StartTerminal(command);
+
+        return Cli.EmitResult(new ActionResult
+        {
+            Ok = true,
+            Action = "new",
+            Message = args.Has("dry-run")
+                ? $"Would run: {command}"
+                : $"Opened a terminal running: {command}. Its session id exists once you type something in it.",
+        });
+    }
+
+    /// <summary>The line a new session is launched with: into the folder, then Claude.</summary>
+    internal static string NewSessionLine(string folder, string? name) =>
+        $"cd {SessionName.Quote(folder)}; "
+        + (name is { Length: > 0 } ? $"claude --name {SessionName.Quote(name)}" : "claude");
+
     // --- shared -------------------------------------------------------------
 
     private static SessionScanner RequireScanner()
@@ -509,24 +560,6 @@ internal static class Commands
         Environment.GetEnvironmentVariable("CLAUDE_CODE_SESSION_ID") is { Length: > 0 } self
         && string.Equals(self, sessionId, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Open a terminal and run a command in it.
-    ///
-    /// If this process was itself launched from a Claude session it inherited that
-    /// session's markers; passing them on makes the resumed session think it is a nested
-    /// child and skip saving its transcript. UseShellExecute must be false to edit the
-    /// child environment at all.
-    /// </summary>
-    private static void StartTerminal(string command)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = "powershell.exe",
-            ArgumentList = { "-NoExit", "-Command", command },
-            UseShellExecute = false,
-        };
-        psi.Environment.Remove("CLAUDE_CODE_CHILD_SESSION");
-        psi.Environment.Remove("CLAUDE_CODE_SESSION_ID");
-        Process.Start(psi);
-    }
+    /// <summary>Open a terminal and run a command in it.</summary>
+    private static void StartTerminal(string command) => TerminalLauncher.Start(command);
 }
