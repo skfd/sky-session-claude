@@ -53,7 +53,9 @@ So: last real turn is an agent turn → `complete` (or `waiting-you` if it ends 
   **Restart stale** takes only the sessions where nothing can be lost: running an older build, idle for a while, and finished. Everything else is offered on its own card with the reason it was skipped — a turn in flight, a question waiting on you (that unsent draft exists in no file, so nothing outside the process can see it), a session running under the desktop app or the SDK where there is no terminal of ours to drive, or one stopped mid tool step. The count in the button is what it will actually restart, and what it skipped is reported rather than passed over in silence.
 - **Live updates** → a filesystem watcher refreshes cards automatically as sessions change (toggle off with the **Live** checkbox).
 - **Filter** by search text, status, or project; hide completed sessions; scope to the current project or all projects; cap how many sessions load (defaults to **All**, so an old unfinished session can never hide just past a cut-off; drop to 50 → 500 if you want a shorter scan).
-- **Abandon a session** (**X**) → crosses out sessions you're not going back to. They stay honestly classified as unfinished — abandoning is your judgment, not the classifier's, so it never changes the status. Abandoned cards are hidden until you tick **Show abandoned**, which shows them struck through. The marks persist in `%APPDATA%\sky-session-claude\abandoned.json`.
+- **Mark a session done** (**D**) → ticks off sessions whose work actually landed, whatever the file ended on. The classifier reads the last turn, so an agent that finishes and then asks "want me to push?" leaves `waiting-you`, and hitting Esc once the change is in leaves `interrupted` — both still nag from the list. **D** settles them: the card keeps its real status and gains a green tick, and it drops out of the list with the completed ones until you untick **Hide completed**.
+- **Abandon a session** (**X**) → crosses out sessions you're *not* going back to. They stay honestly classified as unfinished — abandoning is your judgment, not the classifier's, so it never changes the status. Abandoned cards are hidden until you tick **Show abandoned**, which shows them struck through.
+- Both marks are yours, not the scanner's; pressing the same key again clears one. They persist in `%APPDATA%\sky-session-claude\dispositions.json` (migrated from the older `abandoned.json`) and never touch `sessions.json`, which every scan regenerates.
 - **Dark mode** → follows the Windows apps theme, title bar included, and switches live when you flip the system setting — no restart, and no in-app toggle to keep in sync. The window and taskbar icon switch too: by night the cloud gets a moon and stars <img src="docs/icon-night.png" width="20" align="top" alt="">.
 
 ### Keyboard shortcuts
@@ -61,7 +63,8 @@ So: last real turn is an agent turn → `complete` (or `waiting-you` if it ends 
 - **R** — refresh
 - **Ctrl+R** — restart the selected session(s) in place
 - **A** — hide/show completed sessions
-- **X** — abandon/restore the selected session(s)
+- **D** — mark the selected session(s) done (again to clear)
+- **X** — abandon the selected session(s) (again to restore)
 - **F** — fork the selected session (at the tip, or from before any earlier prompt)
 
 ## Install

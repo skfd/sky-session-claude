@@ -45,6 +45,9 @@
     <SolidColorBrush x:Key="Brush.Accent.Purple" Color="#7E22CE"/>
     <SolidColorBrush x:Key="Brush.Accent.Orange" Color="#C2410C"/>
 
+    <!-- "You marked this done" tick. A disposition, not a status, so it too sits outside the set. -->
+    <SolidColorBrush x:Key="Brush.Done.Tick" Color="#15803D"/>
+
     <!-- "Open in a terminal right now" dot. Not a status, so it sits outside the stripe set. -->
     <SolidColorBrush x:Key="Brush.Live.Dot" Color="#15803D"/>
 

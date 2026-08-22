@@ -29,21 +29,37 @@ public sealed class SessionRow : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>
-    /// Operator disposition: "unfinished, and I'm not going back to it". Never set by
-    /// the scanner and never folded into <see cref="Complete"/> — see docs/GLOSSARY.md.
+    /// The operator's own verdict on this session — never the scanner's, and never
+    /// folded into <see cref="Status"/>: an abandoned cut-off session stays cut-off,
+    /// and a session marked Done keeps whatever status it earned. See docs/GLOSSARY.md.
     /// </summary>
-    public bool Abandoned
+    public Disposition Disposition
     {
-        get => _abandoned;
+        get => _disposition;
         set
         {
-            if (_abandoned == value) return;
-            _abandoned = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Abandoned)));
+            if (_disposition == value) return;
+            _disposition = value;
+            // Everything derived from it has to re-read, filters and title included.
+            foreach (var name in new[]
+                     { nameof(Disposition), nameof(Abandoned), nameof(Done), nameof(Settled) })
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         }
     }
 
-    private bool _abandoned;
+    private Disposition _disposition;
+
+    /// <summary>"Unfinished, and I'm not going back to it" (X). Crossed out on the card.</summary>
+    public bool Abandoned => _disposition == Disposition.Abandoned;
+
+    /// <summary>"Finished, whatever the classifier says" (D). Ticked on the card.</summary>
+    public bool Done => _disposition == Disposition.Done;
+
+    /// <summary>
+    /// Nothing left to do here: the classifier says complete, or you said so with D.
+    /// This — not <see cref="Complete"/> — is what "Hide completed" hides.
+    /// </summary>
+    public bool Settled => Complete || Done;
 
     /// <summary>
     /// The interactive CLI running this session in a terminal right now, or null when none

@@ -10,7 +10,7 @@ namespace SessionApp;
 public partial class MainViewModel : ObservableObject
 {
     private readonly SessionScanner _scanner = new();
-    private readonly AbandonedStore _abandoned = new();
+    private readonly DispositionStore _dispositions = new();
 
     /// <summary>Backing list; the grid binds to <see cref="RowsView"/> so filters apply.</summary>
     public ObservableCollection<SessionRow> Rows { get; } = new();
@@ -124,7 +124,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (obj is not SessionRow r) return false;
 
-        if (HideCompleted && r.Complete) return false;
+        if (HideCompleted && r.Settled) return false;
         if (!ShowAbandoned && r.Abandoned) return false;
         if (StatusFilter != AllStatusesLabel && r.Status != StatusFilter) return false;
         if (ProjectFilter != AllProjectsLabel && r.Project != ProjectFilter) return false;
@@ -164,7 +164,8 @@ public partial class MainViewModel : ObservableObject
             await RefreshLiveAsync();
             UpdateWindowTitle();
             StatusLine = $"{infos.Count} session(s)  ·  {DateTime.Now:HH:mm:ss}"
-                + "  —  double-click to resume · A: hide/show completed · X: abandon/restore · R: refresh · Ctrl+R: restart · F: fork";
+                + "  —  double-click to resume · A: hide/show completed · D: done · X: abandon"
+                + " · R: refresh · Ctrl+R: restart · F: fork";
         }
         finally
         {
@@ -329,7 +330,10 @@ public partial class MainViewModel : ObservableObject
             }
             else
             {
-                var row = new SessionRow(info) { Abandoned = _abandoned.Contains(info.SessionId) };
+                var row = new SessionRow(info)
+                {
+                    Disposition = _dispositions.Get(info.SessionId),
+                };
                 Rows.Insert(idx, row);
                 bySid[info.SessionId] = row;
             }
@@ -340,10 +344,11 @@ public partial class MainViewModel : ObservableObject
     public void ToggleHideCompleted() => HideCompleted = !HideCompleted;
 
     /// <summary>
-    /// Abandon or restore the given rows (bound to the X hotkey). A mixed selection
-    /// abandons, so one keypress crosses out everything selected.
+    /// Record the operator's verdict on the given rows: Done (D) or Abandoned (X).
+    /// Pressing the same key again clears the mark, so one key both sets and undoes it,
+    /// and a mixed selection sets — one keypress covers everything selected.
     /// </summary>
-    public void ToggleAbandoned(IReadOnlyList<SessionRow> rows)
+    public void Mark(IReadOnlyList<SessionRow> rows, Disposition disposition)
     {
         if (rows.Count == 0)
         {
@@ -351,23 +356,29 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        bool abandon = rows.Any(r => !r.Abandoned);
+        var target = rows.Any(r => r.Disposition != disposition) ? disposition : Disposition.None;
         foreach (var r in rows)
         {
-            r.Abandoned = abandon;
-            _abandoned.Set(r.Info.SessionId, abandon);
+            r.Disposition = target;
+            _dispositions.Set(r.Info.SessionId, target);
         }
 
         RefreshView();
         UpdateWindowTitle();
-        // The rows vanish when abandoned, so say where they went.
-        StatusLine = $"{(abandon ? "Abandoned" : "Restored")} {rows.Count} session(s)."
-            + (abandon && !ShowAbandoned ? "  Tick \"Show abandoned\" to see them." : "");
+        // Marked rows drop out of the list under the default filters, so say where they went.
+        StatusLine = target switch
+        {
+            Disposition.Done => $"Marked {rows.Count} session(s) done."
+                + (HideCompleted ? "  Untick \"Hide completed\" to see them." : ""),
+            Disposition.Abandoned => $"Abandoned {rows.Count} session(s)."
+                + (ShowAbandoned ? "" : "  Tick \"Show abandoned\" to see them."),
+            _ => $"Restored {rows.Count} session(s).",
+        };
     }
 
     private void UpdateWindowTitle()
     {
-        int n = Rows.Count(r => !r.Complete && !r.Abandoned);
+        int n = Rows.Count(r => !r.Settled && !r.Abandoned);
         WindowTitle = $"Sky {n} session{(n == 1 ? "" : "s")}";
     }
 
