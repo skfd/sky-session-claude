@@ -105,6 +105,7 @@ SessionCli list --live              # open in a terminal right now
 SessionCli list --stale             # live, but behind the installed build
 SessionCli show <id>                # one session in full, with its fork points
 SessionCli live                     # what's running, straight from the registry
+SessionCli peek <id>                # what a live session's terminal shows right now
 
 # Marking — yours, not the classifier's; the app picks these up within seconds
 SessionCli done <id>...             # and undone, abandon, restore
@@ -117,6 +118,8 @@ SessionCli restart --stale          # prints the plan; add --yes to actually do 
 SessionCli resume <id>              # open a terminal and resume
 SessionCli new --in <path>          # start a session that does not exist yet
 ```
+
+`peek` reads a live session's screen — the visible window of its console, borrowed the same way a restart borrows it, with nothing focused and nothing typed. It answers the question the session file cannot: a terminal blocked on Claude Code's "do you trust this folder?", a permission it is waiting to be granted, a draft sitting in its input box — none of that is written anywhere until it is answered. It resolves ids against the live registry rather than the projects folder, so a session that has been opened but not yet typed into (which has no file at all) can still be looked at.
 
 `new` is the one verb that names no session, because the id it would name does not exist until the CLI writes its first record. It opens a terminal in a folder at a fresh `claude` prompt — `--in` defaults to the folder you are in, `--name` to whatever the CLI derives — and the session joins `list` under its own id once you have typed something into it.
 

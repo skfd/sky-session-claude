@@ -120,6 +120,7 @@ internal static class Cli
           SessionCli list [filters]           the session list, filtered
           SessionCli show <id>                one session in full, with its fork points
           SessionCli live                     only the sessions open in a terminal now
+          SessionCli peek <id>                what a live session's terminal shows now
 
         Marking            (yours, not the classifier's; the app sees these within seconds)
           SessionCli done <id>...             tick it off, whatever the file ended on
@@ -181,6 +182,7 @@ internal static class Cli
                 "list" => Commands.List(rest),
                 "show" => Commands.Show(rest),
                 "live" => Commands.Live(rest),
+                "peek" => Commands.Peek(rest),
                 "done" => Commands.Mark(rest, SessionCore.Disposition.Done),
                 "undone" => Commands.Mark(rest, SessionCore.Disposition.None),
                 "abandon" => Commands.Mark(rest, SessionCore.Disposition.Abandoned),

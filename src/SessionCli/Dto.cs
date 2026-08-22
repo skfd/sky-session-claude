@@ -152,6 +152,9 @@ internal sealed class ActionResult
     public required string Action { get; init; }
     public required string Message { get; init; }
     public List<ActionItem>? Items { get; init; }
+
+    /// <summary>What `peek` read off a terminal; null for every other verb.</summary>
+    public string? Screen { get; init; }
 }
 
 internal sealed class ActionItem

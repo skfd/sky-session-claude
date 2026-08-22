@@ -64,6 +64,7 @@ public static class ConsoleInput
         lock (Gate)
         {
             bool had = HasOwnConsole;
+            var redirected = Redirection.Capture();
             try
             {
                 FreeConsole();                   // drop whatever a previous borrow left attached
@@ -77,8 +78,76 @@ public static class ConsoleInput
                 finally { FreeConsole(); }
             }
             catch { return ""; }
-            finally { RestoreOwnConsole(had); }
+            finally { RestoreOwnConsole(had, redirected); }
         }
+    }
+
+    /// <summary>
+    /// What the session's terminal is showing right now, as text.
+    ///
+    /// The same borrow as <see cref="ReadTitle"/>, reading the screen buffer instead of the
+    /// title: attach, open <c>CONOUT$</c>, and copy back the characters in the visible
+    /// window. Only the visible window, not the whole buffer — scrollback is a transcript
+    /// we already have a better copy of, while what is on screen is the one thing no file
+    /// records: the prompt a session is blocked on, the draft in its input box, whatever it
+    /// is asking for before it will go any further.
+    ///
+    /// Characters only, no colour or cursor position, so a box-drawn menu comes back as its
+    /// text and the highlighted option reads by its marker. Empty means the console could
+    /// not be borrowed — a session running under the desktop app or the SDK has no console
+    /// of ours to attach to.
+    /// </summary>
+    public static string ReadScreen(int pid)
+    {
+        lock (Gate)
+        {
+            bool had = HasOwnConsole;
+            var redirected = Redirection.Capture();
+            try
+            {
+                FreeConsole();                   // drop whatever a previous borrow left attached
+                if (!AttachConsole((uint)pid)) return "";
+                try
+                {
+                    // CONOUT$ is opened read-write even to read: a handle asking for read
+                    // alone is refused on a console someone else already has open for output.
+                    var conout = CreateFileW("CONOUT$", GENERIC_READ | GENERIC_WRITE,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE, IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
+                    if (conout == InvalidHandle) return "";
+
+                    try
+                    {
+                        return GetConsoleScreenBufferInfo(conout, out var info) ? Rows(conout, info) : "";
+                    }
+                    finally { CloseHandle(conout); }
+                }
+                finally { FreeConsole(); }
+            }
+            catch { return ""; }
+            finally { RestoreOwnConsole(had, redirected); }
+        }
+    }
+
+    /// <summary>The visible rows, right-trimmed, with the blank tail of the window dropped.</summary>
+    private static string Rows(IntPtr conout, CONSOLE_SCREEN_BUFFER_INFO info)
+    {
+        int width = info.Size.X;
+        var row = new char[width];
+        var lines = new List<string>();
+
+        for (short y = info.Window.Top; y <= info.Window.Bottom; y++)
+        {
+            // The read position is a COORD packed into a DWORD: Y in the high word, X in
+            // the low one, and every row starts at column zero.
+            uint at = (uint)y << 16;
+            if (!ReadConsoleOutputCharacterW(conout, row, (uint)width, at, out uint read)) break;
+            lines.Add(new string(row, 0, (int)read).TrimEnd());
+        }
+
+        // A console window is as tall as it is whatever is written to it; the blank rows
+        // under the last line are the unused part of it rather than anything on screen.
+        while (lines.Count > 0 && lines[^1].Length == 0) lines.RemoveAt(lines.Count - 1);
+        return string.Join('\n', lines);
     }
 
     /// <summary>
@@ -92,8 +161,9 @@ public static class ConsoleInput
             IgnoreCtrlC.Arm();
 
             bool had = HasOwnConsole;
+            var redirected = Redirection.Capture();
             FreeConsole();                       // drop whatever a previous borrow left attached
-            if (!AttachConsole((uint)pid)) { RestoreOwnConsole(had); return false; }
+            if (!AttachConsole((uint)pid)) { RestoreOwnConsole(had, redirected); return false; }
             try
             {
                 var conin = CreateFileW("CONIN$", GENERIC_READ | GENERIC_WRITE,
@@ -107,7 +177,7 @@ public static class ConsoleInput
             finally
             {
                 FreeConsole();
-                RestoreOwnConsole(had);
+                RestoreOwnConsole(had, redirected);
             }
         }
     }
@@ -128,10 +198,9 @@ public static class ConsoleInput
     /// so everything it prints afterwards — the result of the very operation — is dropped.
     ///
     /// The parent's console is the right one to come back to: a console program launched
-    /// from a shell shares that shell's console rather than owning one. Redirected output
-    /// is a pipe, unaffected by any of this, and is left alone.
+    /// from a shell shares that shell's console rather than owning one.
     /// </summary>
-    private static void RestoreOwnConsole(bool had)
+    private static void RestoreOwnConsole(bool had, Redirection redirected)
     {
         if (!had) return;
 
@@ -139,6 +208,10 @@ public static class ConsoleInput
         // still get it on the streams we hand back, or the report comes out mojibake.
         var encoding = TryGetOutputEncoding();
         if (!AttachConsole(ATTACH_PARENT_PROCESS)) return;
+
+        // Attaching to a console hands the process that console's standard handles, which
+        // is not what a caller who redirected ours asked for.
+        redirected.Restore();
 
         try
         {
@@ -148,6 +221,30 @@ public static class ConsoleInput
                 Console.SetError(Writer(Console.OpenStandardError(), encoding));
         }
         catch (IOException) { /* nothing left to write to; the caller's exit code still lands */ }
+    }
+
+    /// <summary>
+    /// Where this process's output was going before the borrow, so it can go back there.
+    ///
+    /// <c>AttachConsole</c> replaces the standard handles with the console's own. A program
+    /// whose stdout is a file or a pipe therefore comes back from a borrow writing to the
+    /// terminal instead of to the caller — and because .NET creates <c>Console.Out</c> on
+    /// first use, a verb that prints nothing until after the borrow (every one of them, in
+    /// practice: the result is the last thing that happens) never notices, and its JSON is
+    /// simply gone. Redirection must be captured before the first <c>FreeConsole</c> and
+    /// put back after the last <c>AttachConsole</c>.
+    /// </summary>
+    private readonly struct Redirection(bool outRedirected, IntPtr stdout, bool errRedirected, IntPtr stderr)
+    {
+        public static Redirection Capture() => new(
+            Console.IsOutputRedirected, GetStdHandle(STD_OUTPUT_HANDLE),
+            Console.IsErrorRedirected, GetStdHandle(STD_ERROR_HANDLE));
+
+        public void Restore()
+        {
+            if (outRedirected) SetStdHandle(STD_OUTPUT_HANDLE, stdout);
+            if (errRedirected) SetStdHandle(STD_ERROR_HANDLE, stderr);
+        }
     }
 
     private static StreamWriter Writer(Stream stream, System.Text.Encoding? encoding) =>
@@ -218,7 +315,24 @@ public static class ConsoleInput
     private const uint FILE_SHARE_READ = 1, FILE_SHARE_WRITE = 2, OPEN_EXISTING = 3;
     private const uint CTRL_C_EVENT = 0, CTRL_BREAK_EVENT = 1;
     private const uint ATTACH_PARENT_PROCESS = 0xFFFFFFFF;
+    private const int STD_OUTPUT_HANDLE = -11, STD_ERROR_HANDLE = -12;
     private static readonly IntPtr InvalidHandle = new(-1);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct COORD { public short X, Y; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SMALL_RECT { public short Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CONSOLE_SCREEN_BUFFER_INFO
+    {
+        public COORD Size;
+        public COORD CursorPosition;
+        public ushort Attributes;
+        public SMALL_RECT Window;
+        public COORD MaximumWindowSize;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct INPUT_RECORD
@@ -259,4 +373,17 @@ public static class ConsoleInput
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool WriteConsoleInput(IntPtr handle, INPUT_RECORD[] buffer, uint length, out uint written);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GetStdHandle(int which);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetStdHandle(int which, IntPtr handle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetConsoleScreenBufferInfo(IntPtr handle, out CONSOLE_SCREEN_BUFFER_INFO info);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool ReadConsoleOutputCharacterW(
+        IntPtr handle, [Out] char[] buffer, uint length, uint at, out uint read);
 }

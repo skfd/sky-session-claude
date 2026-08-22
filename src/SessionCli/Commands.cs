@@ -461,6 +461,72 @@ internal static class Commands
         });
     }
 
+    // --- looking ------------------------------------------------------------
+
+    /// <summary>
+    /// What a live session's terminal is showing right now.
+    ///
+    /// Everything else this tool reads comes from the session file, which records the
+    /// conversation and nothing else. The screen holds what the file cannot: the prompt a
+    /// session is blocked on before it has written anything, a draft in its input box, the
+    /// permission it is waiting to be granted. That is the difference between knowing a
+    /// session is idle and knowing what it is idle *about*.
+    ///
+    /// It reads; it never types. Answering what is on screen is still `restart`'s kind of
+    /// act — someone else's terminal — and stays a separate decision.
+    /// </summary>
+    public static int Peek(Args args)
+    {
+        args.RejectUnknown();
+
+        // The id is checked before any scan: a mistyped command line should not cost a walk
+        // of every project folder.
+        var idOrPrefix = OneId(args, "peek");
+
+        // The registry is the index here, not the projects folder. A session opened but not
+        // yet typed into has written no file to resolve against, and that is precisely when
+        // its screen is worth reading — a terminal sitting on a trust prompt records nothing
+        // anywhere else. Every session this verb can work on is live by definition, so
+        // nothing is lost by asking the shorter list first.
+        var live = ResolveLive(idOrPrefix);
+        if (live is null)
+        {
+            // Not live. Say which of the two reasons it is, since they need different
+            // things of the operator: Resolve throws if there is no such session at all.
+            var sleeping = Path.GetFileNameWithoutExtension(Resolve(RequireScanner(), idOrPrefix).Name);
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = false,
+                Action = "peek",
+                Message = $"{sleeping} is not open in a terminal, so there is no screen to read.",
+            });
+        }
+
+        var name = Titled(live.Name) ?? live.SessionId;
+        var screen = ConsoleInput.ReadScreen(live.Pid);
+
+        // No console to borrow. The registry knows why, and the reason is the useful half of
+        // the answer: it is the same set of hosts a restart refuses to drive.
+        if (screen.Length == 0)
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = false,
+                Action = "peek",
+                Message = $"Could not read pid {live.Pid}'s console"
+                    + (live.Entrypoint is { Length: > 0 } and not "cli"
+                        ? $" — \"{name}\" is running under {live.Entrypoint} rather than a terminal of ours."
+                        : $" — \"{name}\" may have just exited."),
+            });
+
+        return Cli.EmitResult(new ActionResult
+        {
+            Ok = true,
+            Action = "peek",
+            Message = $"\"{name}\" (pid {live.Pid}) is showing {screen.Split('\n').Length} lines.",
+            Screen = screen,
+        });
+    }
+
     // --- launching ----------------------------------------------------------
 
     /// <summary>
@@ -543,6 +609,28 @@ internal static class Commands
                 $"'{idOrPrefix}' matches {matches.Count} sessions: "
                 + string.Join(", ", matches.Take(5).Select(m => Path.GetFileNameWithoutExtension(m.Name)))
                 + (matches.Count > 5 ? ", ..." : "") + ". Use a longer prefix."),
+        };
+    }
+
+    /// <summary>
+    /// The live session an id or unique prefix names, or null when none is running. Same
+    /// prefix rule as <see cref="Resolve"/> and the same refusal to guess between two.
+    /// </summary>
+    private static LiveSession? ResolveLive(string idOrPrefix)
+    {
+        var matches = LiveSessions.Scan()
+            .Where(e => e.Key.StartsWith(idOrPrefix, StringComparison.OrdinalIgnoreCase))
+            .SelectMany(e => e.Value)
+            .ToList();
+
+        return matches.Count switch
+        {
+            0 => null,
+            1 => matches[0],
+            _ => throw new UsageException(
+                $"'{idOrPrefix}' matches {matches.Count} running sessions: "
+                + string.Join(", ", matches.Take(5).Select(m => m.SessionId))
+                + ". Use a longer prefix."),
         };
     }
 
