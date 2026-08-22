@@ -1,0 +1,12 @@
+<Project>
+
+  <PropertyGroup>
+    <!-- One version for the whole product: the app and the CLI ship together in one
+         GitHub release, so they must not drift apart. Between releases this carries a
+         "-dev" suffix on the next patch (1.7.1-dev after v1.7.0 shipped) so a dev build
+         is never mistaken for the release it followed; the release itself drops the
+         suffix or bumps further. See .claude/skills/gh-release/SKILL.md. -->
+    <Version>1.7.1-dev</Version>
+  </PropertyGroup>
+
+</Project>
