@@ -1,7 +1,10 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
+using System.Windows.Automation;
+using SessionCore;
 
 namespace SessionApp;
 
@@ -18,6 +21,13 @@ namespace SessionApp;
 /// to focus it. (The id is generated at runtime and never appears on the command
 /// line or in the process's creation-time environment, so the registry is the
 /// only reliable source.)
+///
+/// Windows Terminal is one process behind every window and tab, so the process tree
+/// stops at "one of these nine windows" - and each pane's shell hangs directly off
+/// <c>WindowsTerminal.exe</c>, with that pane's <c>OpenConsole.exe</c> a sibling
+/// rather than its parent, so no tree edge names the tab either. The title closes
+/// that last gap: attaching to the session's console reads back the title the CLI
+/// painted, and UI Automation finds the tab wearing it.
 /// </summary>
 internal static class LiveSessions
 {
@@ -64,15 +74,17 @@ internal static class LiveSessions
     }
 
     /// <summary>
-    /// Bring the terminal window hosting <paramref name="pid"/> to the foreground.
-    /// Returns false if no visible host window can be resolved (caller should then
-    /// fall back to opening a fresh terminal).
+    /// Bring the terminal showing <paramref name="pid"/> to the foreground, switching
+    /// to its tab when the host is tabbed. Returns false if no visible host window can
+    /// be resolved (caller should then fall back to opening a fresh terminal).
     /// </summary>
     public static bool TryFocus(int pid)
     {
-        var hwnd = ResolveTerminalWindow(pid);
-        if (hwnd == IntPtr.Zero) return false;
-        return Activate(hwnd);
+        var target = ResolveTarget(pid);
+        if (target.Hwnd == IntPtr.Zero) return false;
+
+        TrySelect(target.Tab);          // no-op unless the host has tabs
+        return Activate(target.Hwnd);
     }
 
     private static string SessionsDir() =>
@@ -92,12 +104,18 @@ internal static class LiveSessions
 
     // --- window resolution --------------------------------------------------
 
+    /// <summary>The window to raise, and the tab inside it to switch to (if any).</summary>
+    private readonly record struct FocusTarget(IntPtr Hwnd, AutomationElement? Tab);
+
     // The terminal window that shows a console app is owned either by an ancestor
     // (Windows Terminal hosts the shell several levels up) or by a conhost/
     // OpenConsole child of the shell (the classic console window). So the candidate
     // owners are the process's ancestors plus each ancestor's console-host children;
-    // the first with a visible top-level window is the one to focus.
-    private static IntPtr ResolveTerminalWindow(int pid)
+    // the first that owns any visible top-level window is the host.
+    //
+    // Under Windows Terminal that one host owns every window at once, so "the first
+    // window" is a coin toss - the title is what picks the right one out.
+    private static FocusTarget ResolveTarget(int pid)
     {
         var (parents, childrenOf) = SnapshotProcessTree();
         var windows = TopLevelWindowsByPid();
@@ -116,9 +134,88 @@ internal static class LiveSessions
         }
 
         foreach (var candidate in candidates)
-            if (windows.TryGetValue(candidate, out var hwnd)) return hwnd;
+            if (windows.TryGetValue(candidate, out var hwnds) && hwnds.Count > 0)
+                return PickTab(hwnds, ConsoleTitle(pid));
 
-        return IntPtr.Zero;
+        return default;
+    }
+
+    // Find the window and tab wearing this session's title. Falling back to the first
+    // window keeps the old behaviour whenever the title is unreadable or ambiguous:
+    // the wrong tab of the right window still beats spawning a duplicate session.
+    private static FocusTarget PickTab(List<IntPtr> hwnds, string title)
+    {
+        if (TerminalTitle.Topic(title).Length > 0)
+            foreach (var hwnd in hwnds)
+                if (MatchingTab(hwnd, title) is { } tab)
+                    return new FocusTarget(hwnd, tab);
+
+        return new FocusTarget(hwnds[0], null);
+    }
+
+    // The one tab of this window that names the session - null if none does, or if
+    // several do (two idle sessions both sit under the title "Claude Code", and
+    // guessing between them would drag the user somewhere they did not ask to go).
+    private static AutomationElement? MatchingTab(IntPtr hwnd, string title)
+    {
+        try
+        {
+            var window = AutomationElement.FromHandle(hwnd);
+            if (window is null) return null;
+
+            var tabs = window.FindAll(
+                TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem));
+
+            AutomationElement? found = null;
+            foreach (AutomationElement tab in tabs)
+            {
+                if (!TerminalTitle.SameSession(tab.Current.Name, title)) continue;
+                if (found is not null) return null;      // ambiguous
+                found = tab;
+            }
+            return found;
+        }
+        catch { return null; }   // window closed mid-walk, or it exposes no automation tree
+    }
+
+    private static void TrySelect(AutomationElement? tab)
+    {
+        if (tab is null) return;
+        try
+        {
+            if (true.Equals(tab.GetCurrentPropertyValue(SelectionItemPattern.IsSelectedProperty))) return;
+            if (tab.GetCurrentPattern(SelectionItemPattern.Pattern) is SelectionItemPattern pattern)
+                pattern.Select();
+        }
+        catch { /* tab closed, or the host cannot select - raise the window regardless */ }
+    }
+
+    // --- console title ------------------------------------------------------
+
+    // The title the CLI painted on its terminal, read by borrowing the session's own
+    // console. A process may be attached to one console at a time, hence the lock; we
+    // are a WPF app and own none, so there is nothing to lose by detaching after.
+    private static readonly object ConsoleGate = new();
+
+    private static string ConsoleTitle(int pid)
+    {
+        lock (ConsoleGate)
+        {
+            try
+            {
+                FreeConsole();                          // drop anything a previous read left attached
+                if (!AttachConsole((uint)pid)) return "";
+                try
+                {
+                    var buffer = new StringBuilder(1024);
+                    GetConsoleTitle(buffer, (uint)buffer.Capacity);
+                    return buffer.ToString();
+                }
+                finally { FreeConsole(); }
+            }
+            catch { return ""; }
+        }
     }
 
     private static bool IsConsoleHost(string name) =>
@@ -180,10 +277,12 @@ internal static class LiveSessions
         return (parents, children);
     }
 
-    // First visible, titled, top-level window for each owning pid.
-    private static Dictionary<int, IntPtr> TopLevelWindowsByPid()
+    // Every visible, titled, top-level window, grouped by owning pid - all of them,
+    // because one Windows Terminal process owns all of its windows and only the tab
+    // titles say which is which.
+    private static Dictionary<int, List<IntPtr>> TopLevelWindowsByPid()
     {
-        var byPid = new Dictionary<int, IntPtr>();
+        var byPid = new Dictionary<int, List<IntPtr>>();
         EnumWindows((hwnd, _) =>
         {
             if (!IsWindowVisible(hwnd)) return true;
@@ -191,7 +290,10 @@ internal static class LiveSessions
             if (GetWindowTextLength(hwnd) == 0) return true;
 
             GetWindowThreadProcessId(hwnd, out uint pid);
-            if (pid != 0) byPid.TryAdd((int)pid, hwnd);
+            if (pid == 0) return true;
+
+            if (!byPid.TryGetValue((int)pid, out var list)) byPid[(int)pid] = list = new List<IntPtr>();
+            list.Add(hwnd);
             return true;
         }, IntPtr.Zero);
         return byPid;
@@ -236,6 +338,15 @@ internal static class LiveSessions
 
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool AttachConsole(uint pid);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool FreeConsole();
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint GetConsoleTitle(StringBuilder title, uint size);
 
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
