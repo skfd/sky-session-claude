@@ -1323,6 +1323,225 @@ internal static class Commands
         };
     }
 
+    // --- the inbox ----------------------------------------------------------
+
+    /// <summary>How long a queued command stays runnable. See the age gate below.</summary>
+    private const int DefaultMaxAgeMinutes = 120;
+
+    /// <summary>
+    /// Run the commands the brief queued, then get the file out of the way.
+    ///
+    /// This is the one verb whose caller is not in the room. Everything else here is typed
+    /// by someone watching a terminal, who sees the answer and can undo it; this arrives
+    /// from a folder, minutes or hours after it was decided, and runs against sessions the
+    /// decider could not see the current state of. Three things follow from that, and they
+    /// are the whole design:
+    ///
+    /// <list type="bullet">
+    /// <item><b>Nothing runs twice.</b> The file is moved aside before the results are
+    ///       written, so a task that fires every minute finds an empty inbox on the second
+    ///       minute rather than resuming everything again.</item>
+    /// <item><b>Nothing runs late.</b> A queue older than <c>--max-age</c> is refused
+    ///       whole. The failure this prevents is specific: the machine is off when the
+    ///       brief writes, and a week later a boot opens six terminals for decisions made
+    ///       about sessions that have all moved on.</item>
+    /// <item><b>Nothing is trusted.</b> No command carries <c>--force</c> or <c>--trust</c>,
+    ///       and <c>new</c> may only start in a folder that already has sessions in it —
+    ///       an allowlist nobody has to maintain, because it is a list of places you have
+    ///       already worked.</item>
+    /// </list>
+    /// </summary>
+    public static int Inbox(Args args)
+    {
+        args.RejectUnknown("run", "max-age", "dry-run");
+
+        var input = args.Require("run");
+        bool dry = args.Has("dry-run");
+
+        // The ordinary case, several hundred times a day: nobody queued anything. That is
+        // success, not an error — a scheduled task that logged a failure every minute for
+        // being asked to do nothing would be turned off within a week.
+        if (!File.Exists(input))
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = true,
+                Action = "inbox",
+                Message = $"Nothing queued at {input}.",
+            });
+
+        var (spent, resultPath) = InboxFile.Paths(input);
+        InboxFile.Parsed queue;
+        try
+        {
+            queue = InboxFile.Read(File.ReadAllText(input));
+        }
+        catch (InboxFile.RejectedException e)
+        {
+            // A file we cannot read is still moved aside. Left in place it would be re-read
+            // and re-rejected every minute until someone noticed, and the report of what was
+            // wrong with it would scroll past a hundred times over.
+            if (!dry) Move(input, spent);
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = false,
+                Action = "inbox",
+                Message = $"Rejected the queue at {input} — {e.Message}  Moved to {spent}.",
+            });
+        }
+
+        var issued = queue.IssuedAt ?? new DateTimeOffset(File.GetLastWriteTime(input));
+        var age = DateTimeOffset.Now - issued;
+        var maxAge = TimeSpan.FromMinutes(args.Int("max-age", DefaultMaxAgeMinutes));
+        if (age > maxAge)
+        {
+            if (!dry) Move(input, spent);
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = false,
+                Action = "inbox",
+                Message = $"Refused {queue.Commands.Count} command(s): the queue was written "
+                    + $"{Ago(age)} and only stays runnable for {maxAge.TotalMinutes:0} minutes. "
+                    + $"Moved to {spent}.",
+            });
+        }
+
+        var items = queue.Commands.Select(c => Run(c, dry)).ToList();
+        int ok = items.Count(i => i.Ok);
+
+        var result = new ActionResult
+        {
+            Ok = items.All(i => i.Ok),
+            Action = "inbox",
+            Message = dry
+                ? $"Would run {items.Count} command(s) from {input}."
+                : $"Ran {items.Count} command(s) from {input}: {ok} ok, {items.Count - ok} failed.",
+            Items = items,
+        };
+
+        if (!dry)
+        {
+            // Move first, write second. If writing the result throws, the worst case is a
+            // run nobody hears about; the other order's worst case is a run that happens
+            // again next minute.
+            Move(input, spent);
+            Cli.Emit(result, resultPath);
+        }
+
+        return Cli.EmitResult(result);
+    }
+
+    /// <summary>
+    /// One queued command, run through the very verb a person would have typed.
+    /// </summary>
+    private static ActionItem Run(InboxFile.Entry entry, bool dry)
+    {
+        var flags = dry ? new[] { "--dry-run" } : [];
+
+        Args Built(params string[] positional) =>
+            new(entry.Action, positional.Concat(flags));
+
+        Func<int> verb;
+        switch (entry.Action)
+        {
+            case "new":
+                if (entry.In is not { Length: > 0 } folder)
+                    return Failed(entry, "'new' needs a folder — give it \"in\".");
+                if (KnownFolder(folder) is not { } known)
+                    return Failed(entry,
+                        $"\"{folder}\" has no Claude sessions in it. The inbox only starts sessions "
+                        + "in folders you have already worked in, so a queue cannot point one "
+                        + "somewhere new.");
+
+                var newArgs = new List<string> { "--in", known };
+                if (entry.Name is { Length: > 0 } n) { newArgs.Add("--name"); newArgs.Add(n); }
+                newArgs.AddRange(flags);
+                verb = () => New(new Args("new", newArgs));
+                break;
+
+            case "resume":
+            case "restart":
+                if (entry.Id is not { Length: > 0 } id)
+                    return Failed(entry, $"'{entry.Action}' needs a session id.");
+                verb = entry.Action == "resume"
+                    ? () => Resume(Built(id))
+                    : () => Restart(Built(id));
+                break;
+
+            default:
+                if (entry.Id is not { Length: > 0 } markId)
+                    return Failed(entry, $"'{entry.Action}' needs a session id.");
+                var disposition = entry.Action switch
+                {
+                    "done" => Disposition.Done,
+                    "abandon" => Disposition.Abandoned,
+                    _ => Disposition.None,
+                };
+                verb = () => Mark(Built(markId), disposition);
+                break;
+        }
+
+        var outcome = Cli.Capture(entry.Action, verb);
+
+        // A verb's headline counts what it did; the reason it did not do the rest lives in
+        // its items. Dropping those would leave the brief reporting "restart 0, skipping 1"
+        // tomorrow morning with no way to tell whether that was a session mid-turn, a
+        // question waiting on an answer, or this very process declining to kill itself.
+        var detail = outcome.Items is { Count: > 0 } inner
+            ? " — " + string.Join("; ", inner.Select(i => i.Message))
+            : "";
+
+        return new ActionItem
+        {
+            SessionId = entry.Id ?? entry.In ?? "",
+            Ok = outcome.Ok,
+            Message = $"{entry.Action}: {outcome.Message}{detail}",
+            Name = outcome.Items?.FirstOrDefault()?.Name,
+        };
+    }
+
+    private static ActionItem Failed(InboxFile.Entry entry, string why) => new()
+    {
+        SessionId = entry.Id ?? entry.In ?? "",
+        Ok = false,
+        Message = $"{entry.Action}: {why}",
+    };
+
+    /// <summary>
+    /// The folder as this machine spells it, or null if no session has ever run there.
+    ///
+    /// This is the allowlist for <c>new</c>, and it costs nothing to keep: the set of
+    /// folders you have worked in is already recorded, one <c>cwd</c> per session. Matching
+    /// against it means a queue can open a session in any of your repos and in none of the
+    /// places that are not — no configuration, and nothing to forget to update when a repo
+    /// is added.
+    /// </summary>
+    private static string? KnownFolder(string folder)
+    {
+        string wanted;
+        try { wanted = Path.GetFullPath(folder).TrimEnd('\\', '/'); }
+        catch (Exception) { return null; }
+
+        return RequireScanner()
+            .Scan(new ScanOptions { All = true, Top = int.MaxValue })
+            .Select(info => info.Cwd)
+            .OfType<string>()
+            .FirstOrDefault(cwd => string.Equals(
+                cwd.TrimEnd('\\', '/'), wanted, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void Move(string from, string to)
+    {
+        try { File.Move(from, to, overwrite: true); }
+        catch (IOException) { /* someone is holding it; the age gate stops it running twice */ }
+    }
+
+    private static string Ago(TimeSpan age) => age.TotalMinutes switch
+    {
+        < 90 => $"{age.TotalMinutes:0} minutes ago",
+        < 48 * 60 => $"{age.TotalHours:0} hours ago",
+        _ => $"{age.TotalDays:0} days ago",
+    };
+
     // --- shared -------------------------------------------------------------
 
     private static SessionScanner RequireScanner()

@@ -100,7 +100,7 @@ dotnet run --project src/SessionApp
 
 Everything the window does, **`SessionCli.exe`** does from a command line — no window, no UI, output as JSON. It shares `SessionCore` with the app, so the two agree on how a session's status is classified, when a restart is safe, and where your marks live; there is no second implementation of any of it to drift.
 
-That covers two rather different callers. Some tools (like the morning brief) run in a sandbox that can't read `~/.claude/projects` directly, and just want the list: a scheduled task on the host runs `SessionCli.exe --json <path>` to refresh a file the sandbox can then read — see `schedule-add.ps1`. And an agent sitting in one session can look at all the others, and act on them.
+That covers two rather different callers. Some tools (like the morning brief) run in a sandbox that can't read `~/.claude/projects` directly, and just want the list: a scheduled task on the host runs `SessionCli.exe --json <path>` to refresh a file the sandbox can then read — see `schedule-add.ps1` — and `inbox` carries what the brief decided back the other way. And an agent sitting in one session can look at all the others, and act on them.
 
 ```powershell
 # Reading
@@ -128,6 +128,7 @@ SessionCli resume <id> --force      # end whatever holds it, then resume
 SessionCli new --in <path> --trust  # start one, and take its trust prompt for you
 SessionCli standby                  # a phone-reachable session per recent project
 SessionCli trust <id>               # answer the trust prompt a session is sitting on
+SessionCli inbox --run <path>       # run what the morning brief queued in a file
 ```
 
 `resume` refuses when a session is already open, and it is right to: two `--resume`s of one conversation are two processes writing one file. But that check reads the registry, and the registry only holds sessions that got far enough to write an entry — a CLI that starts and then hangs holds a terminal nothing in the registry knows about. Every verb then calls it "not open in a terminal", and the session is stranded with no way back through the tool that stranded it.
@@ -161,6 +162,35 @@ Ctx% switches to a 1M budget for sessions detected on the extended context windo
 
 The pre-verb command line still works exactly as it did — `SessionCli --json <path> --top 50` emits the same fields in the same order, with the new ones (`Disposition`, `Settled`, `Live`) appended where no reader of named fields will notice.
 
+### The brief's inbox
+
+The scheduled task that writes `sessions.json` gave the morning brief a way to *read* your sessions, and nothing else. Whatever you decided at 7am — resume that one, tick this one off, it's dead, drop it — you carried back to the machine yourself and re-typed. `inbox` is that channel's return path: the brief writes a `commands.json` into the same folder it reads `sessions.json` from, and a scheduled task on the host runs `SessionCli inbox --run <path>` to carry it out.
+
+The point of using the folder rather than a port is that there is nothing to defend. No listener, no token, no firewall rule, and nothing a web page you happen to be browsing can reach — the only writers are the sandbox that already has the folder mounted and processes already running on this machine. It also means the brief can be read anywhere, including on a phone that has no way to reach this machine at all: the decisions ride back in a file and land when the task next fires.
+
+```json
+{
+  "issuedAt": "2026-08-23T07:12:00+01:00",
+  "source": "dispatch",
+  "commands": [
+    { "action": "resume",  "id": "abc1234" },
+    { "action": "done",    "id": "def5678" },
+    { "action": "abandon", "id": "9f0e1a2" },
+    { "action": "new",     "in": "C:\\Users\\kk\\Code\\address-vault" }
+  ]
+}
+```
+
+The file is written by an agent in one shot, with no chance to see an error and correct it before tomorrow, so the parser is forgiving about spelling — `action`/`verb`/`do`, `id`/`session`/`sessionId`, `in`/`folder`/`path`/`cwd`, an array with no wrapper — and unforgiving about everything that decides what runs. Guessing a field name wrong should cost a re-read; guessing an action wrong would cost someone's terminal.
+
+Three rules follow from the caller not being in the room:
+
+- **Nothing runs twice.** The queue is moved to `commands.last.json` *before* the results are written to `commands-result.json`, so a task firing every minute finds an empty inbox on the second minute. A missing file is success, not an error — the ordinary case is that nobody queued anything, and a task that logged a failure every minute for being asked to do nothing would be switched off within a week.
+- **Nothing runs late.** A queue older than `--max-age` (default 120 minutes) is refused whole. The failure that prevents is specific: the machine is off when the brief writes, and a week later a boot opens six terminals acting on decisions about sessions that have all moved on.
+- **Nothing is trusted.** No queued command carries `--force` or `--trust`, `fork` and `trust` are not actions the inbox will run at all, and `new` may only start in a folder that already has sessions in it. That last one is an allowlist nobody has to maintain, because it is a list of places you have already worked — a queue can open a session in any of your repos and in none of the places that are not.
+
+Every command runs through the very verb a person would have typed, which is the point: it inherits their refusals — the session this process is running in, a terminal that still holds the session, a restart that cannot be taken safely — rather than re-deciding any of it against a second, worse copy of the rules. What the verbs report as skipped comes back with the reason attached, so a brief that says *restart 0, skipping 1* also says why.
+
 ### From an agent
 
 `~/.claude/skills/sky-session/` teaches an agent the surface above, and — more usefully — the distinction the tool is built on that a transcript alone won't teach: **Status** is what the classifier read from the file, **Disposition** is what you decided, and **Settled** is the two combined. Filtering on Settled is what answers "what am I still on the hook for?" without the noise of sessions that ended on a question you've long since acted on.
@@ -171,7 +201,7 @@ The split between the core and the app is "does this need a desktop?", not "is t
 
 - **`src/SessionCore`** — session scanning, session-file parsing, status detection, live-refresh cache/watcher; the live-session registry and process tree, the console-input writer that restarts a session in place, the fork writer, the restart policy, and the disposition store.
 - **`src/SessionApp`** — the WPF card list and view model; `SessionWindows` raises the terminal showing a live session; `TrayIcon`/`CountIcon`/`TrayMenu` put the count in the notification area; `Theme/` holds the light/dark palettes, the themed control chrome, and the system-theme watcher.
-- **`src/SessionCli`** — the headless front end: the JSON scan the morning brief reads, and the verbs an agent drives.
+- **`src/SessionCli`** — the headless front end: the JSON scan the morning brief reads, the inbox that runs what it decided, and the verbs an agent drives.
 - **`src/SessionCore.Tests`** — unit tests for the core and the CLI's argument parsing.
 - **`schedule-add.ps1`** / **`schedule-remove.ps1`** — register/remove the daily task that refreshes `sessions.json` for the morning brief.
 

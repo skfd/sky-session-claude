@@ -175,6 +175,11 @@ internal static class Cli
           SessionCli new [--in <path>]           open a terminal on a brand-new session
           SessionCli standby                     a phone-reachable session per recent project
           SessionCli trust <id>                  answer the trust prompt it is sitting on
+          SessionCli inbox --run <path>          run the commands the brief queued in a file
+
+        Flags for `inbox`
+          --run <path>      the queue file; missing is success, not an error
+          --max-age <mins>  refuse a queue written longer ago than this (default 120)
 
         Filters for `list`
           --status <s>          complete, waiting-you, waiting-agent, cut-off, limit,
@@ -246,6 +251,7 @@ internal static class Cli
                 "new" => Commands.New(rest),
                 "standby" => Commands.Standby(rest),
                 "trust" => Commands.Trust(rest),
+                "inbox" => Commands.Inbox(rest),
                 "help" or "-h" or "-?" => Print(HelpText),
                 _ => throw new UsageException($"Unknown command: {args[0]}"),
             };
@@ -302,7 +308,52 @@ internal static class Cli
     /// <summary>Emit an action's result and turn it into the process's exit code.</summary>
     public static int EmitResult(ActionResult result)
     {
+        if (_capturing)
+        {
+            _captured = result;
+            return result.Ok ? 0 : 1;
+        }
+
         Emit(result);
         return result.Ok ? 0 : 1;
+    }
+
+    private static bool _capturing;
+    private static ActionResult? _captured;
+
+    /// <summary>
+    /// Run one verb with its JSON held back, and hand over what it would have printed.
+    ///
+    /// The inbox runs the same verbs a person types, which is the point: it inherits every
+    /// refusal they already make — the session this process is running in, a terminal that
+    /// still holds the session, a restart that cannot be taken safely — rather than
+    /// re-deciding any of it against a second, worse copy of the rules. What it cannot
+    /// inherit is their habit of writing to stdout, since a queue of ten commands would
+    /// come back as ten unrelated documents instead of one answer.
+    /// </summary>
+    public static ActionResult Capture(string action, Func<int> verb)
+    {
+        _capturing = true;
+        _captured = null;
+        try
+        {
+            verb();
+            return _captured ?? new ActionResult { Ok = true, Action = action, Message = "did nothing and said nothing." };
+        }
+        catch (UsageException e)
+        {
+            return new ActionResult { Ok = false, Action = action, Message = e.Message };
+        }
+        catch (Exception e)
+        {
+            // One command failing is not the queue failing. The others still deserve to run,
+            // and the brief deserves to be told which one broke and why.
+            return new ActionResult { Ok = false, Action = action, Message = $"{e.GetType().Name}: {e.Message}" };
+        }
+        finally
+        {
+            _capturing = false;
+            _captured = null;
+        }
     }
 }
