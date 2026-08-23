@@ -64,8 +64,7 @@ public sealed class SessionScanner
         // known after parsing, and a file's last write can never precede its newest
         // record — so the top-N by last-write is a superset of the top-N by activity.
         // Scan re-sorts on the parsed times.
-        return selected
-            .OrderByDescending(f => f.LastWriteTime)
+        return OnePerSession(selected)
             .Take(options.Top)
             .ToList();
     }
@@ -87,16 +86,31 @@ public sealed class SessionScanner
         // turn the prefix into a glob of its own is not one.
         if (prefix.Any(c => c is '*' or '?' or '/' or '\\' or ':')) return [];
 
-        return new DirectoryInfo(_projectsDir)
+        var matches = new DirectoryInfo(_projectsDir)
             .EnumerateDirectories()
             .SelectMany(d => d.EnumerateFiles($"{prefix}*.jsonl"))
             // Windows matches 8.3 short names against a pattern too, so confirm the long
             // name really does start with what was asked for.
             .Where(f => Path.GetFileNameWithoutExtension(f.Name)
-                .StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(f => f.LastWriteTime)
-            .ToList();
+                .StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
+        return OnePerSession(matches).ToList();
     }
+
+    /// <summary>
+    /// One id, one file, newest first. A conversation that moves between folders — resumed
+    /// from somewhere else, or a cwd change part way through — is written to a second
+    /// project folder under the same uuid, leaving two transcripts for one session. The id
+    /// is what everything downstream keys on: a dictionary of rows, a prefix lookup, a
+    /// disposition, a live process. So the copy written most recently answers for the id,
+    /// being the one the session is still appending to, and the stragglers are dropped
+    /// rather than surfacing as a duplicate key or as an ambiguity no longer prefix could
+    /// ever resolve.
+    /// </summary>
+    private static IEnumerable<FileInfo> OnePerSession(IEnumerable<FileInfo> files) =>
+        files
+            .OrderByDescending(f => f.LastWriteTime)
+            .DistinctBy(f => Path.GetFileNameWithoutExtension(f.Name), StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Parse one file into a full display row.</summary>
     public SessionInfo BuildRow(FileInfo file, int contextWindow, string? largeModelId = null)

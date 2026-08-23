@@ -89,4 +89,42 @@ public class FindByPrefixTests : IDisposable
         Add("C--Users-kk-Code-one", "aaaa1111-0000-0000-0000-000000000000");
         Assert.Empty(_scanner.FindByPrefix("  "));
     }
+
+    // --- one id, one file ----------------------------------------------------
+    //
+    // A conversation resumed from another folder, or one whose cwd changes part way
+    // through, is written to a second project folder under the same uuid. Everything
+    // downstream keys on the id, so two files for one session is a duplicate key in a
+    // dictionary of rows and an ambiguity no longer prefix could ever resolve.
+
+    private const string Duplicated = "aaaa1111-0000-0000-0000-000000000000";
+
+    private void AddBothProjects()
+    {
+        Add("C--Users-kk-Code-one", Duplicated);
+        Add("C--Users-kk-Code-two", Duplicated);
+        // The copy the session is still appending to is the newer one.
+        File.SetLastWriteTime(
+            Path.Combine(_root, "C--Users-kk-Code-two", Duplicated + ".jsonl"),
+            DateTime.Now.AddHours(-3));
+    }
+
+    [Fact]
+    public void CollapsesOneSessionWrittenUnderTwoProjects()
+    {
+        AddBothProjects();
+
+        var found = Assert.Single(_scanner.FindByPrefix(Duplicated));
+        Assert.Equal("C--Users-kk-Code-one", found.Directory!.Name);
+    }
+
+    [Fact]
+    public void ScanReturnsOneRowPerSessionId()
+    {
+        AddBothProjects();
+
+        var rows = _scanner.Scan(new ScanOptions());
+        Assert.Single(rows);
+        Assert.Equal(Duplicated, rows[0].SessionId);
+    }
 }
