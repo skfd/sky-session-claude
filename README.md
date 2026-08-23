@@ -164,7 +164,7 @@ The pre-verb command line still works exactly as it did — `SessionCli --json <
 
 ### The brief's inbox
 
-The scheduled task that writes `sessions.json` gave the morning brief a way to *read* your sessions, and nothing else. Whatever you decided at 7am — resume that one, tick this one off, it's dead, drop it — you carried back to the machine yourself and re-typed. `inbox` is that channel's return path: the brief writes a `commands.json` into the same folder it reads `sessions.json` from, and a scheduled task on the host runs `SessionCli inbox --run <path>` to carry it out.
+The scheduled task that writes `sessions.json` gave the morning brief a way to *read* your sessions, and nothing else. Whatever you decided at 7am — resume that one, tick this one off, it's dead, drop it — you carried back to the machine yourself and re-typed. `inbox` is that channel's return path: the brief writes a `commands.json` into the same folder it reads `sessions.json` from, and a scheduled task on the host runs `SessionCli inbox --run <path>` to carry it out. `schedule-add.ps1` registers both halves — the daily scan out, and the inbox back every five minutes, running interactively because the whole point is a terminal you can see.
 
 The point of using the folder rather than a port is that there is nothing to defend. No listener, no token, no firewall rule, and nothing a web page you happen to be browsing can reach — the only writers are the sandbox that already has the folder mounted and processes already running on this machine. It also means the brief can be read anywhere, including on a phone that has no way to reach this machine at all: the decisions ride back in a file and land when the task next fires.
 
@@ -203,7 +203,7 @@ The split between the core and the app is "does this need a desktop?", not "is t
 - **`src/SessionApp`** — the WPF card list and view model; `SessionWindows` raises the terminal showing a live session; `TrayIcon`/`CountIcon`/`TrayMenu` put the count in the notification area; `Theme/` holds the light/dark palettes, the themed control chrome, and the system-theme watcher.
 - **`src/SessionCli`** — the headless front end: the JSON scan the morning brief reads, the inbox that runs what it decided, and the verbs an agent drives.
 - **`src/SessionCore.Tests`** — unit tests for the core and the CLI's argument parsing.
-- **`schedule-add.ps1`** / **`schedule-remove.ps1`** — register/remove the daily task that refreshes `sessions.json` for the morning brief.
+- **`schedule-add.ps1`** / **`schedule-remove.ps1`** — register/remove the two tasks the morning brief needs: the daily one that refreshes `sessions.json` for it to read, and the short-interval one that runs the `commands.json` it writes back.
 
 ## License
 
