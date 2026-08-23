@@ -546,7 +546,7 @@ internal static class Commands
     /// </summary>
     public static int New(Args args)
     {
-        args.RejectUnknown("in", "name", "dry-run");
+        args.RejectUnknown("in", "name", "trust", "dry-run");
 
         // The only positional this verb could plausibly be given is a session id, which
         // would mean the caller wanted `resume`. An unquoted multi-word --name lands here
@@ -562,22 +562,167 @@ internal static class Commands
             throw new UsageException($"No such folder: {folder}");
 
         var command = NewSessionLine(folder, args.Has("name") ? args.Require("name") : null);
-        if (!args.Has("dry-run")) StartTerminal(command);
+        if (args.Has("dry-run"))
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = true,
+                Action = "new",
+                Message = $"Would run: {command}",
+            });
 
+        var launchedAt = DateTime.Now;
+        StartTerminal(command);
+
+        var opened = $"Opened a terminal running: {command}.";
+        if (!args.Has("trust"))
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = true,
+                Action = "new",
+                Message = $"{opened} Its session id exists once you type something in it.",
+            });
+
+        // A folder Claude Code has not seen before stops on its trust prompt before it will
+        // start a session at all, and nothing outside that terminal can see it happen: the
+        // session is in no registry and has no file yet. So the wait is for a claude process
+        // younger than this launch whose screen shows that dialog naming this folder, and
+        // the answer goes only to a process where all three hold.
+        var waiting = TrustPrompt.FindWaiting(folder, launchedAt, TrustWait, TrustPoll);
+        if (waiting is null)
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = true,
+                Action = "new",
+                Message = $"{opened} No trust prompt appeared within {TrustWait.TotalSeconds:0}s — either "
+                    + "the folder was already trusted, or the terminal is showing something else.",
+            });
+
+        var answered = Answer(waiting.Value, Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar)), dry: false);
         return Cli.EmitResult(new ActionResult
         {
-            Ok = true,
+            Ok = answered.Ok,
             Action = "new",
-            Message = args.Has("dry-run")
-                ? $"Would run: {command}"
-                : $"Opened a terminal running: {command}. Its session id exists once you type something in it.",
+            Message = $"{opened} {answered.Message}",
+            Screen = answered.Screen,
         });
     }
+
+    /// <summary>
+    /// How long <c>new --trust</c> waits for the dialog. Long enough for a cold start on a
+    /// big repo, short enough that a folder which was already trusted does not hold the
+    /// caller up for anything like a minute.
+    /// </summary>
+    private static readonly TimeSpan TrustWait = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan TrustPoll = TimeSpan.FromSeconds(1);
 
     /// <summary>The line a new session is launched with: into the folder, then Claude.</summary>
     internal static string NewSessionLine(string folder, string? name) =>
         $"cd {SessionName.Quote(folder)}; "
         + (name is { Length: > 0 } ? $"claude --name {SessionName.Quote(name)}" : "claude");
+
+    // --- answering ----------------------------------------------------------
+
+    /// <summary>
+    /// Answer the trust prompt a session is sitting on, on the operator's behalf.
+    ///
+    /// This is the only verb that types an answer into a conversation rather than at the
+    /// shell around it, so it is deliberately the narrowest one here: it presses Enter, on
+    /// one dialog, and only when it can see that dialog with the yes option selected. The
+    /// screen comes back either way — with the result when it acted, with the reason when
+    /// it did not — because a caller told "no" needs to see what was there to decide.
+    ///
+    /// Why not simply press Enter: the dialog's second option is "No, exit". On a screen
+    /// where the selection has moved, the same keystroke closes the session instead of
+    /// trusting the folder.
+    /// </summary>
+    public static int Trust(Args args)
+    {
+        args.RejectUnknown("dry-run");
+
+        var idOrPrefix = OneId(args, "trust");
+        var live = ResolveLive(idOrPrefix);
+
+        if (live is null)
+        {
+            var sleeping = Path.GetFileNameWithoutExtension(Resolve(RequireScanner(), idOrPrefix).Name);
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = false,
+                Action = "trust",
+                Message = $"{sleeping} is not open in a terminal, so there is nothing to answer.",
+            });
+        }
+
+        return Cli.EmitResult(Answer(live.Pid, Titled(live.Name) ?? live.SessionId, args.Has("dry-run")));
+    }
+
+    /// <summary>
+    /// Read <paramref name="pid"/>'s screen, and press Enter only if it is showing the trust
+    /// prompt with yes selected. Shared by <c>trust</c> and by <c>new --trust</c>.
+    /// </summary>
+    private static ActionResult Answer(int pid, string name, bool dry)
+    {
+        var screen = ConsoleInput.ReadScreen(pid);
+
+        switch (TrustPrompt.Read(screen))
+        {
+            case TrustPrompt.State.NotShowing:
+                return new ActionResult
+                {
+                    Ok = false,
+                    Action = "trust",
+                    Message = screen.Length == 0
+                        ? $"Could not read pid {pid}'s console, so nothing was typed."
+                        : $"\"{name}\" is not at a trust prompt. Nothing was typed.",
+                    Screen = screen.Length == 0 ? null : screen,
+                };
+
+            case TrustPrompt.State.OtherSelected:
+                return new ActionResult
+                {
+                    Ok = false,
+                    Action = "trust",
+                    Message = $"\"{name}\" is at the trust prompt, but the selection has moved off "
+                        + "\"Yes, I trust this folder\" — Enter would take the other option, which "
+                        + "closes it. Nothing was typed.",
+                    Screen = screen,
+                };
+        }
+
+        if (dry)
+            return new ActionResult
+            {
+                Ok = true,
+                Action = "trust",
+                Message = $"Would press Enter on the trust prompt in \"{name}\" (pid {pid}).",
+                Screen = screen,
+            };
+
+        if (!TrustPrompt.Accept(pid))
+            return new ActionResult
+            {
+                Ok = false,
+                Action = "trust",
+                Message = $"Could not type into pid {pid}'s console.",
+                Screen = screen,
+            };
+
+        // Reported done only once the dialog is gone, the way a restart is reported done
+        // only once the session says it is back.
+        Thread.Sleep(1500);
+        var after = ConsoleInput.ReadScreen(pid);
+        bool answered = TrustPrompt.Read(after) == TrustPrompt.State.NotShowing;
+
+        return new ActionResult
+        {
+            Ok = answered,
+            Action = "trust",
+            Message = answered
+                ? $"Trusted the folder for \"{name}\" (pid {pid}); it is past the prompt."
+                : $"Pressed Enter for \"{name}\" (pid {pid}), but the prompt is still up — look at the screen.",
+            Screen = after,
+        };
+    }
 
     // --- shared -------------------------------------------------------------
 

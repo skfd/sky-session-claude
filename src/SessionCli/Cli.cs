@@ -135,6 +135,7 @@ internal static class Cli
           SessionCli restart --stale             restart every stale session that is idle
           SessionCli resume <id>                 open a terminal and resume it
           SessionCli new [--in <path>]           open a terminal on a brand-new session
+          SessionCli trust <id>                  answer the trust prompt it is sitting on
 
         Filters for `list`
           --status <s>          complete, waiting-you, waiting-agent, cut-off, limit,
@@ -154,6 +155,7 @@ internal static class Cli
         Flags for the acting verbs
           --in <path>  folder `new` starts in (default: the folder you are in)
           --name <n>   what a new session answers to (default: the CLI derives one)
+          --trust      on `new`: wait for the trust prompt in that folder and accept it
           --yes        actually do it; `restart --stale` only reports the plan without it
           --force      act on the session this command is running inside (refused otherwise)
           --dry-run    say what would happen and change nothing
@@ -191,6 +193,7 @@ internal static class Cli
                 "restart" => Commands.Restart(rest),
                 "resume" => Commands.Resume(rest),
                 "new" => Commands.New(rest),
+                "trust" => Commands.Trust(rest),
                 "help" or "-h" or "-?" => Print(HelpText),
                 _ => throw new UsageException($"Unknown command: {args[0]}"),
             };

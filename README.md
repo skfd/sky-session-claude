@@ -116,10 +116,13 @@ SessionCli fork <id> --tip          # the official --fork-session, in a new term
 SessionCli restart <id>...          # restart in the terminal it already sits in
 SessionCli restart --stale          # prints the plan; add --yes to actually do it
 SessionCli resume <id>              # open a terminal and resume
-SessionCli new --in <path>          # start a session that does not exist yet
+SessionCli new --in <path> --trust  # start one, and take its trust prompt for you
+SessionCli trust <id>               # answer the trust prompt a session is sitting on
 ```
 
 `peek` reads a live session's screen — the visible window of its console, borrowed the same way a restart borrows it, with nothing focused and nothing typed. It answers the question the session file cannot: a terminal blocked on Claude Code's "do you trust this folder?", a permission it is waiting to be granted, a draft sitting in its input box — none of that is written anywhere until it is answered. It resolves ids against the live registry rather than the projects folder, so a session that has been opened but not yet typed into (which has no file at all) can still be looked at.
+
+`trust` answers Claude Code's "do you trust the files in this folder?" — the dialog a session stops on before it will start in a folder Claude Code has not seen. It is the only verb that types an answer into a conversation rather than at the shell around it, so it is the narrowest one here: it presses Enter, on that one dialog, and only when it can see the dialog with "Yes, I trust this folder" selected. That check is the point rather than politeness — the second option is "No, exit", so the same keystroke on a screen where the selection has moved closes the session instead of trusting the folder. Anything it will not answer comes back with the screen and nothing typed. `new --in <path> --trust` does the same for a session it just started: it waits up to 30s for that dialog to appear naming that folder, takes it, and reports the session past it, so a launch into a fresh repo comes up ready to work.
 
 `new` is the one verb that names no session, because the id it would name does not exist until the CLI writes its first record. It opens a terminal in a folder at a fresh `claude` prompt — `--in` defaults to the folder you are in, `--name` to whatever the CLI derives — and the session joins `list` under its own id once you have typed something into it.
 
