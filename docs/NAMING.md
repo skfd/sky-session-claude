@@ -79,7 +79,9 @@ you typed keeps it.
 
 **Breaking the self-reinforcing loop.** Since a slug now reaches the transcript, Sky
 recognises its own slug shape on read and refuses to treat it as a title. That keeps the
-floor without letting a placeholder calcify.
+floor without letting a placeholder calcify. The shape check is only for history written
+before the sidecar existed — it can misfire on a name you genuinely typed that happens to
+look like `folder-XX`, so provenance stays the primary mechanism and this is the fallback.
 
 **Fork naming** *(my recommendation, not confirmed)*. `fork: ` plus the prompt it branched
 at — `fork: add retry logic`. Sky knows it from `--at-prompt n`, and it says what the fork is
@@ -101,13 +103,24 @@ reachable.
    started before the instruction existed. Rare and bounded by construction.
 4. **`folder-<id2>`** as the floor.
 
+### The CLAUDE.md line
+
+Drafted here, **installed only once `SessionCli rename` exists** — the line is useless until
+it has something to call:
+
+> When this session's subject genuinely changes, rename it:
+> `SessionCli rename --self '<Subject — repo>'`
+
+Around 120 characters, which is the point: it has to earn its place in every project's
+CLAUDE.md. It says *genuinely changes*, not *after each task*, to match the drift decision.
+
 ## Worked examples
 
 | Session | Today | Becomes |
 |---|---|---|
 | `93e5d264` cowork, OSM renderers | `Renderers and routers approach ove…` | `Renderers and routers — cowork` |
 | `360a1c31` vagabond-map, basemaps | `vagabond maps` | `Basemap treatments in Chrome — vagabond-map` |
-| `7fa99fa7` vagabond-map, pushed 7 commits | `vagabond maps` | `Seven commits pushed to main — vagabond-map` |
+| `7fa99fa7` vagabond-map, ends on a push | `vagabond maps` | the push is the *newest* thing, not the largest — its recap records only the ending, so this is precisely the case that needs the model rather than a rule |
 | `697155ed` vagabond-map, no content | `vagabond maps` | `vagabond maps` — chosen, nothing to improve on |
 | `c6811c81` force-resume worktree | `sky-session-claude-87` | `Protocol implementation brainstorm — sky-session-claude` |
 | `d1ffa628` cowork, ended in settings.json | `Start Chrome` | the largest thing it did, not the first step |
