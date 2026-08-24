@@ -45,6 +45,10 @@ if (-not $SkipInstall) {
     $targetExe = Join-Path $installDir 'SkySessionClaude.exe'
     # A running stable instance holds a lock on its exe; close only that one (never the
     # dev build) so the copy can overwrite it.
+    #
+    # There is one Sky window per desktop now (see SingleInstance), so a dev build left
+    # running here will keep the stable app from starting afterwards. Launch the dev build
+    # with --multi when you want to publish underneath it.
     Get-Process SkySessionClaude -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -eq $targetExe } |
         ForEach-Object { $_.CloseMainWindow() | Out-Null; if (-not $_.WaitForExit(5000)) { $_.Kill() } }
