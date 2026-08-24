@@ -87,13 +87,21 @@ look like `folder-XX`, so provenance stays the primary mechanism and this is the
 at — `fork: add retry logic`. Sky knows it from `--at-prompt n`, and it says what the fork is
 *for*, where the parent's title makes every fork look identical.
 
-**What runs the check.** Both, over one policy in `SessionCore`. The app already polls, so
-it does the noticing and renames in the background — that is what makes "track the
-conversation" true rather than aspirational. `SessionCli rename` exists alongside it, because
-the CLAUDE.md self-rename needs something to call and a `--self` form needs the same
-current-session detection `IsSelf` already does for `restart`. Doing it only at restart time
-would be cheaper and would quietly mean a session keeps a wrong name until something
-unrelated restarts it.
+**What runs the check.** The app, over one policy in `SessionCore`. It already polls, so it
+does the noticing and renames in the background — that is what makes "track the conversation"
+true rather than aspirational. Doing it only at restart time would be cheaper and would
+quietly mean a session keeps a wrong name until something unrelated restarts it.
+
+There is exactly one app to do it: a second launch signals the window already up and exits
+(`SingleInstance.cs`). That is what makes background renaming safe to have at all — two
+instances would each decide a name, both write, and each re-read the other's answer, and the
+`claude -p` path makes that flap rather than settle. Renaming is the *only* thing Sky may do
+unasked, because it is the only one that cannot lose anything: restart can drop a pending
+approval, `trust` can close a session, and answering a question puts words in your mouth.
+
+`SessionCli rename` exists alongside it, because the CLAUDE.md self-rename needs something to
+call and a `--self` form needs the same current-session detection `IsSelf` already does for
+`restart`. Sessions renaming themselves never contend — each touches only its own name.
 
 **Provenance.** Because nothing in the registry distinguishes Sky's names from yours, Sky
 records its own in a sidecar alongside `DispositionStore`. Without it, none of the above is

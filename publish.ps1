@@ -49,6 +49,9 @@ if (-not $SkipInstall) {
     # There is one Sky window per desktop now (see SingleInstance), so a dev build left
     # running here will keep the stable app from starting afterwards. Launch the dev build
     # with --multi when you want to publish underneath it.
+    $wasRunning = @(Get-Process SkySessionClaude -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -eq $targetExe }).Count -gt 0
+
     Get-Process SkySessionClaude -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -eq $targetExe } |
         ForEach-Object { $_.CloseMainWindow() | Out-Null; if (-not $_.WaitForExit(5000)) { $_.Kill() } }
@@ -62,6 +65,14 @@ if (-not $SkipInstall) {
     $targetCli = Join-Path $installDir 'SessionCli.exe'
     Copy-Item "$root/$OutDir/SessionCli.exe" $targetCli -Force
     Write-Host "Installed: $targetCli"
+
+    # Put back what we closed. A publish that leaves the desktop emptier than it found it
+    # is a publish you have to remember to finish by hand — and only ever what was up:
+    # starting an app nobody had open would be this script deciding something for you.
+    if ($wasRunning) {
+        Start-Process $targetExe
+        Write-Host "Relaunched: $targetExe"
+    }
 } else {
     Write-Host "Skipped install (-SkipInstall); stable Start-menu app not updated."
 }
