@@ -87,6 +87,14 @@ look like `folder-XX`, so provenance stays the primary mechanism and this is the
 at — `fork: add retry logic`. Sky knows it from `--at-prompt n`, and it says what the fork is
 *for*, where the parent's title makes every fork look identical.
 
+**What runs the check.** Both, over one policy in `SessionCore`. The app already polls, so
+it does the noticing and renames in the background — that is what makes "track the
+conversation" true rather than aspirational. `SessionCli rename` exists alongside it, because
+the CLAUDE.md self-rename needs something to call and a `--self` form needs the same
+current-session detection `IsSelf` already does for `restart`. Doing it only at restart time
+would be cheaper and would quietly mean a session keeps a wrong name until something
+unrelated restarts it.
+
 **Provenance.** Because nothing in the registry distinguishes Sky's names from yours, Sky
 records its own in a sidecar alongside `DispositionStore`. Without it, none of the above is
 reachable.
@@ -155,15 +163,11 @@ Rules that follow:
 
 ## Open
 
-- **What runs the check.** Live renames need something noticing a session earned a title.
-  The app already polls; a `SessionCli rename` verb is needed regardless, for the CLAUDE.md
-  self-rename to call. Restart-time-only would be cheapest and would quietly contradict
-  "track the conversation".
 - Cleanup deletes files under `~/.claude/projects` — a new authority for a tool that has so
   far only read them, bounded to ids `claude -p` reported back.
 - One-off repair of the transcripts already carrying a Sky slug as `custom-title`:
   `xrm-librarian`, `xrm-plugin-step-codegen`, `ontario-address-changes`, and
   `sky-session-claude-93`, whose file exists only because the smoke test created it.
-- `restart --stale` crashes with a duplicate-key `ArgumentException`. Root cause found: the
-  session id `93e5d264` has two transcripts, and `list` handles that (commit `6b7d877`)
-  while the stale-restart plan builder does not. Unrelated to naming.
+- ~~`restart --stale` crashes with a duplicate-key `ArgumentException`.~~ Not a live bug:
+  `6b7d877` already fixed it by collapsing two transcripts of one id in `SelectFiles`. The
+  installed binary predated that commit. Fixed by publishing.
