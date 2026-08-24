@@ -12,16 +12,23 @@ design for Sky taking naming on wherever it can.
   `nameSource` *omitted*. Sky supplies `--name` on restart and resume.
 - **`IsChosen` is the absence of a source, not a value** (`SessionName.cs:37`). Anything
   Sky passes under `--name` therefore reads back as operator-chosen.
-- **A live session can be renamed in place, from outside.** The messaging pipe each
-  session publishes (`~/.claude/sessions/<pid>.json` → `messagingSocketPath`, authenticated
-  by the sibling `<pid>.<hash>.key`) accepts `{type:"control", action:"rename", name:"…"}`.
-  Confirmed empirically: `comentality.com re` (entrypoint `cli`) was renamed 75 minutes
-  after start, `skfd` at 66 minutes.
+- **A live session can be renamed in place, from outside.** Verified end to end against a
+  running interactive `cli` session. The protocol is newline-delimited JSON over the named
+  pipe in `messagingSocketPath`; the first line must be
+  `{"type":"auth","token":"<peerToken>"}`, read from the sibling `<pid>.<hash>.key`, and a
+  rename is then `{"type":"control","action":"rename","name":"…"}`. An unauthenticated
+  connection has its lines dropped and is closed.
 - **`aiTitle` is generated once and never updated.** In `comentality.com` it appears 44
   times, always the same string. A long session stays named after its first ten minutes.
-- **Claude Code does not upgrade derived names on its own.** No session in the registry
-  carries `nameSource: "auto"`; eight sit on raw derived names, three with a perfectly good
-  unused `aiTitle` in their file.
+- **Nothing is upgrading derived names in practice.** The schema allows
+  `nameSource: "auto"` and the binary has a path that writes it, but no session in this
+  registry carries one: eight sit on raw derived names, three with a perfectly good unused
+  `aiTitle` already in their file.
+
+- **A pipe rename is indistinguishable from one you typed.** It writes `nameSource`
+  *absent*, exactly like `--name`. The `"remote"` source in the binary belongs to the SDK
+  control-request path, not this one. So the provenance sidecar below is load-bearing: there
+  is no field that tells Sky which names are its own.
 
 ### Two bugs this design has to fix
 
@@ -36,6 +43,10 @@ design for Sky taking naming on wherever it can.
 2. **The loop is self-reinforcing.** Next restart reads that slug back as `Title`,
    `SessionName.For` returns it unchanged, and Sky writes it again. A placeholder becomes
    permanent by being used once.
+
+Both apply to live renames too, not just `--name`: the smoke test renamed a session that had
+no transcript at all, and the rename *created* the file just to hold a `custom-title` line.
+Every naming path Sky has writes into the conversation's own record.
 
 ## Decisions
 
@@ -60,9 +71,17 @@ unreachable.
    already exist and simply go unused.
 3. **`claude -p --model haiku`**, only when self-naming did not happen — an old session, one
    started before the instruction existed. Rare and bounded by construction.
-4. **`folder-<id2>`** as the floor, where nothing else can be known.
+4. **`folder-<id2>`** as the floor, where nothing else can be known. *Not yet confirmed:*
+   keeping a floor at all was chosen before we knew a slug overwrites the transcript title.
+   The alternative is to pass no name when there is nothing real to say.
 
-**Fork naming.** `fork: ` plus the prompt it branched at — `fork: add retry logic`. Sky
+**What runs the check** *(open — never decided)*. Live renames need something noticing that a
+session earned a title. The app already polls and could do it in the background; a
+`SessionCli rename` verb is needed regardless, for the CLAUDE.md self-rename to call. Doing
+it only at restart time would be cheapest and would quietly contradict "track the
+conversation continuously".
+
+**Fork naming** *(my recommendation, not yet confirmed)*. `fork: ` plus the prompt it branched at — `fork: add retry logic`. Sky
 already knows it from `--at-prompt n`, and it says what the fork is *for*, where the parent's
 title would make every fork of one session look identical.
 
@@ -95,5 +114,7 @@ Rules that follow:
 
 - Cleanup deletes files under `~/.claude/projects`. That is a new authority for a tool that
   has so far only ever read them; it is bounded to session ids `claude -p` reported back.
-- The one-off repair of the three transcripts already carrying a Sky slug as `custom-title`.
+- The one-off repair of the transcripts already carrying a Sky slug as `custom-title`:
+  `xrm-librarian`, `xrm-plugin-step-codegen`, `ontario-address-changes`, and
+  `sky-session-claude-93`, whose file exists only because the smoke test created it.
 - `restart --stale` still crashes with a duplicate-key `ArgumentException`. Unrelated, open.
