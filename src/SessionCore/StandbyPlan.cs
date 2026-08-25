@@ -60,16 +60,22 @@ public static class Standby
     /// starts in whatever the shell falls back to — a session on standby in the wrong place
     /// is worse than one that never opened.
     /// </param>
+    /// <param name="isRepo">
+    /// Whether a folder is a project rather than somewhere a question got asked. See
+    /// <see cref="HasGit"/> for why the test is a <c>.git</c>.
+    /// </param>
     public static StandbyPlan Decide(
         IEnumerable<SessionInfo> sessions,
         IEnumerable<LiveSession> live,
         DateTime now,
         TimeSpan? window = null,
         int max = int.MaxValue,
-        Func<string, bool>? folderExists = null)
+        Func<string, bool>? folderExists = null,
+        Func<string, bool>? isRepo = null)
     {
         var since = now - (window ?? DefaultWindow);
         var exists = folderExists ?? Directory.Exists;
+        var repo = isRepo ?? HasGit;
 
         var running = live as IReadOnlyCollection<LiveSession> ?? live.ToList();
 
@@ -114,6 +120,20 @@ public static class Standby
                 continue;
             }
 
+            // After the existence check, never before it: a repo that has been deleted is
+            // gone, not un-versioned, and reporting the wrong reason sends you looking in
+            // the wrong place.
+            if (!repo(folder.Folder))
+            {
+                skipped.Add(new StandbySkip
+                {
+                    Folder = folder.Folder,
+                    Project = project,
+                    Reason = "no .git — a folder you asked something in, not a project",
+                });
+                continue;
+            }
+
             open.Add(new StandbyTarget
             {
                 Folder = folder.Folder,
@@ -151,6 +171,24 @@ public static class Standby
             l.RemoteControl
             && !string.IsNullOrEmpty(l.Cwd)
             && Key(l.Cwd!).Equals(key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Whether a folder is a project, which here means whether it is a git repo.
+    ///
+    /// Sessions get started in places that are not projects: a home folder, the folder every
+    /// repo sits under, wherever a terminal happened to be open when a question came up. They
+    /// are indistinguishable from repos in a transcript — the same recency, the same session
+    /// count — and they cost one row each on a phone screen that has nothing but rows.
+    ///
+    /// The <c>.git</c> may be a folder or a file; a worktree and a submodule write a file.
+    /// This is only the sweep's definition: <c>standby --in &lt;path&gt;</c> is you pointing,
+    /// and pointing at a folder is a better answer than any rule about it.
+    /// </summary>
+    public static bool HasGit(string folder)
+    {
+        var git = Path.Combine(folder, ".git");
+        return Directory.Exists(git) || File.Exists(git);
     }
 
     /// <summary>How a folder that is already reachable is reported.</summary>

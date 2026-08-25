@@ -26,8 +26,10 @@ public class StandbyTests
         IEnumerable<LiveSession>? live = null,
         TimeSpan? window = null,
         int max = int.MaxValue,
-        Func<string, bool>? folderExists = null) =>
-        Standby.Decide(sessions, live ?? [], Now, window, max, folderExists ?? (_ => true));
+        Func<string, bool>? folderExists = null,
+        Func<string, bool>? isRepo = null) =>
+        Standby.Decide(sessions, live ?? [], Now, window, max,
+            folderExists ?? (_ => true), isRepo ?? (_ => true));
 
     private static LiveSession Running(string cwd, string name, bool remoteControl) =>
         LiveSessionRegistry.Parse(
@@ -156,6 +158,59 @@ public class StandbyTests
 
         Assert.Empty(plan.Open);
         Assert.Equal("the folder is no longer there", Assert.Single(plan.Skipped).Reason);
+    }
+
+    /// <summary>
+    /// A home folder and the folder every repo sits under look exactly like projects in a
+    /// transcript — same recency, more sessions than most — and they cost a row each on a
+    /// screen that is nothing but rows.
+    /// </summary>
+    [Fact]
+    public void ReportsAFolderThatIsNotARepo()
+    {
+        var plan = Decide(
+            [In(@"C:\Users\kk", 1), In(@"C:\Code\sky", 1)],
+            isRepo: folder => folder == @"C:\Code\sky");
+
+        Assert.Equal([@"C:\Code\sky"], plan.Open.Select(t => t.Folder));
+        Assert.Contains("no .git", Assert.Single(plan.Skipped).Reason);
+    }
+
+    /// <summary>
+    /// A deleted repo is gone, not un-versioned. Reporting the second reason for the first
+    /// case sends you looking for a folder that is not there.
+    /// </summary>
+    [Fact]
+    public void AMissingFolderIsReportedMissingRatherThanUnversioned()
+    {
+        var plan = Decide([In(@"C:\Code\gone", 1)], folderExists: _ => false, isRepo: _ => false);
+
+        Assert.Equal("the folder is no longer there", Assert.Single(plan.Skipped).Reason);
+    }
+
+    /// <summary>A worktree and a submodule write a .git file rather than a folder.</summary>
+    [Fact]
+    public void AGitFileCountsAsMuchAsAGitFolder()
+    {
+        var root = Directory.CreateTempSubdirectory("sky-standby-").FullName;
+        try
+        {
+            var asFolder = Directory.CreateDirectory(Path.Combine(root, "folder"));
+            Directory.CreateDirectory(Path.Combine(asFolder.FullName, ".git"));
+
+            var asFile = Directory.CreateDirectory(Path.Combine(root, "file"));
+            File.WriteAllText(Path.Combine(asFile.FullName, ".git"), "gitdir: ../real/.git");
+
+            var neither = Directory.CreateDirectory(Path.Combine(root, "neither"));
+
+            Assert.True(Standby.HasGit(asFolder.FullName));
+            Assert.True(Standby.HasGit(asFile.FullName));
+            Assert.False(Standby.HasGit(neither.FullName));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]
