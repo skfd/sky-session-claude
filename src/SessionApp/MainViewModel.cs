@@ -218,7 +218,7 @@ public partial class MainViewModel : ObservableObject
         _names.ReloadIfChanged();
 
         UpdateStaleCount();
-        await RenamePassAsync();
+        await RenamePassAsync(live);
 
         // The dispositions file has another writer — `SessionCli done <id>` on an agent's
         // behalf — and a mark made there changes no session file, so the watcher would
@@ -263,28 +263,37 @@ public partial class MainViewModel : ObservableObject
     /// thing that cannot lose anything: a restart can drop a pending approval, `trust` can
     /// close a session, answering a question puts words in your mouth.
     /// </summary>
-    private async Task RenamePassAsync()
+    private async Task RenamePassAsync(Dictionary<string, List<LiveSession>> live)
     {
         if (_renaming) return;
         _renaming = true;
         try
         {
-            foreach (var row in Rows.ToList())
+            // Over the live registry, not over the rows. A session with no transcript yet has
+            // no row -- and a terminal that was opened and not yet used is exactly the session
+            // sitting on a derived name, which is the case the floor exists for. Walking rows
+            // skipped every one of them.
+            var rows = Rows.ToDictionary(r => r.Info.SessionId, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var session in live.Values.SelectMany(v => v).ToList())
             {
-                // Per session, not around the loop. One session that throws must not end the
-                // pass for the ones after it -- the order is stable, so a single bad row would
-                // otherwise hide the same tail of the list on every tick, forever.
+                // Per session, not around the loop. One that throws must not end the pass for
+                // the ones after it -- the order is stable, so a single bad session would
+                // otherwise hide the same tail of the registry on every tick, forever.
                 try
                 {
-                    if (row.Live is not { } live || !Renameable(live)) continue;
+                    if (!Renameable(session)) continue;
 
-                    var decision = NamePolicy.Decide(
-                        SessionNaming.InputsFor(row.Info, live, _liveNames), _names);
+                    var inputs = rows.TryGetValue(session.SessionId, out var row)
+                        ? SessionNaming.InputsFor(row.Info, session, _liveNames)
+                        : SessionNaming.InputsFor(session, _liveNames);
 
+                    var decision = NamePolicy.Decide(inputs, _names);
                     if (!decision.HasName || decision.Origin is not { } origin) continue;
 
-                    var result = await SessionNaming.RenameAsync(live, decision.Name!, origin, _names);
-                    if (result.Ok) StatusLine = $"Renamed \"{row.Name}\" to \"{decision.Name}\" -- {decision.Why}.";
+                    var was = session.Name;
+                    var result = await SessionNaming.RenameAsync(session, decision.Name!, origin, _names);
+                    if (result.Ok) StatusLine = $"Renamed \"{was}\" to \"{decision.Name}\" -- {decision.Why}.";
                 }
                 catch
                 {
