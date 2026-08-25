@@ -98,6 +98,37 @@ public sealed class LinkRoots
     }
 
     /// <summary>
+    /// How a link should name <paramref name="folder"/>: relative to whichever root contains
+    /// it, or null when no root does.
+    ///
+    /// This is the producer's half of the rule <see cref="SessionUri"/> enforces on the way
+    /// back in. Whoever is writing a link has an absolute path in hand — it is what they are
+    /// looking at — and the link must not carry one.
+    /// </summary>
+    public string? Relative(string folder)
+    {
+        string full;
+        try { full = Path.GetFullPath(folder); }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+
+        foreach (var root in Roots)
+        {
+            if (!SessionUri.Under(full, root)) continue;
+
+            var trimmed = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
+            var relative = full[trimmed.Length..].Trim(Path.DirectorySeparatorChar);
+
+            // The root itself has nothing left over, and a link needs a folder to name.
+            if (relative.Length > 0) return relative;
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// <c>~</c> is what someone writing this by hand will type, and it is not a folder any
     /// Windows API knows. Anything that will not resolve is dropped rather than thrown: one
     /// bad line should cost its own entry, not the whole file.

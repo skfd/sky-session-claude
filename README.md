@@ -204,12 +204,20 @@ Three verbs, and no more — the ones a bad link would want (`fork`, `restart`, 
 ```
 skysession://resume/<id>      reopen it in a terminal, or raise the one already showing it
 skysession://done/<id>        tick it off; the running window comes forward showing the tick
-skysession://new?in=<path>    start one in a folder, after a confirmation
+skysession://new?in=<folder>  start one in a folder, after a confirmation
 ```
 
 `SessionCli link <id>` writes them — add `--done` for the second, or `link --new <path>` for
 the third. It checks what a click will check, so a folder no link may open is refused while
 you are writing the link rather than weeks later by whoever clicked it.
+
+**`new` names its folder relative to a root, never absolutely** — `?in=address-vault`, not
+`?in=C:\Users\kk\Code\address-vault`. `link --new` takes the real folder you are looking at
+and does that translation for you. A link that cannot say where the filesystem starts cannot
+name another drive, a UNC share or the device namespace, so that whole class of walk-past is
+gone by construction rather than by a list of prefixes someone remembered to forbid — and
+`..` is refused outright on top of it. A name that exists under two roots is refused as
+ambiguous rather than resolved to the first, the same way a session id prefix is.
 
 The point of a link rather than a command is that it survives being written down. A morning
 brief listing what is still on the hook can put one beside each item; a `TODO.md` or a code

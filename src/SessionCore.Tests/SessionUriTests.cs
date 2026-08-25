@@ -169,86 +169,124 @@ public class SessionUriTests
     // --- the folder allowlist -----------------------------------------------
 
     [Fact]
-    public void New_accepts_a_folder_under_a_root()
+    public void New_names_a_folder_relative_to_a_root()
     {
-        var folder = Path.Combine(Root, "demo");
-        Directory.CreateDirectory(folder);
+        Directory.CreateDirectory(Path.Combine(Root, "demo"));
 
-        var request = Parse($"skysession://new?in={Uri.EscapeDataString(folder)}");
+        var request = Parse("skysession://new?in=demo");
 
         Assert.True(request.Ok, request.Refusal);
         Assert.Equal(SessionUriVerb.New, request.Verb);
-        Assert.Equal(folder, request.Folder);
+        Assert.Equal(Path.Combine(Root, "demo"), request.Folder);
     }
 
     [Fact]
-    public void A_sibling_that_merely_starts_with_the_root_is_not_under_it()
+    public void A_relative_path_may_go_deeper_than_one_level()
     {
-        // The reason the root check appends a separator to both ends. C:\CodeEvil starts
-        // with C:\Code as a string and is a different folder entirely.
-        Directory.CreateDirectory(Root + "Evil");
+        Directory.CreateDirectory(Path.Combine(Root, "group", "repo"));
 
-        var request = Parse($"skysession://new?in={Uri.EscapeDataString(Root + "Evil")}");
+        var request = Parse("skysession://new?in=group/repo");
 
-        Assert.False(request.Ok);
-        Assert.Contains("not under", request.Refusal);
+        Assert.True(request.Ok, request.Refusal);
+        Assert.Equal(Path.Combine(Root, "group", "repo"), request.Folder);
     }
 
     [Fact]
-    public void A_folder_outside_every_root_is_refused()
+    public void Forward_slashes_are_a_path_too()
     {
-        var request = Parse(@"skysession://new?in=C:\Windows\System32");
+        // A link is a URL and whoever writes one by hand will reach for the separator a URL
+        // uses. A trailing one is noise and costs nothing to accept.
+        Directory.CreateDirectory(Path.Combine(Root, "group", "repo"));
 
-        Assert.False(request.Ok);
-        Assert.Contains("not under", request.Refusal);
+        Assert.True(Parse("skysession://new?in=group/repo/").Ok);
     }
 
     [Fact]
-    public void Traversal_out_of_a_root_is_refused_after_it_is_resolved()
+    public void A_leading_separator_is_rooted_and_refused_with_it_said_plainly()
     {
-        // The string starts inside the root; the path does not. The check runs on the
-        // resolved path, which is why this is refused rather than accepted.
-        var escape = Path.Combine(Root, "..", "..", "Windows");
+        // "\demo" is root-relative on Windows — it means the drive's root, not this root.
+        // Forgiving it by stripping the slash would trade a clear refusal for a confusing
+        // one, since the path would then simply not exist.
+        Directory.CreateDirectory(Path.Combine(Root, "demo"));
 
-        var request = Parse($"skysession://new?in={Uri.EscapeDataString(escape)}");
+        var request = Parse("skysession://new?in=/demo");
 
         Assert.False(request.Ok);
+        Assert.Contains("relative to a configured root", request.Refusal);
     }
 
     [Theory]
-    [InlineData(@"\\server\share\repo")]
-    [InlineData(@"\\?\C:\Windows")]
-    [InlineData(@"\\.\PhysicalDrive0")]
+    [InlineData(@"C:\Windows\System32")]
+    [InlineData(@"\Windows")]
+    [InlineData(@"C:demo")]
+    [InlineData(@"\server\share\repo")]
+    [InlineData(@"\?\C:\Windows")]
+    [InlineData(@"\.\PhysicalDrive0")]
     [InlineData("//server/share/repo")]
-    public void A_path_that_is_not_a_plain_local_folder_is_refused(string path)
+    public void An_absolute_path_is_not_something_a_link_may_carry(string path)
     {
-        // Refused before resolution: a UNC share reaches another machine, and the device
-        // namespace sidesteps the very normalisation the root check depends on.
+        // The point of relative-only: a link that cannot say where the filesystem starts
+        // cannot name another drive, another machine, or the device namespace. The whole
+        // class goes away rather than being enumerated.
         var request = Parse($"skysession://new?in={Uri.EscapeDataString(path)}");
 
         Assert.False(request.Ok);
     }
 
-    [Fact]
-    public void A_root_that_exists_but_a_folder_that_does_not_is_refused()
+    [Theory]
+    [InlineData("..")]
+    [InlineData(@"..\..\Windows")]
+    [InlineData("demo/../../Windows")]
+    [InlineData("demo/..")]
+    public void A_link_cannot_climb_out_of_its_root(string path)
     {
-        var missing = Path.Combine(Root, "no-such-repo-here");
-
-        var request = Parse($"skysession://new?in={Uri.EscapeDataString(missing)}");
+        var request = Parse($"skysession://new?in={Uri.EscapeDataString(path)}");
 
         Assert.False(request.Ok);
-        Assert.Contains("No such folder", request.Refusal);
+        Assert.Contains("climb out", request.Refusal);
+    }
+
+    [Fact]
+    public void A_sibling_that_merely_starts_with_the_root_cannot_be_reached_at_all()
+    {
+        // C:\CodeEvil starts with C:\Code as a string. Under a relative-only rule there is
+        // no spelling of it that a link can even attempt.
+        Directory.CreateDirectory(Root + "Evil");
+
+        Assert.False(Parse($"skysession://new?in={Uri.EscapeDataString(Root + "Evil")}").Ok);
+        Assert.False(Parse("skysession://new?in=../sky-uri-testsEvil").Ok);
+    }
+
+    [Fact]
+    public void A_folder_that_does_not_exist_under_the_root_is_refused()
+    {
+        var request = Parse("skysession://new?in=no-such-repo-here");
+
+        Assert.False(request.Ok);
+        Assert.Contains("No folder", request.Refusal);
+    }
+
+    [Fact]
+    public void A_name_that_exists_under_two_roots_is_ambiguous_rather_than_the_first_one()
+    {
+        // Same rule as a session id prefix: whoever clicked cannot see which root answered,
+        // and picking the first would change what the link means the day a root is added.
+        var second = Root + "-other";
+        Directory.CreateDirectory(Path.Combine(Root, "shared"));
+        Directory.CreateDirectory(Path.Combine(second, "shared"));
+
+        var request = SessionUri.Parse("skysession://new?in=shared", [Root, second]);
+
+        Assert.False(request.Ok);
+        Assert.Contains("more than one root", request.Refusal);
     }
 
     [Fact]
     public void With_no_roots_configured_new_is_refused_outright()
     {
-        var folder = Path.Combine(Root, "demo");
-        Directory.CreateDirectory(folder);
+        Directory.CreateDirectory(Path.Combine(Root, "demo"));
 
-        var request = SessionUri.Parse($"skysession://new?in={Uri.EscapeDataString(folder)}", []);
-
-        Assert.False(request.Ok);
+        Assert.False(SessionUri.Parse("skysession://new?in=demo", []).Ok);
     }
 
     [Fact]
@@ -256,6 +294,7 @@ public class SessionUriTests
     {
         Assert.False(Parse("skysession://new").Ok);
         Assert.False(Parse("skysession://new?in=").Ok);
+        Assert.False(Parse("skysession://new?in=.").Ok);
     }
 
     [Fact]
@@ -263,11 +302,10 @@ public class SessionUriTests
     {
         // Rule 5. A link that opens a session and also sends it a prompt is remote code
         // execution with an extra step — refused loudly rather than quietly ignored.
-        var folder = Path.Combine(Root, "demo");
-        Directory.CreateDirectory(folder);
+        Directory.CreateDirectory(Path.Combine(Root, "demo"));
 
         var request = Parse(
-            $"skysession://new?in={Uri.EscapeDataString(folder)}&prompt={Uri.EscapeDataString("rm -rf /")}");
+            $"skysession://new?in=demo&prompt={Uri.EscapeDataString("rm -rf /")}");
 
         Assert.False(request.Ok);
         Assert.Contains("cannot carry a prompt", request.Refusal);
@@ -279,11 +317,9 @@ public class SessionUriTests
         // ?in=<allowed>&in=<forbidden> is the classic walk-past: one parser reads the first
         // value and checks it, another reads the last and acts on it. Here the last value
         // is the only one there is, so the check and the launch cannot disagree.
-        var folder = Path.Combine(Root, "demo");
-        Directory.CreateDirectory(folder);
+        Directory.CreateDirectory(Path.Combine(Root, "demo"));
 
-        var request = Parse(
-            $"skysession://new?in={Uri.EscapeDataString(folder)}&in={Uri.EscapeDataString(@"C:\Windows")}");
+        var request = Parse($"skysession://new?in=demo&in={Uri.EscapeDataString(@"C:\Windows")}");
 
         Assert.False(request.Ok);
     }

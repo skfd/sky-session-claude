@@ -1103,7 +1103,21 @@ internal static class Commands
 
             var roots = LinkRoots.Load();
             var folder = Path.GetFullPath(args.Require("new"));
-            var url = $"{SessionUri.Scheme}://new?in={Uri.EscapeDataString(folder)}";
+
+            // Typed as a real folder, written as a relative one. Whoever runs this has an
+            // absolute path in hand because it is what they are looking at; the link must
+            // not carry one, so the translation happens here rather than being asked of them.
+            if (roots.Relative(folder) is not { } relative)
+                return Cli.EmitResult(new ActionResult
+                {
+                    Ok = false,
+                    Action = "link",
+                    Message = $"{folder} is not under a folder links may open sessions in."
+                        + (roots.Warning is { Length: > 0 } rw ? $"  ({rw})" : "")
+                        + $"  Those are configured in {LinkRoots.DefaultPath()}.",
+                });
+
+            var url = $"{SessionUri.Scheme}://new?in={Uri.EscapeDataString(relative)}";
 
             // Parsed back rather than trusted: the link is checked by the same code the
             // handler runs, so "this will work when clicked" is a fact rather than a hope.

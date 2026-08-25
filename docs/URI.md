@@ -52,7 +52,7 @@ Three, mirroring the CLI vocabulary:
 ```
 skysession://resume/<id>      reopen the session in its terminal. Acts immediately.
 skysession://done/<id>        tick it off. Writes a mark, opens nothing.
-skysession://new?in=<path>    start one in a folder. Confirms first.
+skysession://new?in=<folder>  start one in a folder, named relative to a root. Confirms first.
 ```
 
 `done` was not in the original three and earns its place: it is how a loose end gets
@@ -121,8 +121,14 @@ bugs are all one bug: a page navigates to a scheme, Windows appends the attacker
    payload is a GUID or a GUID prefix, so it is matched against `[0-9a-f-]` and parsed —
    an allowlist, not a blocklist of quotes and shell metacharacters. Free, and it is the
    difference between rejecting the attacks thought of and accepting only what is valid.
-3. **Allowlist the folder.** `in=` must resolve under a configured root, exist, and be a
-   repo. Refuse UNC, `\\?\`, device paths, and anything that escapes a root by traversal.
+3. **The folder is relative to a root, and a link may not spell an absolute path at all.**
+   This began as an allowlist check on an absolute path — resolve it, then refuse UNC,
+   `\\?\`, device paths and traversal. Relative-only is strictly better: a link that cannot
+   say where the filesystem starts cannot name another drive or another machine, so the
+   class is closed by construction rather than by a list of prefixes someone remembered.
+   `..` is refused before resolution so the message can say why, and containment is checked
+   again after it so nothing is one clever normalisation away from the whole disk. A name
+   that exists under two roots is refused as ambiguous rather than resolved to the first.
 4. **`--trust` is never reachable from a link.** Folder trust is Claude Code's actual
    security boundary, and a link is not the operator typing.
 5. **No prompt payload that submits.** If `&prompt=` is ever supported it prefills the input

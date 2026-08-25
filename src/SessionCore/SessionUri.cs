@@ -25,8 +25,10 @@ public sealed class SessionUriRequest
     /// <see cref="SessionUriVerb.Done"/>. May be a prefix, resolved by the caller.</summary>
     public string? Id { get; init; }
 
-    /// <summary>The folder, for <see cref="SessionUriVerb.New"/>. Already made absolute and
-    /// checked against the roots.</summary>
+    /// <summary>
+    /// The folder, for <see cref="SessionUriVerb.New"/>. The link named it relative to a
+    /// configured root; this is what that resolved to, absolute and known to exist.
+    /// </summary>
     public string? Folder { get; init; }
 
     /// <summary>Why this link was not accepted, in words worth showing someone.</summary>
@@ -138,39 +140,64 @@ public static class SessionUri
         if (query.ContainsKey("prompt"))
             return SessionUriRequest.No("A link cannot carry a prompt.");
 
-        // Anything that is not a plain local path is refused before it is resolved: a UNC
-        // share reaches another machine, and the device namespace sidesteps the very
-        // normalisation the root check below depends on.
-        if (raw.Contains('\0') || raw.Contains('\n') || raw.Contains('\r'))
+        // The folder is named relative to a configured root, never absolutely. That is worth
+        // more than tidiness: a link that cannot say where the filesystem starts cannot name
+        // a UNC share, a device path, or another drive, so the whole class of "escape the
+        // allowlist by spelling the path differently" is gone by construction rather than by
+        // a list of prefixes someone remembered to forbid. It also makes a link portable —
+        // `?in=address-vault` means the same thing on a machine that keeps its repos
+        // somewhere else.
+        var text = raw.Trim().Replace('/', Path.DirectorySeparatorChar);
+
+        if (text.Contains('\0') || text.Contains('\n') || text.Contains('\r'))
             return SessionUriRequest.No("Not a folder.");
 
-        if (raw.StartsWith(@"\\") || raw.StartsWith("//") || raw.Contains(@"\\?\") || raw.Contains(@"\\.\"))
-            return SessionUriRequest.No($"Not a local folder: {Trim(raw)}");
+        // Rooted in any of Windows' several senses: C:\x, \x, C:x, \\server\share.
+        if (Path.IsPathRooted(text) || text.Contains(':'))
+            return SessionUriRequest.No(
+                $"A link names a folder relative to a configured root, not an absolute path: {Trim(raw)}");
 
-        string folder;
-        try
-        {
-            folder = Path.GetFullPath(raw);
-        }
-        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return SessionUriRequest.No($"Not a folder: {Trim(raw)}");
-        }
+        var segments = text.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
 
-        if (!Path.IsPathFullyQualified(folder))
-            return SessionUriRequest.No($"Not an absolute folder: {Trim(raw)}");
+        // Refused before resolution rather than caught after it. Both checks are kept — this
+        // one so the refusal can say what was wrong, and the containment check below because
+        // a link should not be one clever normalisation away from reaching the whole disk.
+        if (segments.Any(s => s == ".."))
+            return SessionUriRequest.No($"A link cannot climb out of its root: {Trim(raw)}");
+
+        segments = segments.Where(s => s != ".").ToArray();
+        if (segments.Length == 0)
+            return SessionUriRequest.No("'new' needs a folder: skysession://new?in=<folder>.");
 
         if (roots.Count == 0)
             return SessionUriRequest.No("No folders are configured for links to open sessions in.");
 
-        if (!roots.Any(root => Under(folder, root)))
+        var relative = string.Join(Path.DirectorySeparatorChar, segments);
+        var found = new List<string>();
+
+        foreach (var root in roots)
+        {
+            string candidate;
+            try { candidate = Path.GetFullPath(Path.Combine(root, relative)); }
+            catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                continue;
+            }
+
+            if (Under(candidate, root) && Directory.Exists(candidate)) found.Add(candidate);
+        }
+
+        // Ambiguity is an error rather than a guess, the same way a session id prefix is: the
+        // person who clicked cannot see which root answered, and picking the first would make
+        // the link mean something different the day a second root is configured.
+        if (found.Count > 1)
             return SessionUriRequest.No(
-                $"{folder} is not under a folder links may open sessions in.");
+                $"'{relative}' exists under more than one root ({string.Join(", ", found)}), so the link is ambiguous.");
 
-        if (!Directory.Exists(folder))
-            return SessionUriRequest.No($"No such folder: {folder}");
+        if (found.Count == 0)
+            return SessionUriRequest.No($"No folder '{relative}' under any root links may open sessions in.");
 
-        return new SessionUriRequest { Verb = SessionUriVerb.New, Folder = folder };
+        return new SessionUriRequest { Verb = SessionUriVerb.New, Folder = found[0] };
     }
 
     /// <summary>

@@ -111,16 +111,49 @@ public class LinkRootsTests : IDisposable
     [Fact]
     public void Roots_reach_the_parser_as_the_allowlist()
     {
-        // The two halves together: what LinkRoots loads is exactly what SessionUri enforces.
+        // The two halves together: what LinkRoots loads is exactly what SessionUri resolves
+        // a relative folder against.
         Directory.CreateDirectory(Path.Combine(_dir, "repo"));
         var settings = Write($$"""{ "linkRoots": [{{System.Text.Json.JsonSerializer.Serialize(_dir)}}] }""");
         var roots = LinkRoots.Load(settings);
 
-        var inside = SessionUri.Parse(
-            $"skysession://new?in={Uri.EscapeDataString(Path.Combine(_dir, "repo"))}", roots.Roots);
+        var inside = SessionUri.Parse("skysession://new?in=repo", roots.Roots);
         var outside = SessionUri.Parse(@"skysession://new?in=C:\Windows", roots.Roots);
 
         Assert.True(inside.Ok, inside.Refusal);
+        Assert.Equal(Path.Combine(_dir, "repo"), inside.Folder);
         Assert.False(outside.Ok);
+    }
+
+    /// <summary>
+    /// The producer's half: whoever writes a link is holding an absolute path, and the link
+    /// must not carry one. A round trip through both is the only check worth having.
+    /// </summary>
+    [Fact]
+    public void An_absolute_folder_comes_back_as_what_a_link_should_say()
+    {
+        Directory.CreateDirectory(Path.Combine(_dir, "group", "repo"));
+        var roots = LinkRoots.Load(Write(
+            $$"""{ "linkRoots": [{{System.Text.Json.JsonSerializer.Serialize(_dir)}}] }"""));
+
+        var relative = roots.Relative(Path.Combine(_dir, "group", "repo"));
+
+        Assert.Equal(Path.Combine("group", "repo"), relative);
+        Assert.Equal(
+            Path.Combine(_dir, "group", "repo"),
+            SessionUri.Parse($"skysession://new?in={Uri.EscapeDataString(relative!)}", roots.Roots).Folder);
+    }
+
+    [Fact]
+    public void A_folder_under_no_root_has_no_link_to_write()
+    {
+        var roots = LinkRoots.Load(Write(
+            $$"""{ "linkRoots": [{{System.Text.Json.JsonSerializer.Serialize(_dir)}}] }"""));
+
+        Assert.Null(roots.Relative(@"C:\Windows\System32"));
+
+        // The root itself is not a folder a link can name — there would be nothing left over
+        // to say, and `new` in the folder that holds every repo is not a session anyone wants.
+        Assert.Null(roots.Relative(_dir));
     }
 }
