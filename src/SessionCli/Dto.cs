@@ -166,4 +166,11 @@ internal sealed class ActionItem
 
     /// <summary>The id a fork produced; null for every other verb.</summary>
     public string? NewSessionId { get; init; }
+
+    /// <summary>
+    /// The <c>skysession://</c> link <c>link</c> produced; null for every other verb. Its own
+    /// field rather than only in the message, because the caller that wants this is a brief
+    /// writing an href and should not have to find it in a sentence.
+    /// </summary>
+    public string? Link { get; init; }
 }

@@ -26,7 +26,7 @@ internal sealed class Args
     {
         "newest-per-project", "unfinished", "live", "stale",
         "tip", "resume", "yes", "force", "dry-run", "self", "ask",
-        "finished", "keep-terminal",
+        "finished", "keep-terminal", "done",
     };
 
     private readonly Dictionary<string, string?> _flags = new(StringComparer.OrdinalIgnoreCase);
@@ -143,6 +143,11 @@ internal static class Cli
           SessionCli new [--in <path>]           open a terminal on a brand-new session
           SessionCli trust <id>                  answer the trust prompt it is sitting on
 
+        Writing links     (skysession:// — clickable wherever a custom scheme survives)
+          SessionCli link <id>                a link that reopens that session
+          SessionCli link <id> --done         a link that ticks it off
+          SessionCli link --new <path>        a link that starts a session in that folder
+
         Filters for `list`
           --status <s>          complete, waiting-you, waiting-agent, cut-off, limit,
                                 error, interrupted
@@ -170,6 +175,11 @@ internal static class Cli
                        source would do)
           --dry-run    say what would happen and change nothing
           --keep-terminal  on `close`: leave the terminal open once the session is gone
+          --done       on `link`: write a link that ticks the session off rather than
+                       reopening it
+          --new <path> on `link`: write a link that starts a session in that folder
+                       (checked now against the folders links may open, so a link that
+                       cannot work is refused here rather than at the click)
 
         A session id may be shortened to any unique prefix, like a commit sha.
         """;
@@ -207,6 +217,7 @@ internal static class Cli
                 "resume" => Commands.Resume(rest),
                 "new" => Commands.New(rest),
                 "trust" => Commands.Trust(rest),
+                "link" => Commands.Link(rest),
                 "help" or "-h" or "-?" => Print(HelpText),
                 _ => throw new UsageException($"Unknown command: {args[0]}"),
             };

@@ -103,4 +103,41 @@ public class ArgsTests
         var args = Parse("restart", "--stale", "--yes");
         args.RejectUnknown("stale", "yes", "force", "dry-run");   // does not throw
     }
+
+    /// <summary>
+    /// `--done` is a switch, which is the only thing that lets `link --done <id>` be read
+    /// correctly. Without it in the switch list the parser takes the id as the flag's value,
+    /// and the verb then reports having nothing to do while looking like it worked — the
+    /// exact failure the list was written for.
+    /// </summary>
+    [Fact]
+    public void LinkReadsTheIdAfterTheDoneSwitch()
+    {
+        var args = Parse("link", "--done", "b9e83ad3");
+
+        Assert.True(args.Has("done"));
+        Assert.Equal(["b9e83ad3"], args.Positional);
+    }
+
+    [Fact]
+    public void LinkReadsTheIdBeforeTheDoneSwitch()
+    {
+        var args = Parse("link", "b9e83ad3", "--done");
+
+        Assert.True(args.Has("done"));
+        Assert.Equal(["b9e83ad3"], args.Positional);
+    }
+
+    /// <summary>
+    /// `--new` takes a folder, so it is not a switch and must swallow the path after it —
+    /// including one with spaces, which arrives as a single argument already.
+    /// </summary>
+    [Fact]
+    public void LinkNewTakesTheFolderAsItsValue()
+    {
+        var args = Parse("link", "--new", @"C:\Code\kk's repo");
+
+        Assert.Equal(@"C:\Code\kk's repo", args.Require("new"));
+        Assert.Empty(args.Positional);
+    }
 }

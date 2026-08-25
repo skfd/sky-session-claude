@@ -1005,6 +1005,82 @@ internal static class Commands
     internal static string NewSessionLine(string folder, string? name) =>
         $"cd {SessionName.Quote(folder)}; {ClaudeLaunch.New(name)}";
 
+    // --- links --------------------------------------------------------------
+
+    /// <summary>
+    /// Write a <c>skysession://</c> link for a session, or for starting one in a folder.
+    ///
+    /// The producer half of the link feature, and it exists before anything consumes links
+    /// so that whatever writes them — the morning brief, a note, an agent handing over an
+    /// offer rather than asking a question — has something to call.
+    ///
+    /// It checks what the handler will check, and refuses now rather than at the click. A
+    /// link whose id matches nothing, or whose folder no link may open, is worse than no
+    /// link: it is written into a document that outlives this command, and the person who
+    /// finds out is the one who clicked it.
+    ///
+    /// The full id goes into the link even when a prefix was typed. A prefix that is unique
+    /// today can be ambiguous next month, and the link is the thing that lasts.
+    /// </summary>
+    public static int Link(Args args)
+    {
+        args.RejectUnknown("done", "new");
+
+        if (args.Has("new"))
+        {
+            if (args.Positional.Count > 0)
+                throw new UsageException(
+                    $"'link --new' takes a folder, not a session id (got '{args.Positional[0]}'). "
+                    + "Use `link <id>` for a session.");
+
+            var roots = LinkRoots.Load();
+            var folder = Path.GetFullPath(args.Require("new"));
+            var url = $"{SessionUri.Scheme}://new?in={Uri.EscapeDataString(folder)}";
+
+            // Parsed back rather than trusted: the link is checked by the same code the
+            // handler runs, so "this will work when clicked" is a fact rather than a hope.
+            var check = SessionUri.Parse(url, roots.Roots);
+            if (!check.Ok)
+                return Cli.EmitResult(new ActionResult
+                {
+                    Ok = false,
+                    Action = "link",
+                    Message = check.Refusal!
+                        + (roots.Warning is { Length: > 0 } w ? $"  ({w})" : "")
+                        + $"  Folders links may open are configured in {LinkRoots.DefaultPath()}.",
+                });
+
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = true,
+                Action = "link",
+                Message = url,
+                Items = [new ActionItem { SessionId = "", Ok = true, Message = folder, Link = url }],
+            });
+        }
+
+        var scanner = RequireScanner();
+        var file = Resolve(scanner, OneId(args, "link"));
+        var info = scanner.BuildRow(file, SessionFileParser.DefaultContextWindow);
+        var verb = args.Has("done") ? "done" : "resume";
+        var link = $"{SessionUri.Scheme}://{verb}/{info.SessionId}";
+
+        return Cli.EmitResult(new ActionResult
+        {
+            Ok = true,
+            Action = "link",
+            Message = link,
+            Items = [new ActionItem
+            {
+                SessionId = info.SessionId,
+                Ok = true,
+                Name = info.Name,
+                Message = $"{verb} \"{info.Name ?? info.SessionId}\"",
+                Link = link,
+            }],
+        });
+    }
+
     // --- answering ----------------------------------------------------------
 
     /// <summary>
