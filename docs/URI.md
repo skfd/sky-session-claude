@@ -4,6 +4,16 @@ A link is worth building when the thing holding the link cannot run an executabl
 the whole justification, and it is why this document is short: everything already on this
 machine calls `SessionCli.exe` directly and needs none of this.
 
+**Built, all six steps.** Two things turned out otherwise, both recorded in place below
+rather than left for a reader to notice: rule 8's mechanism changed (the handler acts in its
+own process and exits, rather than marshalling the URL into the running window), and the
+`--remote-control` decision is applied on main in this build rather than deferred to the
+inbox merge. Verified by clicking: `new` confirms and starts nothing when cancelled, a
+forbidden verb and a folder outside the roots each say why, `done` writes the mark and
+brings the window forward without a dialog of its own, and `resume` on a session already
+open raises its terminal. `resume` on a session that is *not* open runs the same shared
+`SessionResume` path the CLI's verb runs, and was left to the first real click.
+
 The shape below was settled in session `18a96f99` (2026-08-22) and then deferred rather than
 dropped — the file queue (`SessionCli inbox --run`) was built first because it reaches a
 phone and a link does not. The requirement conflicts between the two were resolved on
