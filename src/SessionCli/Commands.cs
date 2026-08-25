@@ -251,16 +251,28 @@ internal static class Commands
 
         // The original file is never touched, so the worst a format drift can do is produce
         // a fork that fails to resume and gets deleted.
-        var newId = SessionForker.ForkFrom(file.FullName, point.LeafUuid);
+        // A fork is named after the prompt it branched at, because that is what it is *for*.
+        // Left to inherit the parent's title, every branch of one session reads identically --
+        // and a fork you cannot pick out of the list is a fork you will not go back to.
+        var forkName = SessionName.Tidy($"fork: {point.Prompt}");
+
+        var newId = SessionForker.ForkFrom(file.FullName, point.LeafUuid, forkName);
+
+        // Recorded in the same operation as the write, like every other name Sky puts down.
+        // Chosen, because branching here was the operator's decision and the name is only
+        // saying which decision it was -- nothing Sky reads later can improve on that.
+        new NameStore().Record(newId, forkName, NameOrigin.Chosen);
+
         var cwd = scanner.BuildRow(file, SessionFileParser.DefaultContextWindow).Cwd;
-        var resume = cwd is { Length: > 0 } ? $"cd \"{cwd}\"; claude --resume {newId}" : $"claude --resume {newId}";
+        var named = $"claude --resume {newId} --name {SessionName.Quote(forkName)}";
+        var resume = cwd is { Length: > 0 } ? $"cd \"{cwd}\"; {named}" : named;
         if (args.Has("resume")) StartTerminal(resume);
 
         return Cli.EmitResult(new ActionResult
         {
             Ok = true,
             Action = "fork",
-            Message = $"Forked {sessionId} from before prompt {ordinal}. Resume it with: {resume}",
+            Message = $"Forked {sessionId} from before prompt {ordinal} as \"{forkName}\". Resume it with: {resume}",
             Items =
             [
                 new ActionItem

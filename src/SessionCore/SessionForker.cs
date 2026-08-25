@@ -64,7 +64,12 @@ public static class SessionForker
     /// Write a fork of <paramref name="filePath"/> truncated at <paramref name="leafUuid"/>
     /// into the same project folder under a fresh session id, and return that id.
     /// </summary>
-    public static string ForkFrom(string filePath, string leafUuid)
+    /// <param name="name">
+    /// What the fork should answer to, written as its own <c>custom-title</c>. Without one a
+    /// fork inherits the parent's title and every branch of a session reads identically, which
+    /// is the one thing the list cannot afford: forks exist to be told apart.
+    /// </param>
+    public static string ForkFrom(string filePath, string leafUuid, string? name = null)
     {
         var records = ReadRecords(filePath);
         var byId = new Dictionary<string, Record>();
@@ -90,6 +95,17 @@ public static class SessionForker
             if (r.Node["session_id"] is not null) r.Node["session_id"] = newId;
             outLines.Add(r.Node.ToJsonString());
         }
+
+        // Last, so it outranks anything carried over: SessionFileParser takes the final
+        // custom-title. Written into a file this function is authoring anyway, which is why
+        // naming a fork needs no authority naming a live session would.
+        if (name is { Length: > 0 })
+            outLines.Add(new JsonObject
+            {
+                ["type"] = "custom-title",
+                ["customTitle"] = name,
+                ["sessionId"] = newId,
+            }.ToJsonString());
 
         // The CLI resumes the branch this pointer names, mirroring real last-prompt records.
         outLines.Add(new JsonObject

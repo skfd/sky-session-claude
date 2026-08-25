@@ -121,4 +121,40 @@ public class SessionForkerTests
         var path = WriteSession(TwoPromptSession());
         Assert.Throws<InvalidOperationException>(() => SessionForker.ForkFrom(path, "nope"));
     }
+
+    // --- naming the branch ----------------------------------------------------
+
+    /// <summary>
+    /// A fork keeps the ancestry, and the ancestry includes the parent's titles — so left
+    /// alone, every branch of one session reads identically in the list. A fork you cannot
+    /// pick out is a fork you will not go back to, which is the whole point of making one.
+    /// </summary>
+    [Fact]
+    public void ForkFrom_NamesTheBranch()
+    {
+        var path = WriteSession(TwoPromptSession());
+        var newId = SessionForker.ForkFrom(path, "a1", "fork: add retry logic");
+        var forkPath = Path.Combine(Path.GetDirectoryName(path)!, newId + ".jsonl");
+
+        var titles = File.ReadLines(forkPath)
+            .Select(l => JsonDocument.Parse(l).RootElement)
+            .Where(e => e.TryGetProperty("type", out var t) && t.GetString() == "custom-title")
+            .Select(e => e.GetProperty("customTitle").GetString())
+            .ToList();
+
+        // Last wins, which is how SessionFileParser resolves it — so ours outranks anything
+        // the ancestry carried over, without having to strip the parent's out.
+        Assert.Equal("fork: add retry logic", titles[^1]);
+    }
+
+    /// <summary>No name asked for, nothing written: the pre-naming behaviour is untouched.</summary>
+    [Fact]
+    public void ForkFrom_WithoutANameWritesNoTitle()
+    {
+        var path = WriteSession(TwoPromptSession());
+        var newId = SessionForker.ForkFrom(path, "a1");
+        var forkPath = Path.Combine(Path.GetDirectoryName(path)!, newId + ".jsonl");
+
+        Assert.DoesNotContain("custom-title", File.ReadAllText(forkPath));
+    }
 }

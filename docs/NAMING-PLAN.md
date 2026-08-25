@@ -2,8 +2,9 @@
 
 `docs/NAMING.md` is the design and the *why*. This is the build order and the traps.
 
-**Built, all ten steps.** Kept as written, because the traps it named are the ones that bit
-and this is the record of what was expected. Four things turned out otherwise:
+**Built, all ten steps**, with one part of step 4 narrowed — see fork naming below. Kept as
+written, because the traps it named are the ones that bit and this is the record of what was
+expected. Five things turned out otherwise:
 
 - **Rename reaches `cli` sessions only.** The desktop app and the SDK publish the pipe, take
   the message and do nothing. `docs/NAMING.md` is corrected; the background pass is gated on
@@ -21,6 +22,12 @@ and this is the record of what was expected. Four things turned out otherwise:
   order in the design. That list is cheapest-viable-first — the order worth *spending* in —
   while the ladder is quality order, and an `aiTitle` is written in a session's first ten
   minutes and never revisited.
+
+- **Fork naming covers `--at-prompt` only.** `SessionForker` authors the whole file, so
+  writing `fork: <the prompt it branched at>` into it is no new authority and the store
+  record is exact. `fork --tip` is the CLI's own `--fork-session`: the id does not exist
+  until the CLI invents it, minutes after this process has gone, so there is nothing to name
+  and nothing to record. A tip fork keeps the parent's title until something renames it.
 
 Both step-8 checks came back as this file guessed: `CLAUDE_CODE_SESSION_ID` survives the
 ancestry, so `--self` works from inside a session; `SessionCli` is not on PATH, so the line
