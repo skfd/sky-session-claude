@@ -64,52 +64,38 @@ public readonly record struct NameRecord(string Name, NameOrigin Origin);
 /// applying and the name is yours from then on — no "reset" gesture to remember, and no way
 /// for a stale record to license overwriting something you typed.
 ///
-/// The mechanics are <see cref="DispositionStore"/>'s, for the same reasons: more than one
-/// writer (the app's background pass, <c>SessionCli rename</c> on an agent's behalf, a
-/// session renaming itself), so every write is a reload-merge-replace under a machine-local
-/// mutex, and the new file is written beside the old one and moved over it so no reader ever
-/// sees half of one.
+/// Concurrency, atomicity and the handling of a file that will not read are
+/// <see cref="JsonSidecar{TValue}"/>'s, shared with <see cref="DispositionStore"/>: this has
+/// the same writers for the same reasons — the app's background pass, <c>SessionCli rename</c>
+/// on an agent's behalf, and a session renaming itself.
 /// </summary>
 public sealed class NameStore
 {
     private const string FileName = "names.json";
-
-    /// <summary>
-    /// Local, not Global: every writer runs as the same user on the same desktop, and
-    /// creating a Global object needs a privilege a standard account may not hold.
-    /// </summary>
     private const string MutexPrefix = @"Local\sky-session-claude-names";
 
-    /// <summary>A write waits this long for the other writer before giving up.</summary>
-    private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(5);
-
-    private readonly string _path;
-    private readonly string _mutexName;
-
+    private readonly JsonSidecar<NameRecord> _file;
     private Dictionary<string, NameRecord> _names;
-
-    /// <summary>Write time of the file the in-memory copy came from; drives reloads.</summary>
-    private DateTime _stamp;
 
     public NameStore() : this(DispositionStore.DefaultDir()) { }
 
     public NameStore(string dir)
     {
-        _path = Path.Combine(dir, FileName);
+        _file = new JsonSidecar<NameRecord>(
+            Path.Combine(dir, FileName),
+            MutexPrefix,
+            Serialize,
+            Deserialize,
+            unreadableNote: "names are not being tracked");
 
-        // Two stores over two directories (a test, say) must not block each other, and a
-        // mutex name may not contain a path separator.
-        _mutexName = $"{MutexPrefix}-{Hash(Path.GetFullPath(_path))}";
-
-        _names = NewNames();
-        Reload();
+        _names = _file.Load();
     }
 
     /// <summary>
-    /// Set when the last load found something wrong. Worth surfacing: the alternative is
-    /// Sky quietly forgetting which names are its own, and treating all of them as yours.
+    /// Set when the last load found something wrong. Worth surfacing: the alternative is Sky
+    /// quietly forgetting which names are its own, and treating all of them as yours.
     /// </summary>
-    public string? LoadWarning { get; private set; }
+    public string? LoadWarning => _file.Warning;
 
     public IReadOnlyDictionary<string, NameRecord> All => _names;
 
@@ -141,7 +127,7 @@ public sealed class NameStore
     {
         if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(name)) return;
 
-        Mutate(names =>
+        _names = MutateOrKeep(names =>
         {
             var wanted = new NameRecord(name, origin);
             if (names.TryGetValue(sessionId, out var current) && current == wanted) return false;
@@ -152,7 +138,7 @@ public sealed class NameStore
 
     /// <summary>Forget a session, so its current name reads as the operator's from here on.</summary>
     public void Forget(string sessionId) =>
-        Mutate(names => names.Remove(sessionId));
+        _names = MutateOrKeep(names => names.Remove(sessionId));
 
     /// <summary>
     /// Re-read the file if another writer has touched it. One stat when nothing changed,
@@ -161,115 +147,22 @@ public sealed class NameStore
     /// </summary>
     public bool ReloadIfChanged()
     {
-        if (StampOf(_path) == _stamp) return false;
+        if (!_file.ChangedOnDisk) return false;
 
         var before = _names;
-        Reload();
-        return !Same(before, _names);
-    }
-
-    // --- the write path -----------------------------------------------------
-
-    /// <summary>
-    /// Take the lock, re-read what is on disk, let <paramref name="apply"/> change it, and
-    /// replace the file atomically. The in-memory copy ends up as whatever came back from
-    /// disk plus the change — never what this process was holding beforehand.
-    /// </summary>
-    private void Mutate(Func<Dictionary<string, NameRecord>, bool> apply)
-    {
-        using var mutex = new Mutex(initiallyOwned: false, _mutexName);
-        bool held = false;
-        try
-        {
-            held = Acquire(mutex);
-
-            var read = ReadFile(_path);
-            LoadWarning = read.Warning;
-
-            // A store that exists but cannot be read is the one case where writing would
-            // destroy something: we would replace real records with an empty set, and every
-            // name Sky has ever written would read back as the operator's.
-            if (read.Outcome == LoadOutcome.Unreadable) return;
-
-            var names = read.Names ?? NewNames();
-            if (apply(names) && WriteAtomic(names))
-                _stamp = StampOf(_path);
-
-            _names = names;
-        }
-        finally
-        {
-            if (held) mutex.ReleaseMutex();
-        }
-    }
-
-    // An abandoned mutex means the other writer died mid-write. We hold the lock either way,
-    // and the file it left behind is either the old one or the new one — never a half-written
-    // one, because the write is a move.
-    private static bool Acquire(Mutex mutex)
-    {
-        try { return mutex.WaitOne(LockTimeout); }
-        catch (AbandonedMutexException) { return true; }
+        _names = _file.Load();
+        return !JsonSidecar<NameRecord>.Same(before, _names);
     }
 
     /// <summary>
-    /// Write beside the file, then move over it. <c>File.Move(overwrite: true)</c> is
-    /// MoveFileEx with REPLACE_EXISTING, atomic within a volume — no reader ever sees a
-    /// truncated store, and a crash leaves the previous one intact.
+    /// Apply a change, or keep what we have when the file could not be read at all. Handing
+    /// back the empty map a failed read produces would clear in memory the very entries the
+    /// write just refused to clear on disk.
     /// </summary>
-    private bool WriteAtomic(Dictionary<string, NameRecord> names)
-    {
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+    private Dictionary<string, NameRecord> MutateOrKeep(Func<Dictionary<string, NameRecord>, bool> apply) =>
+        _file.Mutate(apply) ?? _names;
 
-            var wire = names
-                .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(kv => kv.Key, kv => new Wire
-                {
-                    Name = kv.Value.Name,
-                    Origin = ToWire(kv.Value.Origin),
-                });
-
-            var temp = _path + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(wire, Wire.Options));
-            File.Move(temp, _path, overwrite: true);
-            return true;
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            LoadWarning = $"could not write {Path.GetFileName(_path)}: {e.Message}";
-            return false;   // records stay in memory for this run; nothing else to do
-        }
-    }
-
-    // --- the read path ------------------------------------------------------
-
-    private void Reload()
-    {
-        var read = ReadFile(_path);
-        LoadWarning = read.Warning;
-        _names = read.Names ?? NewNames();
-        _stamp = StampOf(_path);
-    }
-
-    private enum LoadOutcome
-    {
-        /// <summary>No store yet — Sky has never named anything on this machine.</summary>
-        Missing,
-
-        /// <summary>Read cleanly.</summary>
-        Loaded,
-
-        /// <summary>Unparseable; moved aside, so starting from empty is safe.</summary>
-        Corrupt,
-
-        /// <summary>There but out of reach (locked, denied). Start empty, and never write.</summary>
-        Unreadable,
-    }
-
-    private readonly record struct LoadResult(
-        LoadOutcome Outcome, Dictionary<string, NameRecord>? Names, string? Warning);
+    // --- the file format ----------------------------------------------------
 
     /// <summary>
     /// The on-disk shape. A named object rather than a bare string, so the file stays
@@ -293,48 +186,37 @@ public sealed class NameStore
         };
     }
 
-    private static LoadResult ReadFile(string path)
+    private static string Serialize(Dictionary<string, NameRecord> names) =>
+        JsonSerializer.Serialize(
+            names
+                .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(kv => kv.Key, kv => new Wire
+                {
+                    Name = kv.Value.Name,
+                    Origin = ToWire(kv.Value.Origin),
+                }),
+            Wire.Options);
+
+    private static Dictionary<string, NameRecord>? Deserialize(string text)
     {
-        try
-        {
-            if (!File.Exists(path)) return new(LoadOutcome.Missing, null, null);
+        var raw = JsonSerializer.Deserialize<Dictionary<string, Wire>>(text, Wire.Options);
+        if (raw is null) return null;
 
-            var raw = JsonSerializer.Deserialize<Dictionary<string, Wire>>(File.ReadAllText(path), Wire.Options);
-            if (raw is null) return new(LoadOutcome.Missing, null, null);
-
-            var names = NewNames();
-            foreach (var kv in raw)
-            {
-                if (kv.Value?.Name is not { Length: > 0 } name) continue;
-                names[kv.Key] = new NameRecord(name, FromWire(kv.Value.Origin));
-            }
-            return new(LoadOutcome.Loaded, names, null);
-        }
-        catch (JsonException e)
+        var names = JsonSidecar<NameRecord>.NewMap();
+        foreach (var kv in raw)
         {
-            // Set it aside rather than overwrite it. Losing provenance is not catastrophic —
-            // the shape check still recognises placeholders — but it is worth being told.
-            var aside = path + ".corrupt";
-            try { File.Move(path, aside, overwrite: true); } catch { /* best effort */ }
-            return new(LoadOutcome.Corrupt, null,
-                $"{Path.GetFileName(path)} was unreadable ({e.Message}); "
-                + $"moved to {Path.GetFileName(aside)} and started fresh");
+            if (kv.Value?.Name is not { Length: > 0 } name) continue;
+            names[kv.Key] = new NameRecord(name, FromWire(kv.Value.Origin));
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            return new(LoadOutcome.Unreadable, null,
-                $"could not read {Path.GetFileName(path)}: {e.Message} — names are not being tracked");
-        }
+        return names;
     }
-
-    // --- wire format + helpers ----------------------------------------------
 
     public static string ToWire(NameOrigin origin) => origin switch
     {
         NameOrigin.Chosen => "chosen",
         NameOrigin.SelfNamed => "self",
-        NameOrigin.Title => "title",
         NameOrigin.Oracle => "oracle",
+        NameOrigin.Title => "title",
         _ => "floor",
     };
 
@@ -347,29 +229,8 @@ public sealed class NameStore
     {
         "chosen" => NameOrigin.Chosen,
         "self" => NameOrigin.SelfNamed,
-        "title" => NameOrigin.Title,
         "oracle" => NameOrigin.Oracle,
+        "title" => NameOrigin.Title,
         _ => NameOrigin.Floor,
     };
-
-    private static Dictionary<string, NameRecord> NewNames() =>
-        new(StringComparer.OrdinalIgnoreCase);
-
-    private static DateTime StampOf(string path)
-    {
-        try { return File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue; }
-        catch { return DateTime.MinValue; }
-    }
-
-    private static bool Same(
-        Dictionary<string, NameRecord> a, Dictionary<string, NameRecord> b) =>
-        a.Count == b.Count && a.All(kv => b.TryGetValue(kv.Key, out var v) && v == kv.Value);
-
-    // Any stable short name will do; this only has to separate one store from another.
-    private static string Hash(string value)
-    {
-        var bytes = System.Security.Cryptography.SHA256.HashData(
-            System.Text.Encoding.UTF8.GetBytes(value.ToLowerInvariant()));
-        return Convert.ToHexString(bytes, 0, 8);
-    }
 }

@@ -133,6 +133,29 @@ public class DispositionStoreTests : IDisposable
 
     // A store we cannot read is the one case where writing would destroy something: an
     // empty set would replace real marks. The write is refused instead.
+    /// <summary>
+    /// And the same in memory. A store that cannot be read yields an empty map, and handing
+    /// that back to the caller would clear the marks on the cards — the very marks the write
+    /// had just refused to clear on disk, so the app would show them gone while the file still
+    /// held them.
+    /// </summary>
+    [Fact]
+    public void AnUnreadableStoreDoesNotClearWhatIsAlreadyLoaded()
+    {
+        new DispositionStore(_dir).Set("keep-me", Disposition.Done);
+
+        var store = new DispositionStore(_dir);
+        Assert.Equal(Disposition.Done, store.Get("keep-me"));
+
+        using var _ = new FileStream(Path_("dispositions.json"),
+            FileMode.Open, FileAccess.Read, FileShare.None);
+
+        store.Set("should-not-land", Disposition.Abandoned);
+
+        Assert.Equal(Disposition.Done, store.Get("keep-me"));
+        Assert.Equal(Disposition.None, store.Get("should-not-land"));
+    }
+
     [Fact]
     public void AnUnreadableStoreIsNeverOverwritten()
     {
