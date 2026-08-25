@@ -56,6 +56,12 @@ So: last real turn is an agent turn → `complete` (or `waiting-you` if it ends 
 - **Mark a session done** (**D**) → ticks off sessions whose work actually landed, whatever the file ended on. The classifier reads the last turn, so an agent that finishes and then asks "want me to push?" leaves `waiting-you`, and hitting Esc once the change is in leaves `interrupted` — both still nag from the list. **D** settles them: the card keeps its real status and gains a green tick, and it drops out of the list with the completed ones until you untick **Hide completed**.
 - **Abandon a session** (**X**) → crosses out sessions you're *not* going back to. They stay honestly classified as unfinished — abandoning is your judgment, not the classifier's, so it never changes the status. Abandoned cards are hidden until you tick **Show abandoned**, which shows them struck through.
 - Both marks are yours, not the scanner's; pressing the same key again clears one. They persist in `%APPDATA%\sky-session-claude\dispositions.json` (migrated from the older `abandoned.json`) and never touch `sessions.json`, which every scan regenerates. The file has more than one writer — the window on a keystroke, `SessionCli done` on an agent's behalf — so a mark is merged into whatever is on disk rather than dumped over it, and a mark made elsewhere lights up on the card within a few seconds without a refresh.
+- **Live in the notification area** <img src="docs/tray-count.png" width="30" align="top" alt=""> → Sky sits next to the clock, and the icon is the number rather than a cloud: how many sessions are still on the hook, in the pink of the cloud it replaced — the same count the window title spells out. One colour serves both taskbars, so unlike the window icon there is no day/night pair. Hover for the exact figure (which matters past 99, where the glyph gives up and says `99+`), left-click to bring the window up or tuck it away again, right-click for **Open Sky** and **Exit**.
+
+  Closing the window now hides it there rather than quitting: the scan, the file watcher and the three-second poll all carry on behind it, so the number by the clock stays true and coming back costs nothing. **Exit** on that menu is the way out.
+
+  Windows files a new tray icon into the `^` overflow the first time it sees one. Drag it out onto the taskbar once (or *Settings → Personalisation → Taskbar → Other system tray icons*) and it stays out.
+
 - **Dark mode** → follows the Windows apps theme, title bar included, and switches live when you flip the system setting — no restart, and no in-app toggle to keep in sync. The window and taskbar icon switch too: by night the cloud gets a moon and stars <img src="docs/icon-night.png" width="20" align="top" alt="">.
 
 ### Keyboard shortcuts
@@ -119,6 +125,7 @@ SessionCli close <id>...            # quit it, and close the terminal it sat in
 SessionCli close --finished         # end of day; prints the plan, add --yes to do it
 SessionCli resume <id>              # open a terminal and resume
 SessionCli new --in <path> --trust  # start one, and take its trust prompt for you
+SessionCli standby                  # a phone-reachable session per recent project
 SessionCli trust <id>               # answer the trust prompt a session is sitting on
 ```
 
@@ -129,6 +136,12 @@ SessionCli trust <id>               # answer the trust prompt a session is sitti
 `trust` answers Claude Code's "do you trust the files in this folder?" — the dialog a session stops on before it will start in a folder Claude Code has not seen. It is the only verb that types an answer into a conversation rather than at the shell around it, so it is the narrowest one here: it presses Enter, on that one dialog, and only when it can see the dialog with "Yes, I trust this folder" selected. That check is the point rather than politeness — the second option is "No, exit", so the same keystroke on a screen where the selection has moved closes the session instead of trusting the folder. Anything it will not answer comes back with the screen and nothing typed. `new --in <path> --trust` does the same for a session it just started: it waits up to 30s for that dialog to appear naming that folder, takes it, and reports the session past it, so a launch into a fresh repo comes up ready to work.
 
 `new` is the one verb that names no session, because the id it would name does not exist until the CLI writes its first record. It opens a terminal in a folder at a fresh `claude` prompt — `--in` defaults to the folder you are in, `--name` to whatever the CLI derives — and the session joins `list` under its own id once you have typed something into it.
+
+`standby` is the verb for walking away from the desk. Remote Control is per session and per process, so a project with nothing running is a project your phone cannot open — and there is no way to start one *from* the phone either. That asymmetry is the whole reason this verb exists: everything else here can wait until you are back, and this one has to happen before you leave. It reads recency off the transcripts and opens one fresh `claude --remote-control` per project you have worked in lately, so the phone shows a list of your repos instead of an empty one.
+
+Fresh sessions, not resumed ones. A resumed conversation comes back with its context window where it left it and its last question still hanging, and what gets asked from a phone is nearly always a new thing about a familiar repo. Reaching a *particular* conversation is still `resume <id> --rc`, and a single folder is `new --in <path> --rc`.
+
+Like the other sweeps it prints its plan and does nothing until `--yes` — not because anything is at risk (every session it touches is one it just made) but because the plan is also the count of terminals about to appear on your desktop. `--since` sets how far back "lately" reaches, written the way you say it (`7d`, `12h`, `90m`; a week by default), and `--recent <n>` caps how many come up. A repo already answering the phone is reported rather than doubled up, since two standby sessions in one repo are two identical rows in a list that shows no folders. A repo that has since been deleted is reported rather than `cd`-ed into, because a shell that cannot reach a folder stays where it started and the session would come up on your phone claiming to be somewhere it is not. And the worktrees an agent makes under a repo's `.claude` are not projects at all: they are the newest folders on disk at exactly the moment they stop being folders.
 
 `SessionCli help` prints the lot, including the `list` filters (`--disposition`, `--limit`, `--top`, `--newest-per-project`, `--context-window`, `--json <path>`).
 
