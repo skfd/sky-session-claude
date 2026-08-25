@@ -58,6 +58,12 @@ neither has a use in a brief.
 
 An unknown or malformed verb refuses and says why. There is no permissive default.
 
+**Every click must say something.** `resume` opens a terminal, which is its own receipt;
+`done` opens nothing, so a click on it is indistinguishable from a link Chrome silently
+refused. The app raises briefly with the card struck through, and a refusal says what it
+refused and why. This is not a detail to improvise at build time — a verb whose success and
+whose failure look identical is a verb nobody trusts twice.
+
 ## Decisions where the two designs disagreed
 
 **A click acts immediately; it does not go through the inbox.** The handler calls the same
@@ -77,7 +83,14 @@ Resuming a settled session costs a terminal.
 does this unconditionally; main still adds it only when the session already had it. Both
 compile, so git cannot see the disagreement — it is settled here in the branch's favour,
 because a session opened in a terminal nobody was watching is precisely the one that wants
-reaching from a phone. `RestartPolicy.ResumeCommand` is corrected when the branch merges.
+reaching from a phone.
+
+There is a window to close here rather than wait out. The links ship before the merge, so
+between the two a clicked `resume` would follow main's conditional rule and quietly land a
+session on the desk that cannot be answered from the train — which is the opposite of what a
+brief link is for. `RestartPolicy.ResumeCommand` takes the unconditional flag on main as
+part of this build; the branch's `ClaudeLaunch` then merges onto behaviour that already
+agrees with it.
 
 **`new?in=` is allowlisted against configured roots, not a hardcoded path.** The inbox
 allows folders that already have sessions in them — a list nobody maintains, but one that
@@ -94,7 +107,10 @@ bugs are all one bug: a page navigates to a scheme, Windows appends the attacker
 
 1. **Never build a command line from URL text.** Parse the URI in-process, then call the
    same typed entry points `SessionCli` uses. No string concatenation into `cmd`/`powershell`.
-2. Register as `"%1"` and re-validate with `Uri.TryCreate`. Reject quotes, newlines, `&`, `|`.
+2. Register as `"%1"` and re-validate with `Uri.TryCreate`. For `resume` and `done` the
+   payload is a GUID or a GUID prefix, so it is matched against `[0-9a-f-]` and parsed —
+   an allowlist, not a blocklist of quotes and shell metacharacters. Free, and it is the
+   difference between rejecting the attacks thought of and accepting only what is valid.
 3. **Allowlist the folder.** `in=` must resolve under a configured root, exist, and be a
    repo. Refuse UNC, `\\?\`, device paths, and anything that escapes a root by traversal.
 4. **`--trust` is never reachable from a link.** Folder trust is Claude Code's actual
