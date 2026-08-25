@@ -43,11 +43,25 @@ public sealed record LiveSession
     /// </summary>
     public string? NameSource { get; init; }
 
+    /// <summary>
+    /// The named pipe this session listens on, e.g. <c>\\.\pipe\cc-msg-6abe4d3f…</c>. Null on
+    /// builds that publish none.
+    ///
+    /// It is what lets a session be renamed where it stands rather than restarted, which is
+    /// why rename reaches sessions restart cannot: the desktop app and the SDK publish this
+    /// too, and neither runs in a terminal we could drive. Authentication is the sibling
+    /// <c>&lt;pid&gt;.&lt;hash&gt;.key</c> file — see <see cref="LiveSessionRegistry.KeyPathFor"/>.
+    /// </summary>
+    public string? MessagingSocketPath { get; init; }
+
     public string Kind { get; init; } = "";
     public string Entrypoint { get; init; } = "";
 
     /// <summary>True when Remote Control is connected for this session.</summary>
     public bool RemoteControl => !string.IsNullOrEmpty(BridgeSessionId);
+
+    /// <summary>True when this session can be renamed in place.</summary>
+    public bool CanRename => !string.IsNullOrEmpty(MessagingSocketPath);
 }
 
 /// <summary>Reads the live-session registry directory into <see cref="LiveSession"/> records.</summary>
@@ -55,6 +69,29 @@ public static class LiveSessionRegistry
 {
     public static string DefaultDir() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "sessions");
+
+    /// <summary>
+    /// The peer-token file for a session, sitting beside its registry entry as
+    /// <c>&lt;pid&gt;.&lt;hash&gt;.key</c>. Null when there is none, which is the same thing as
+    /// "this session cannot be spoken to".
+    ///
+    /// Found by globbing on the pid, because only the pid half of the name is knowable from
+    /// the registry — the hash is the session's own and appears nowhere else.
+    /// </summary>
+    public static string? KeyPathFor(int pid, string? dir = null)
+    {
+        dir ??= DefaultDir();
+        try
+        {
+            return Directory.Exists(dir)
+                ? Directory.EnumerateFiles(dir, $"{pid}.*.key").FirstOrDefault()
+                : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>
     /// Every readable registry entry in <paramref name="dir"/>. Entries can be mid-write
@@ -100,6 +137,7 @@ public static class LiveSessionRegistry
             BridgeSessionId = Str(root, "bridgeSessionId"),
             Name = Str(root, "name"),
             NameSource = Str(root, "nameSource"),
+            MessagingSocketPath = Str(root, "messagingSocketPath"),
             Kind = Str(root, "kind") ?? "",
             Entrypoint = Str(root, "entrypoint") ?? "",
         };
