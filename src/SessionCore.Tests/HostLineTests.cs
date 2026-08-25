@@ -13,7 +13,7 @@ public class HostLineTests
     public void NamesEverySessionTheHostMakesAfterTheProject()
     {
         Assert.Equal(
-            "claude rc --remote-control-session-name-prefix 'sky-session-claude' --create-session-in-dir",
+            "claude rc --remote-control-session-name-prefix 'sky-session-claude' --create-session-in-dir --spawn=same-dir",
             ClaudeLaunch.Host("sky-session-claude"));
     }
 
@@ -25,15 +25,15 @@ public class HostLineTests
     [Fact]
     public void LeavesThePrefixOffWhenThereIsNone()
     {
-        Assert.Equal("claude rc --create-session-in-dir", ClaudeLaunch.Host());
-        Assert.Equal("claude rc --create-session-in-dir", ClaudeLaunch.Host(""));
+        Assert.Equal("claude rc --create-session-in-dir --spawn=same-dir", ClaudeLaunch.Host());
+        Assert.Equal("claude rc --create-session-in-dir --spawn=same-dir", ClaudeLaunch.Host(""));
     }
 
     [Fact]
     public void GoesIntoTheFolderFirst()
     {
         Assert.Equal(
-            @"cd 'C:\Code\sky'; claude rc --remote-control-session-name-prefix 'sky' --create-session-in-dir",
+            @"cd 'C:\Code\sky'; claude rc --remote-control-session-name-prefix 'sky' --create-session-in-dir --spawn=same-dir",
             LaunchLine.HostIn(@"C:\Code\sky", "sky"));
     }
 
@@ -43,7 +43,7 @@ public class HostLineTests
     public void QuotesAFolderOrPrefixContainingAQuote()
     {
         Assert.Equal(
-            @"cd 'C:\Code\kk''s repo'; claude rc --remote-control-session-name-prefix 'kk''s repo' --create-session-in-dir",
+            @"cd 'C:\Code\kk''s repo'; claude rc --remote-control-session-name-prefix 'kk''s repo' --create-session-in-dir --spawn=same-dir",
             LaunchLine.HostIn(@"C:\Code\kk's repo", "kk's repo"));
     }
 

@@ -39,13 +39,20 @@ public static class ClaudeLaunch
     /// The pre-creation is already the default; it is written out anyway because a phone row
     /// that exists the moment the host does is the whole point of putting one here, and a
     /// default is a thing that can change.
+    ///
+    /// <c>--spawn</c> is written out for a harder reason: unset, and with no answer recorded
+    /// for the project, the host stops on a "same-dir or worktree?" question before it serves
+    /// anything. Standby opens terminals nobody is watching, so a question there is a host
+    /// that never starts — seventeen of them, on a desk the user has left. <c>same-dir</c> is
+    /// the CLI's own default and the one standby wants: the folder is the project, and a
+    /// worktree per phone session is not something to choose on the user's behalf.
     /// </summary>
     public static string Host(string? namePrefix = null) =>
         "claude rc"
         + (namePrefix is { Length: > 0 }
             ? $" --remote-control-session-name-prefix {SessionName.Quote(namePrefix)}"
             : "")
-        + " --create-session-in-dir";
+        + " --create-session-in-dir --spawn=same-dir";
 
     private static string Line(string? sessionId, string? name)
     {
