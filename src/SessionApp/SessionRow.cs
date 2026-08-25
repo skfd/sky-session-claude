@@ -111,19 +111,19 @@ public sealed class SessionRow : INotifyPropertyChanged
     /// Whether this session may be restarted for you, and why not when it may not.
     /// Recomputed on read because "only just went idle" is a fact about the clock.
     /// </summary>
-    public RestartVerdict Verdict => _live is null
-        ? new RestartVerdict(RestartSafety.Unsafe, "not running")
+    public SweepVerdict Verdict => _live is null
+        ? new SweepVerdict(SweepSafety.Unsafe, "not running")
         : RestartPolicy.Judge(_live, _info.Status, DateTime.Now);
 
     /// <summary>Restart is offered for anything not flatly refused; the sweep takes only the safe ones.</summary>
-    public bool CanRestart => IsLive && Verdict.Safety != RestartSafety.Unsafe;
+    public bool CanRestart => IsLive && Verdict.Safety != SweepSafety.Unsafe;
 
     public string RestartTooltip => _live is null
         ? "Not running in a terminal"
         : Verdict.Safety switch
         {
-            RestartSafety.Safe => $"Restart in place (Ctrl+R){RemoteControlNote}",
-            RestartSafety.Ask => $"Restartable, but: {Verdict.Reason}{RemoteControlNote}",
+            SweepSafety.Safe => $"Restart in place (Ctrl+R){RemoteControlNote}",
+            SweepSafety.Ask => $"Restartable, but: {Verdict.Reason}{RemoteControlNote}",
             _ => $"Cannot restart: {Verdict.Reason}",
         };
 

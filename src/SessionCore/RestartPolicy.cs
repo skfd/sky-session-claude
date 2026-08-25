@@ -1,9 +1,12 @@
 namespace SessionCore;
 
-/// <summary>How willing we are to restart a session on its behalf.</summary>
-public enum RestartSafety
+/// <summary>
+/// How willing we are to quit a session on its behalf — restarting it or closing it for
+/// the night both end the same way, so both weigh their risk on this one scale.
+/// </summary>
+public enum SweepSafety
 {
-    /// <summary>Nothing is in flight and nothing is waiting on you — restart it.</summary>
+    /// <summary>Nothing is in flight and nothing is waiting on you — go ahead.</summary>
     Safe,
 
     /// <summary>Probably fine, but something could be lost. Offer it; never sweep it up.</summary>
@@ -14,9 +17,9 @@ public enum RestartSafety
 }
 
 /// <summary>A verdict plus the sentence shown on the card or in the skipped-count.</summary>
-public readonly record struct RestartVerdict(RestartSafety Safety, string Reason)
+public readonly record struct SweepVerdict(SweepSafety Safety, string Reason)
 {
-    public bool CanSweep => Safety == RestartSafety.Safe;
+    public bool CanSweep => Safety == SweepSafety.Safe;
 }
 
 /// <summary>
@@ -45,45 +48,45 @@ public static class RestartPolicy
     /// the session file (null when the file was not scanned), and <paramref name="now"/> is
     /// passed in so the rule is testable rather than clock-dependent.
     /// </summary>
-    public static RestartVerdict Judge(LiveSession live, SessionStatus? tail, DateTime now)
+    public static SweepVerdict Judge(LiveSession live, SessionStatus? tail, DateTime now)
     {
         // --- can we drive it at all? -----------------------------------------
         if (!string.Equals(live.Kind, "interactive", StringComparison.OrdinalIgnoreCase))
-            return new(RestartSafety.Unsafe, "not an interactive session");
+            return new(SweepSafety.Unsafe, "not an interactive session");
 
         if (!string.Equals(live.Entrypoint, "cli", StringComparison.OrdinalIgnoreCase))
-            return new(RestartSafety.Unsafe, $"runs under {Host(live.Entrypoint)}, not a terminal we can drive");
+            return new(SweepSafety.Unsafe, $"runs under {Host(live.Entrypoint)}, not a terminal we can drive");
 
         // --- is something in flight? -----------------------------------------
         if (live.Status is null)
-            return new(RestartSafety.Unsafe, "publishes no busy/idle state, so we cannot tell if it is mid-turn");
+            return new(SweepSafety.Unsafe, "publishes no busy/idle state, so we cannot tell if it is mid-turn");
 
         if (string.Equals(live.Status, "busy", StringComparison.OrdinalIgnoreCase))
-            return new(RestartSafety.Unsafe, "a turn is in flight");
+            return new(SweepSafety.Unsafe, "a turn is in flight");
 
         // "waiting" is its own state, distinct from idle: the CLI is blocked on an answer
         // from you — a permission prompt, or a question mid-turn. Nothing is running, so a
         // restart works, but it drops whatever was waiting to be approved.
         if (string.Equals(live.Status, "waiting", StringComparison.OrdinalIgnoreCase))
-            return new(RestartSafety.Ask, "it is waiting on an answer from you — a pending approval would be dropped");
+            return new(SweepSafety.Ask, "it is waiting on an answer from you — a pending approval would be dropped");
 
         if (!string.Equals(live.Status, "idle", StringComparison.OrdinalIgnoreCase))
-            return new(RestartSafety.Unsafe, $"unrecognised state \"{live.Status}\"");
+            return new(SweepSafety.Unsafe, $"unrecognised state \"{live.Status}\"");
 
         // The file's own tail can contradict "idle": a tool step that never came back
         // leaves the process at rest with work half-done, and killing it is a judgment
         // call about abandoning that work — yours, not ours.
         if (tail is SessionStatus.WaitingAgent or SessionStatus.CutOff)
-            return new(RestartSafety.Unsafe, $"stopped mid-step ({tail.Value.ToWire()})");
+            return new(SweepSafety.Unsafe, $"stopped mid-step ({tail.Value.ToWire()})");
 
         // --- could a restart still cost something? ---------------------------
         if (live.StatusUpdatedAt is { } since && now - since < SettleTime)
-            return new(RestartSafety.Ask, "only just went idle — you may still be typing in it");
+            return new(SweepSafety.Ask, "only just went idle — you may still be typing in it");
 
         if (tail is SessionStatus.WaitingYou)
-            return new(RestartSafety.Ask, "it asked you something; a reply you have typed but not sent would be lost");
+            return new(SweepSafety.Ask, "it asked you something; a reply you have typed but not sent would be lost");
 
-        return new(RestartSafety.Safe, "idle and settled");
+        return new(SweepSafety.Safe, "idle and settled");
     }
 
     /// <summary>

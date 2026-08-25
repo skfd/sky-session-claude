@@ -40,7 +40,7 @@ public class RestartPolicyTests
     public void IdleAndSettledAndFinished_IsSafe()
     {
         var verdict = RestartPolicy.Judge(Live(), SessionStatus.Complete, Now);
-        Assert.Equal(RestartSafety.Safe, verdict.Safety);
+        Assert.Equal(SweepSafety.Safe, verdict.Safety);
         Assert.True(verdict.CanSweep);
     }
 
@@ -50,12 +50,12 @@ public class RestartPolicyTests
     [InlineData(SessionStatus.Limit)]
     [InlineData(SessionStatus.Interrupted)]
     public void IdleAfterAnErrorOrLimit_IsStillSafe(SessionStatus tail) =>
-        Assert.Equal(RestartSafety.Safe, RestartPolicy.Judge(Live(), tail, Now).Safety);
+        Assert.Equal(SweepSafety.Safe, RestartPolicy.Judge(Live(), tail, Now).Safety);
 
     /// <summary>The scanner may not have read the file; idle and settled still stands on its own.</summary>
     [Fact]
     public void NoTailStatusAtAll_StillJudgesFromTheRegistry() =>
-        Assert.Equal(RestartSafety.Safe, RestartPolicy.Judge(Live(), null, Now).Safety);
+        Assert.Equal(SweepSafety.Safe, RestartPolicy.Judge(Live(), null, Now).Safety);
 
     // --- in flight ----------------------------------------------------------
 
@@ -63,7 +63,7 @@ public class RestartPolicyTests
     public void Busy_IsUnsafe()
     {
         var verdict = RestartPolicy.Judge(Live(status: "busy"), SessionStatus.Complete, Now);
-        Assert.Equal(RestartSafety.Unsafe, verdict.Safety);
+        Assert.Equal(SweepSafety.Unsafe, verdict.Safety);
         Assert.Contains("in flight", verdict.Reason);
     }
 
@@ -73,7 +73,7 @@ public class RestartPolicyTests
     /// </summary>
     [Fact]
     public void NoPublishedStatus_IsUnsafe() =>
-        Assert.Equal(RestartSafety.Unsafe, RestartPolicy.Judge(Live(status: null), SessionStatus.Complete, Now).Safety);
+        Assert.Equal(SweepSafety.Unsafe, RestartPolicy.Judge(Live(status: null), SessionStatus.Complete, Now).Safety);
 
     [Theory]
     [InlineData("claude-desktop")]
@@ -81,7 +81,7 @@ public class RestartPolicyTests
     public void SessionsWeDoNotHostAreUnsafe(string entrypoint)
     {
         var verdict = RestartPolicy.Judge(Live(entrypoint: entrypoint), SessionStatus.Complete, Now);
-        Assert.Equal(RestartSafety.Unsafe, verdict.Safety);
+        Assert.Equal(SweepSafety.Unsafe, verdict.Safety);
     }
 
     /// <summary>
@@ -94,7 +94,7 @@ public class RestartPolicyTests
     public void IdleButStoppedMidStep_IsUnsafe(SessionStatus tail)
     {
         var verdict = RestartPolicy.Judge(Live(), tail, Now);
-        Assert.Equal(RestartSafety.Unsafe, verdict.Safety);
+        Assert.Equal(SweepSafety.Unsafe, verdict.Safety);
         Assert.Contains("mid-step", verdict.Reason);
     }
 
@@ -108,14 +108,14 @@ public class RestartPolicyTests
     public void WaitingOnAnAnswer_IsOfferedNotSwept()
     {
         var verdict = RestartPolicy.Judge(Live(status: "waiting"), SessionStatus.CutOff, Now);
-        Assert.Equal(RestartSafety.Ask, verdict.Safety);
+        Assert.Equal(SweepSafety.Ask, verdict.Safety);
         Assert.False(verdict.CanSweep);
         Assert.Contains("pending approval", verdict.Reason);
     }
 
     [Fact]
     public void AnUnknownStateIsNeverAssumedIdle() =>
-        Assert.Equal(RestartSafety.Unsafe, RestartPolicy.Judge(Live(status: "reconnecting"), null, Now).Safety);
+        Assert.Equal(SweepSafety.Unsafe, RestartPolicy.Judge(Live(status: "reconnecting"), null, Now).Safety);
 
     // --- offered, never swept ----------------------------------------------
 
@@ -124,7 +124,7 @@ public class RestartPolicyTests
     public void AQuestionWaitingOnYou_IsOfferedNotSwept()
     {
         var verdict = RestartPolicy.Judge(Live(), SessionStatus.WaitingYou, Now);
-        Assert.Equal(RestartSafety.Ask, verdict.Safety);
+        Assert.Equal(SweepSafety.Ask, verdict.Safety);
         Assert.False(verdict.CanSweep);
         Assert.Contains("not sent", verdict.Reason);
     }
@@ -133,7 +133,7 @@ public class RestartPolicyTests
     public void JustWentIdle_IsOfferedNotSwept()
     {
         var verdict = RestartPolicy.Judge(Live(idleFor: TimeSpan.FromSeconds(5)), SessionStatus.Complete, Now);
-        Assert.Equal(RestartSafety.Ask, verdict.Safety);
+        Assert.Equal(SweepSafety.Ask, verdict.Safety);
         Assert.Contains("still be typing", verdict.Reason);
     }
 

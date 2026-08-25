@@ -48,8 +48,8 @@ internal sealed class LiveDto
             Stale = ClaudeInstall.IsStale(live.Version, installed),
             Restart = verdict.Safety switch
             {
-                RestartSafety.Safe => "safe",
-                RestartSafety.Ask => "ask",
+                SweepSafety.Safe => "safe",
+                SweepSafety.Ask => "ask",
                 _ => "unsafe",
             },
             RestartReason = verdict.Reason,

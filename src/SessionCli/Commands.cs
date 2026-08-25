@@ -368,7 +368,7 @@ internal static class Commands
                 }
 
                 var verdict = RestartPolicy.Judge(running[0], info.Status, DateTime.Now);
-                if (verdict.Safety == RestartSafety.Unsafe)
+                if (verdict.Safety == SweepSafety.Unsafe)
                 {
                     skipped.Add(Skip(info.SessionId, name, verdict.Reason));
                     continue;
