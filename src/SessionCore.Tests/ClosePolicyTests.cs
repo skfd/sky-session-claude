@@ -17,7 +17,8 @@ public class ClosePolicyTests
         string? status = "idle",
         string entrypoint = "cli",
         string kind = "interactive",
-        TimeSpan? idleFor = null) => new()
+        TimeSpan? idleFor = null,
+        string? bridge = null) => new()
         {
             Pid = 4242,
             SessionId = "b9e83ad3-8742-4f86-b5e3-40e844f24da1",
@@ -25,6 +26,7 @@ public class ClosePolicyTests
             Version = "2.1.239",
             Status = status,
             StatusUpdatedAt = Now - (idleFor ?? TimeSpan.FromMinutes(10)),
+            BridgeSessionId = bridge,
             Kind = kind,
             Entrypoint = entrypoint,
         };
@@ -162,6 +164,31 @@ public class ClosePolicyTests
     public void NotATerminal_IsUnsafe(string entrypoint)
     {
         var verdict = Judge(SessionStatus.Complete, Disposition.Done, Live(entrypoint: entrypoint));
+        Assert.Equal(SweepSafety.Unsafe, verdict.Safety);
+        Assert.Contains("not a terminal we can drive", verdict.Reason);
+    }
+
+    /// <summary>
+    /// The shape a Remote Control session has, and the reason the entrypoint check above is
+    /// not merely about drivability.
+    ///
+    /// <c>claude rc</c> is the host that answers the user's phone. It publishes no registry
+    /// entry of its own, so nothing here can name it; what it does publish is one
+    /// <c>sdk-cli</c> child per remote conversation, each carrying a bridge id and each
+    /// marked <c>interactive</c> — so "interactive" is not what keeps these out of an
+    /// end-of-day sweep, the entrypoint is. Closing one would take a conversation off the
+    /// user's phone from a machine they are not sitting at, and the whole set of them rides
+    /// on the entrypoint refusal. Relax that and this is what breaks.
+    /// </summary>
+    [Fact]
+    public void RemoteControlSession_IsUnsafeThoughItCallsItselfInteractive()
+    {
+        var rc = Live(entrypoint: "sdk-cli", bridge: "session_015hT43AG2zBvDXmAXFbw8NU");
+        Assert.Equal("interactive", rc.Kind);
+        Assert.True(rc.RemoteControl);
+        Assert.False(rc.InTerminal);
+
+        var verdict = Judge(SessionStatus.Complete, Disposition.Done, rc, scanned: true);
         Assert.Equal(SweepSafety.Unsafe, verdict.Safety);
         Assert.Contains("not a terminal we can drive", verdict.Reason);
     }
