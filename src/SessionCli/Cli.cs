@@ -166,7 +166,8 @@ internal static class Cli
           --force      act on the session this command is running inside (refused otherwise)
           --self       on `rename`: the session this command is running in
           --ask        on `rename`: read the session with `claude -p` when nothing free
-                       can name it (~2c and ~5s; refused when a free source would do)
+                       can name it (~10s and some rate limit; refused when a free
+                       source would do)
           --dry-run    say what would happen and change nothing
           --keep-terminal  on `close`: leave the terminal open once the session is gone
 

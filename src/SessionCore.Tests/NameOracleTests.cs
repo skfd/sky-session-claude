@@ -3,8 +3,8 @@ using SessionCore;
 namespace SessionCore.Tests;
 
 /// <summary>
-/// The parts of the oracle that do not need to spend two cents to check: what it asks, what it
-/// makes of the answer, and the bound on what it is allowed to delete.
+/// The parts of the oracle that can be checked without spending a real call on them: what it
+/// asks, what it makes of the answer, and the bound on what it is allowed to delete.
 /// </summary>
 public class NameOracleTests
 {

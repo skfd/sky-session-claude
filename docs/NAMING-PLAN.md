@@ -16,8 +16,11 @@ expected. Five things turned out otherwise:
   file's shape was checked rather than assumed.
 - **The oracle is behind `rename --ask`, not on the poll.** The design calls the blocking
   call tolerable only while it stays rare, and nothing has self-named yet, so an automatic
-  sweep today would be a minute of waiting and a bill nobody asked for. Renaming is free and
-  happens unasked; this is not free, so it does not.
+  sweep today would be minutes of waiting and a visible bite out of the account's rate-limit
+  window, for names nobody asked for. (The design's `$0.020 per name` does not apply here:
+  headless Claude Code uses the interactive CLI's credentials, and this machine logs in with
+  an OAuth subscription rather than an API key, so nothing is invoiced per call — the scarce
+  thing is the usage window, not money. `docs/NAMING.md` is corrected.)
 - **`NameOrigin` ranks the oracle above `aiTitle`**, which reads backwards against the source
   order in the design. That list is cheapest-viable-first — the order worth *spending* in —
   while the ladder is quality order, and an `aiTitle` is written in a session's first ten

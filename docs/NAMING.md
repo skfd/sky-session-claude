@@ -166,8 +166,20 @@ Measured, not assumed:
 |---|---|
 | Wall time, as-is | 8.9s — most of it MCP servers booting |
 | With MCP stripped | 5.3s |
-| Cost per name | $0.020 |
+| Cost per name | ~~$0.020~~ — see below; nothing is billed per call here |
 | Side effect | a 16–22KB session file that shows up in `SessionCli list` |
+
+**What a call actually costs.** $0.020 is the Haiku API rate for a prompt this size, and it
+would be the right number if Sky ran under an `ANTHROPIC_API_KEY`. It does not. `claude -p`
+is Claude Code in headless mode, so it resolves the same credentials the interactive CLI
+does — here an OAuth login on a Claude Max subscription (`billingType: stripe_subscription`),
+with no API key set and no Bedrock/Vertex/Foundry variables. Nothing is invoiced per call.
+
+What a call spends is **rate limit and wall time**: a slice of the same usage window
+everything else on this account draws from, plus ten to fifteen seconds the caller waits.
+That is still worth being asked for — a sweep over a dozen unnamed sessions is minutes of
+waiting and a visible bite out of the window, for names nobody requested — so the gate stays.
+The reason for it is scarcity of the window, not a bill.
 
 Rules that follow:
 
@@ -184,6 +196,8 @@ Rules that follow:
   `SessionName.Tidy` regardless.
 - **It blocks.** The call sits in the restart path and the caller waits. Tolerable only
   because step 3 is rare — a sweep where nothing had self-named would add ~5s per session.
+  Measured at 10.8s and 14.9s once built, against the 5.3s above: this sends more of the
+  transcript than the figure was taken with.
 
 ## Open
 

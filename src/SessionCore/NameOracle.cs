@@ -20,16 +20,20 @@ public readonly record struct OracleResult(
 /// <summary>
 /// Asks a small model what a session was about, for the sessions nothing cheaper can name.
 ///
-/// This is the last of the four sources in docs/NAMING.md and the only one that costs
-/// anything: about two cents and five seconds a name. It is for the sessions that predate the
-/// CLAUDE.md line — the ones that never had the chance to name themselves and carry no
-/// <c>aiTitle</c> either. <see cref="NamePolicy.WantsOracle"/> is the gate, and it refuses
-/// every case a free source could have covered.
+/// This is the last of the four sources in docs/NAMING.md and the only expensive one — though
+/// not in the way that doc first said. <c>claude -p</c> is Claude Code headless, so it uses
+/// whatever credentials the interactive CLI uses; under an OAuth subscription login nothing is
+/// invoiced per call. What a call spends is a slice of the account's rate-limit window and ten
+/// to fifteen seconds the caller waits for. It is for the sessions that predate the CLAUDE.md
+/// line — the ones that never had the chance to name themselves and carry no <c>aiTitle</c>
+/// either. <see cref="NamePolicy.WantsOracle"/> is the gate, and it refuses every case a free
+/// source could have covered.
 ///
 /// It blocks, and the caller waits. That is tolerable only while it stays rare, which is why
-/// nothing here calls it on a timer: a sweep over a dozen unnamed sessions would be a minute
-/// of waiting and a bill nobody asked for. Being asked is the whole permission structure —
-/// renaming is free and Sky does it unasked, and this is not free, so it does not.
+/// nothing here calls it on a timer: a sweep over a dozen unnamed sessions would be minutes of
+/// waiting and a visible bite out of the usage window, for names nobody asked for. Being asked
+/// is the whole permission structure — renaming costs nothing and Sky does it unasked; this is
+/// not free of consequence, so it does not.
 ///
 /// The flags are not arbitrary; each was measured (docs/NAMING.md, "The claude -p path"):
 /// MCP off is 3.6 of the 8.9 seconds, the prompt goes on stdin because the variadic flags

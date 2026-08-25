@@ -701,10 +701,11 @@ internal static class Commands
             throw new UsageException(
                 $"{sessionId} has no transcript to read yet, so there is nothing to ask about.");
 
-        // Paying a model to read the session is the one thing here that costs anything, so it
-        // happens because it was asked for. Renaming is free and Sky does it unasked; this is
-        // not free, so it does not -- and `--ask` on a session a free source could have named
-        // is refused rather than quietly spent.
+        // Having a model read the session is the one thing here with a real cost -- not a bill
+        // (headless Claude Code bills nothing per call under a subscription login) but a slice
+        // of the account's rate-limit window and ten-odd seconds of waiting. So it happens
+        // because it was asked for, and `--ask` on a session a free source could have named is
+        // refused rather than quietly spent.
         if (args.Has("ask") && given is null)
         {
             if (!NamePolicy.WantsOracle(inputs, store))

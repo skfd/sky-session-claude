@@ -47,9 +47,9 @@ public class NamingEdgeCaseTests
 
     /// <summary>
     /// Most transcripts carry the operator's turns as `user` records; the `last-prompt`
-    /// pointer is often null. Reading only the pointer meant paying two cents for a call that
-    /// had been shown almost nothing — the parser has always fallen back to the user records
-    /// for exactly this reason.
+    /// pointer is often null. Reading only the pointer meant spending a whole call on a model
+    /// that had been shown almost nothing — the parser has always fallen back to the user
+    /// records for exactly this reason.
     /// </summary>
     [Fact]
     public void TheOracleIsShownPromptsFromUserRecordsToo()
