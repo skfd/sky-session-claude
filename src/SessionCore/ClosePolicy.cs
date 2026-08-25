@@ -24,12 +24,18 @@ public static class ClosePolicy
 {
     /// <summary>
     /// Judge one live session. <paramref name="tail"/> is the status the scanner read from
-    /// the session file (null when no file was read), <paramref name="disposition"/> is what
-    /// you marked it, and <paramref name="now"/> is passed in so the rule is testable rather
-    /// than clock-dependent.
+    /// the session file, <paramref name="disposition"/> is what you marked it, and
+    /// <paramref name="now"/> is passed in so the rule is testable rather than clock-dependent.
+    ///
+    /// A null tail is two different facts, and <paramref name="scanned"/> is which. With
+    /// <c>scanned: false</c> nobody looked, and the work may be anything. With
+    /// <c>scanned: true</c> the files were all read and this session is in none of them —
+    /// which can only mean it has never been prompted, and that is the emptiest thing a
+    /// terminal can be holding.
     /// </summary>
     public static SweepVerdict Judge(
-        LiveSession live, SessionStatus? tail, Disposition disposition, DateTime now)
+        LiveSession live, SessionStatus? tail, Disposition disposition, DateTime now,
+        bool scanned = false)
     {
         // Everything a restart refuses outright, a close refuses too, and for the same reason.
         var quiet = RestartPolicy.Judge(live, tail, now);
@@ -47,8 +53,12 @@ public static class ClosePolicy
 
         if (tail is SessionStatus.Complete) return new(SweepSafety.Safe, "finished and idle");
 
+        // A terminal opened this morning and never typed into. There is no conversation to
+        // lose, and it is the purest form of what an end-of-day sweep is for.
         if (tail is null)
-            return new(SweepSafety.Ask, "no session file was read, so nothing says its work is finished");
+            return scanned
+                ? new(SweepSafety.Safe, "never prompted — nothing was said in it")
+                : new(SweepSafety.Ask, "no session file was read, so nothing says its work is finished");
 
         // Waiting on you, interrupted, an error, a rate limit: the process is quiet but the
         // work is not over. Closing loses the only reminder that it is not — so these go in

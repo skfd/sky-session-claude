@@ -30,8 +30,9 @@ public class ClosePolicyTests
         };
 
     private static SweepVerdict Judge(
-        SessionStatus? tail, Disposition mark = Disposition.None, LiveSession? live = null) =>
-        ClosePolicy.Judge(live ?? Live(), tail, mark, Now);
+        SessionStatus? tail, Disposition mark = Disposition.None, LiveSession? live = null,
+        bool scanned = false) =>
+        ClosePolicy.Judge(live ?? Live(), tail, mark, Now, scanned);
 
     // --- the sweepable set --------------------------------------------------
 
@@ -82,6 +83,28 @@ public class ClosePolicyTests
     public void NoSessionFileRead_IsOnlyOffered()
     {
         Assert.Equal(SweepSafety.Ask, Judge(null).Safety);
+    }
+
+    /// <summary>
+    /// The other half of a null tail, and the opposite verdict. Every file was read and this
+    /// session was in none of them, so nobody has ever typed into it — a terminal opened this
+    /// morning and left. There is no conversation to lose.
+    /// </summary>
+    [Fact]
+    public void NeverPrompted_IsSafe()
+    {
+        var verdict = Judge(null, scanned: true);
+        Assert.Equal(SweepSafety.Safe, verdict.Safety);
+        Assert.Contains("never prompted", verdict.Reason);
+    }
+
+    /// <summary>Empty or not, it is still a session you may be sitting in front of.</summary>
+    [Fact]
+    public void NeverPrompted_StillWaitsForTheIdleToSettle()
+    {
+        Assert.Equal(
+            SweepSafety.Ask,
+            Judge(null, live: Live(idleFor: TimeSpan.FromSeconds(5)), scanned: true).Safety);
     }
 
     // --- what a mark cannot buy ---------------------------------------------

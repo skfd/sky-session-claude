@@ -115,12 +115,16 @@ SessionCli fork <id> --at-prompt 3  # writes the branch; no terminal, original u
 SessionCli fork <id> --tip          # the official --fork-session, in a new terminal
 SessionCli restart <id>...          # restart in the terminal it already sits in
 SessionCli restart --stale          # prints the plan; add --yes to actually do it
+SessionCli close <id>...            # quit it, and close the terminal it sat in
+SessionCli close --finished         # end of day; prints the plan, add --yes to do it
 SessionCli resume <id>              # open a terminal and resume
 SessionCli new --in <path> --trust  # start one, and take its trust prompt for you
 SessionCli trust <id>               # answer the trust prompt a session is sitting on
 ```
 
 `peek` reads a live session's screen — the visible window of its console, borrowed the same way a restart borrows it, with nothing focused and nothing typed. It answers the question the session file cannot: a terminal blocked on Claude Code's "do you trust this folder?", a permission it is waiting to be granted, a draft sitting in its input box — none of that is written anywhere until it is answered. It resolves ids against the live registry rather than the projects folder, so a session that has been opened but not yet typed into (which has no file at all) can still be looked at.
+
+`close` is the end of the workday: it asks a session to quit, then types `exit` at the shell underneath so the tab goes too rather than leaving you an empty prompt per session (`--keep-terminal` stops at the session). It asks the same question a restart does — nothing in flight, nothing half-typed, no approval pending — and then the one a restart never has to. A restart puts the session back; a close takes it away, and an open terminal is how unfinished work announces itself in the morning. So `--finished` sweeps only what it can prove is over: the file ended complete, or you ticked it off, or nobody ever typed into it. Idle-but-unfinished — an error, a rate limit, a question you never answered — is reported with the reason and left where it is. Your own mark outranks the classifier, since `done` and `abandoned` both mean you are not coming back; it never outranks the process, so a busy session stays put whatever you marked it. Like `peek`, `close <id>` resolves ids against the live registry, so a terminal opened this morning and never used — which has no file at all — is something you can name and close.
 
 `trust` answers Claude Code's "do you trust the files in this folder?" — the dialog a session stops on before it will start in a folder Claude Code has not seen. It is the only verb that types an answer into a conversation rather than at the shell around it, so it is the narrowest one here: it presses Enter, on that one dialog, and only when it can see the dialog with "Yes, I trust this folder" selected. That check is the point rather than politeness — the second option is "No, exit", so the same keystroke on a screen where the selection has moved closes the session instead of trusting the folder. Anything it will not answer comes back with the screen and nothing typed. `new --in <path> --trust` does the same for a session it just started: it waits up to 30s for that dialog to appear naming that folder, takes it, and reports the session past it, so a launch into a fresh repo comes up ready to work.
 
@@ -132,7 +136,7 @@ A session id can be shortened to any unique prefix, like a short commit sha — 
 
 Two things these verbs will not do without being told twice, because they drive real terminals:
 
-- **`restart --stale` states its plan and stops.** It only acts on `--yes`. The sweep takes only the sessions where nothing can be lost — running an older build, provably idle, finished — and reports each one it skipped with the reason, exactly as the button does.
+- **`restart --stale` and `close --finished` state their plan and stop.** They only act on `--yes`. Each sweep takes only the sessions where nothing can be lost — provably idle, and either stale or over — and reports each one it left with the reason, exactly as the button does.
 - **Nothing touches the session the command is running inside** without `--force`. An agent restarting its own session kills itself mid-sentence.
 
 Ctx% switches to a 1M budget for sessions detected on the extended context window: either a turn exceeded 200k tokens, or the session ran on the model configured with the `[1m]` suffix in `~/.claude/settings.json` (transcripts don't record the window themselves).

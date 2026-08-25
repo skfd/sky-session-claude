@@ -481,7 +481,8 @@ internal static class Commands
                     continue;
                 }
 
-                var verdict = ClosePolicy.Judge(session, info?.Status, store.Get(session.SessionId), DateTime.Now);
+                var verdict = ClosePolicy.Judge(
+                    session, info?.Status, store.Get(session.SessionId), DateTime.Now, scanned: true);
                 if (verdict.CanSweep) targets.Add((session, name));
                 else skipped.Add(Skip(session.SessionId, name, verdict.Reason));
             }
@@ -496,30 +497,31 @@ internal static class Commands
             var scanner = RequireScanner();
             foreach (var id in args.Positional)
             {
-                var info = scanner.BuildRow(Resolve(scanner, id), SessionFileParser.DefaultContextWindow);
-                var name = info.Name ?? info.SessionId;
+                // A session with no file is one nobody has typed into yet, and closing it is
+                // the whole point — so the id is resolved against what is running, falling
+                // back to the scanner only for the ids that got as far as disk.
+                var session = ResolveLive(scanner, live, id);
+                var info = SessionFileExists(scanner, session.SessionId)
+                    ? scanner.BuildRow(Resolve(scanner, session.SessionId), SessionFileParser.DefaultContextWindow)
+                    : null;
+                var name = Titled(info?.Name) ?? session.Name ?? session.SessionId;
 
-                if (!live.TryGetValue(info.SessionId, out var running) || running.Count == 0)
+                if (IsSelf(session.SessionId) && !args.Has("force"))
                 {
-                    skipped.Add(Skip(info.SessionId, name, "it is not open in a terminal"));
-                    continue;
-                }
-
-                if (IsSelf(info.SessionId) && !args.Has("force"))
-                {
-                    skipped.Add(Skip(info.SessionId, name,
+                    skipped.Add(Skip(session.SessionId, name,
                         "it is the session this command is running in — pass --force if you mean it"));
                     continue;
                 }
 
-                var verdict = ClosePolicy.Judge(running[0], info.Status, store.Get(info.SessionId), DateTime.Now);
+                var verdict = ClosePolicy.Judge(
+                    session, info?.Status, store.Get(session.SessionId), DateTime.Now, scanned: true);
                 if (verdict.Safety == SweepSafety.Unsafe)
                 {
-                    skipped.Add(Skip(info.SessionId, name, verdict.Reason));
+                    skipped.Add(Skip(session.SessionId, name, verdict.Reason));
                     continue;
                 }
 
-                targets.Add((running[0], name));
+                targets.Add((session, name));
             }
         }
 
@@ -1116,6 +1118,38 @@ internal static class Commands
     /// The session file for an id or any unique prefix of one. Ambiguity is an error rather
     /// than a guess: the verbs behind this restart terminals and write files.
     /// </summary>
+    /// <summary>
+    /// The live session an id or prefix names — the registry first, the scanner second.
+    ///
+    /// <see cref="Resolve"/> answers from the files on disk, which is right for every verb
+    /// that reads a conversation and wrong for one that only has to reach a process: a
+    /// terminal opened and never prompted is running, is closable, and is in no file.
+    /// </summary>
+    private static LiveSession ResolveLive(
+        SessionScanner scanner, Dictionary<string, List<LiveSession>> live, string idOrPrefix)
+    {
+        var matches = live
+            .Where(kv => kv.Key.StartsWith(idOrPrefix, StringComparison.OrdinalIgnoreCase))
+            .SelectMany(kv => kv.Value)
+            .ToList();
+
+        if (matches.Count == 1) return matches[0];
+        if (matches.Count > 1)
+            throw new UsageException(
+                $"'{idOrPrefix}' matches {matches.Count} running sessions. Use a longer prefix.");
+
+        // Nothing running under that id: say whether it exists at all, which is the more
+        // useful half of the answer. Resolve throws its own message when it does not.
+        var file = Path.GetFileNameWithoutExtension(Resolve(scanner, idOrPrefix).Name);
+        throw new UsageException($"'{file}' is not open in a terminal.");
+    }
+
+    private static bool SessionFileExists(SessionScanner scanner, string sessionId)
+    {
+        try { return scanner.FindByPrefix(sessionId).Count == 1; }
+        catch { return false; }
+    }
+
     private static FileInfo Resolve(SessionScanner scanner, string idOrPrefix)
     {
         var matches = scanner.FindByPrefix(idOrPrefix);
