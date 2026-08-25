@@ -183,8 +183,12 @@ public static class SessionRenamer
         var until = DateTime.UtcNow + ConfirmTimeout;
         while (true)
         {
-            var current = await Task.Run(() => LiveSessions.Find(live.SessionId));
-            if (current is not null && string.Equals(current.Name, name, StringComparison.Ordinal))
+            // The session's own entry, by pid: a rename does not restart anything, so the
+            // process this was sent to is the process that answers for it.
+            var current = await Task.Run(() => LiveSessionRegistry.ReadOne(live.Pid));
+            if (current is not null
+                && string.Equals(current.SessionId, live.SessionId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(current.Name, name, StringComparison.Ordinal))
                 return true;
 
             if (DateTime.UtcNow >= until) return false;

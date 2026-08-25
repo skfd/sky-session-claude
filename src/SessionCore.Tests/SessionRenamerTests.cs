@@ -85,6 +85,38 @@ public class SessionRenamerTests : IDisposable
     public void AMissingRegistryDirectoryIsNoKey() =>
         Assert.Null(LiveSessionRegistry.KeyPathFor(10304, Path.Combine(_dir, "nope")));
 
+    // --- reading one entry ------------------------------------------------------
+
+    /// <summary>
+    /// Confirming a rename is a question about one known file. Asked through a full scan it
+    /// enumerated every entry and looked up every process, twenty-five times over the poll —
+    /// per session, on a pass that walks them all.
+    /// </summary>
+    [Fact]
+    public void OneEntryIsReadByPid()
+    {
+        File.WriteAllText(Path.Combine(_dir, "10304.json"),
+            """{"pid":10304,"sessionId":"257329eb","name":"code-20"}""");
+        File.WriteAllText(Path.Combine(_dir, "12832.json"),
+            """{"pid":12832,"sessionId":"b8fa1254","name":"vagabond maps"}""");
+
+        Assert.Equal("code-20", LiveSessionRegistry.ReadOne(10304, _dir)!.Name);
+        Assert.Equal("vagabond maps", LiveSessionRegistry.ReadOne(12832, _dir)!.Name);
+    }
+
+    [Fact]
+    public void AMissingEntryReadsAsNothing() =>
+        Assert.Null(LiveSessionRegistry.ReadOne(10304, _dir));
+
+    /// <summary>A file caught mid-write is not an error, it is a reason to look again.</summary>
+    [Fact]
+    public void AHalfWrittenEntryReadsAsNothing()
+    {
+        File.WriteAllText(Path.Combine(_dir, "10304.json"), """{"pid":10304,"sess""");
+
+        Assert.Null(LiveSessionRegistry.ReadOne(10304, _dir));
+    }
+
     // --- the peer token ---------------------------------------------------------
 
     /// <summary>

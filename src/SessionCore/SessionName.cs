@@ -155,6 +155,13 @@ public static class SessionName
     {
         if (string.IsNullOrWhiteSpace(cwd)) return "";
 
+        // The scanner fills an absent cwd with a sentence saying so, rather than leaving it
+        // empty, so every caller holding a SessionInfo has a "path" that is really an apology.
+        // Slugged it made a folder, and a session called
+        // "unknown-cwd-not-found-in-session-file-b9". Refused here as well as at the callers,
+        // so the next one to reach for SessionInfo.Cwd cannot repeat it.
+        if (cwd == SessionInfo.UnknownCwd) return "";
+
         var parts = cwd.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
         for (int i = 1; i + 1 < parts.Length; i++)
         {

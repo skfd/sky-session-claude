@@ -125,7 +125,7 @@ public sealed class SessionScanner
             fields = new SessionFileFields();
         }
 
-        var cwd = string.IsNullOrEmpty(fields.Cwd) ? "<unknown - cwd not found in session file>" : fields.Cwd;
+        var cwd = string.IsNullOrEmpty(fields.Cwd) ? SessionInfo.UnknownCwd : fields.Cwd;
 
         // "Unfinished" = session file ends on the agent asking, or on an operator
         // prompt the agent never answered in text.

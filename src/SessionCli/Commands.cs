@@ -550,7 +550,6 @@ internal static class Commands
         // happens because it was asked for. Renaming is free and Sky does it unasked; this is
         // not free, so it does not -- and `--ask` on a session a free source could have named
         // is refused rather than quietly spent.
-        string? oracleSessionId = null;
         if (args.Has("ask") && given is null)
         {
             if (!NamePolicy.WantsOracle(inputs, store))
@@ -562,7 +561,11 @@ internal static class Commands
                 });
 
             var answer = NameOracle.SubjectOfAsync(info!).GetAwaiter().GetResult();
-            oracleSessionId = answer.SessionId;
+
+            // Cleaned up here, not at the end. A call that failed still made a transcript --
+            // often *because* it got far enough to make one -- and the return below would have
+            // walked past the tidying, leaving the wreckage of every failure in `list`.
+            NameOracle.CleanUp(answer.SessionId);
 
             if (!answer.Ok)
                 return Cli.EmitResult(new ActionResult
@@ -580,10 +583,6 @@ internal static class Commands
         var (name, origin) = given is { Length: > 0 }
             ? (SessionName.Tidy(given), args.Has("self") ? NameOrigin.SelfNamed : NameOrigin.Chosen)
             : Decided(inputs, store);
-
-        // The call left a transcript of its own, which would otherwise turn up in `list` as a
-        // session nobody started. Deleted by the id it reported, never one we inferred.
-        NameOracle.CleanUp(oracleSessionId);
 
         if (name.Length == 0)
             return Cli.EmitResult(new ActionResult

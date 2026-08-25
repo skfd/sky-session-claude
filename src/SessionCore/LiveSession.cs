@@ -71,6 +71,27 @@ public static class LiveSessionRegistry
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "sessions");
 
     /// <summary>
+    /// One process's registry entry, read directly rather than by scanning the directory.
+    ///
+    /// A rename keeps the pid, so confirming one is a question about a single known file.
+    /// Asking it through a full scan means enumerating every entry and looking up every
+    /// process, twenty-five times over a five-second poll — per session, on a pass that walks
+    /// them all.
+    /// </summary>
+    public static LiveSession? ReadOne(int pid, string? dir = null)
+    {
+        try
+        {
+            var path = Path.Combine(dir ?? DefaultDir(), $"{pid}.json");
+            return File.Exists(path) ? Parse(File.ReadAllText(path)) : null;
+        }
+        catch
+        {
+            return null;   // racing, partial, or gone — the caller polls again
+        }
+    }
+
+    /// <summary>
     /// The peer-token file for a session, sitting beside its registry entry as
     /// <c>&lt;pid&gt;.&lt;hash&gt;.key</c>. Null when there is none, which is the same thing as
     /// "this session cannot be spoken to".

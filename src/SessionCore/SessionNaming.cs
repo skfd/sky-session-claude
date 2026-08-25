@@ -23,7 +23,10 @@ public static class SessionNaming
         string? subject = null) => new()
         {
             SessionId = info.SessionId,
-            Cwd = live?.Cwd ?? info.Cwd,
+
+            // RealCwd, not Cwd: the scanner fills Cwd with a sentence when the file recorded
+            // no folder, and a sentence slugs into a folder name just as happily as a path.
+            Cwd = live?.Cwd ?? info.RealCwd,
             CustomTitle = info.CustomTitle,
             AiTitle = info.AiTitle,
             Live = live,
@@ -76,17 +79,18 @@ public static class SessionNaming
     {
         var result = await SessionRenamer.RenameAsync(live, name);
 
-        if (result.Ok || Landed(live.SessionId, name))
+        if (result.Ok || Landed(live, name))
             store.Record(live.SessionId, name, origin);
 
         return result;
     }
 
-    private static bool Landed(string sessionId, string name)
+    private static bool Landed(LiveSession live, string name)
     {
         try
         {
-            return LiveSessions.Find(sessionId) is { } current
+            return LiveSessionRegistry.ReadOne(live.Pid) is { } current
+                && string.Equals(current.SessionId, live.SessionId, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(current.Name, name, StringComparison.Ordinal);
         }
         catch { return false; }

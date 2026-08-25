@@ -170,11 +170,14 @@ public static class NameOracle
         using var process = Process.Start(psi)
             ?? throw new InvalidOperationException("claude did not start");
 
-        await process.StandardInput.WriteAsync(prompt);
-        process.StandardInput.Close();
-
+        // Reading is started before writing. The prompt can run to twelve kilobytes and the
+        // pipes hold far less, so a child that answered before draining its stdin would wedge
+        // against a parent that had not started draining its stdout.
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
+
+        await process.StandardInput.WriteAsync(prompt);
+        process.StandardInput.Close();
 
         using var cts = new CancellationTokenSource(Timeout);
         try
@@ -206,7 +209,7 @@ public static class NameOracle
         sb.AppendLine("commit is not a session about committing. Do not name the folder; that is added separately.");
         sb.AppendLine("Reply with the title alone: no quotes, no backticks, no explanation.");
         sb.AppendLine();
-        sb.AppendLine($"Folder: {SessionName.RepoOf(info.Cwd)}");
+        sb.AppendLine($"Folder: {SessionName.RepoOf(info.RealCwd)}");
         sb.AppendLine();
 
         sb.AppendLine("What the operator asked for, in order:");
@@ -232,6 +235,10 @@ public static class NameOracle
     /// <summary>
     /// The operator's own turns, oldest first — the spine of what a session was for. Read
     /// straight off the file rather than through the parser, which keeps only the last one.
+    ///
+    /// Both places they live. The <c>last-prompt</c> pointer is the obvious one and is often
+    /// null; the <c>user</c> records are where most transcripts actually keep the asks, and
+    /// reading only the pointer meant paying for a call that had been shown nearly nothing.
     /// </summary>
     private static IEnumerable<string> PromptsIn(string? path)
     {
@@ -244,26 +251,65 @@ public static class NameOracle
 
         foreach (var line in lines)
         {
-            if (!line.Contains("\"lastPrompt\"", StringComparison.Ordinal)) continue;
+            if (!line.Contains("\"lastPrompt\"", StringComparison.Ordinal)
+                && !line.Contains("\"user\"", StringComparison.Ordinal)) continue;
 
             string? text = null;
             try
             {
                 using var doc = JsonDocument.Parse(line);
-                if (doc.RootElement.TryGetProperty("lastPrompt", out var el)
-                    && el.ValueKind == JsonValueKind.String)
-                    text = el.GetString();
+                text = AskIn(doc.RootElement);
             }
             catch (JsonException) { continue; }
 
-            // A resume rewrites the same last-prompt record, so the same ask can appear many
-            // times over; sending it many times would weight it as though it were many asks.
-            if (text is { Length: > 0 } && (found.Count == 0 || found[^1] != text))
+            // A resume rewrites the same last-prompt record, and the pointer repeats whatever
+            // the last user record already said; sending an ask twice weights it as two asks.
+            if (text is { Length: > 0 } && !found.Contains(text))
                 found.Add(text);
         }
 
         foreach (var text in found.Count > MaxPrompts ? found.TakeLast(MaxPrompts) : found)
             yield return text;
+    }
+
+    /// <summary>
+    /// The operator's words in one record, or null if it holds none. Tool results and the
+    /// harness's own injections (<c>/clear</c>, system reminders, local-command wrappers) are
+    /// not asks, and reading them as asks would have the model name the session after the
+    /// scaffolding rather than the work.
+    /// </summary>
+    private static string? AskIn(JsonElement o)
+    {
+        if (o.TryGetProperty("lastPrompt", out var lp) && lp.ValueKind == JsonValueKind.String)
+            return Asked(lp.GetString());
+
+        if (o.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String
+            && t.GetString() == "user"
+            && o.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.Object
+            && msg.TryGetProperty("content", out var content))
+        {
+            if (content.ValueKind == JsonValueKind.String) return Asked(content.GetString());
+
+            if (content.ValueKind == JsonValueKind.Array)
+                foreach (var item in content.EnumerateArray())
+                    if (item.ValueKind == JsonValueKind.Object
+                        && item.TryGetProperty("type", out var it) && it.GetString() == "text"
+                        && item.TryGetProperty("text", out var tx) && tx.ValueKind == JsonValueKind.String)
+                        return Asked(tx.GetString());
+        }
+
+        return null;
+    }
+
+    /// <summary>Null for anything that is scaffolding rather than someone asking for something.</summary>
+    private static string? Asked(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+
+        var trimmed = text.TrimStart();
+        return trimmed.StartsWith('<') || trimmed.StartsWith("Caveat:", StringComparison.Ordinal)
+            ? null
+            : text;
     }
 
     // --- what comes back ----------------------------------------------------

@@ -10,6 +10,17 @@ public sealed class SessionInfo
     /// <summary>What the scanner writes for a session that has earned no title.</summary>
     public const string Untitled = "(untitled)";
 
+    /// <summary>
+    /// What the scanner writes for a session file with no recorded cwd. <see cref="Cwd"/> is
+    /// therefore never empty, which makes it the wrong field to ask whether a folder is known
+    /// -- and read as a path this sentence slugs into a folder name, which once had a session
+    /// called "unknown-cwd-not-found-in-session-file-b9".
+    /// </summary>
+    public const string UnknownCwd = "<unknown - cwd not found in session file>";
+
+    /// <summary>The folder the session ran in, or null when the file never recorded one.</summary>
+    public string? RealCwd => string.IsNullOrEmpty(Cwd) || Cwd == UnknownCwd ? null : Cwd;
+
     public string? Cwd { get; init; }
     public string? Name { get; init; }          // custom title wins over AI title
 
