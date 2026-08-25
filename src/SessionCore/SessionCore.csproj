@@ -6,4 +6,11 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Same reason SessionCli does it: a rule worth locking is not always a rule worth
+         publishing. SessionUri.Under decides whether a link may open a session in a folder,
+         which wants tests more than it wants callers. -->
+    <InternalsVisibleTo Include="SessionCore.Tests" />
+  </ItemGroup>
+
 </Project>
