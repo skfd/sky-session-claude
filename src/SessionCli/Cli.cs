@@ -173,7 +173,7 @@ internal static class Cli
           SessionCli resume <id>                 open a terminal and resume it
           SessionCli resume <id> --force         end whatever holds it, then resume
           SessionCli new [--in <path>]           open a terminal on a brand-new session
-          SessionCli standby                     a phone-reachable session per recent project
+          SessionCli standby                     a Remote Control host per recent project
           SessionCli trust <id>                  answer the trust prompt it is sitting on
           SessionCli inbox --run <path>          run the commands the brief queued in a file
 
