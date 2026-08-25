@@ -500,7 +500,17 @@ internal static class Commands
                 // A session with no file is one nobody has typed into yet, and closing it is
                 // the whole point — so the id is resolved against what is running, falling
                 // back to the scanner only for the ids that got as far as disk.
-                var session = ResolveLive(scanner, live, id);
+                if (ResolveLive(scanner, live, id) is not { } session)
+                {
+                    // Reported, not thrown: `close a b c` run twice is the natural thing to
+                    // do after a partial one, and the second run should say which are already
+                    // gone rather than abandon the ids that are still up.
+                    var gone = scanner.BuildRow(Resolve(scanner, id), SessionFileParser.DefaultContextWindow);
+                    skipped.Add(Skip(gone.SessionId, gone.Name ?? gone.SessionId,
+                        "it is not open in a terminal"));
+                    continue;
+                }
+
                 var info = SessionFileExists(scanner, session.SessionId)
                     ? scanner.BuildRow(Resolve(scanner, session.SessionId), SessionFileParser.DefaultContextWindow)
                     : null;
@@ -1125,7 +1135,12 @@ internal static class Commands
     /// that reads a conversation and wrong for one that only has to reach a process: a
     /// terminal opened and never prompted is running, is closable, and is in no file.
     /// </summary>
-    private static LiveSession ResolveLive(
+    /// <returns>
+    /// Null when nothing is running under that id, which is a per-id skip rather than a usage
+    /// error — an id that names no session at all is still the caller mistyping, and
+    /// <see cref="Resolve"/> says so.
+    /// </returns>
+    private static LiveSession? ResolveLive(
         SessionScanner scanner, Dictionary<string, List<LiveSession>> live, string idOrPrefix)
     {
         var matches = live
@@ -1133,15 +1148,13 @@ internal static class Commands
             .SelectMany(kv => kv.Value)
             .ToList();
 
-        if (matches.Count == 1) return matches[0];
-        if (matches.Count > 1)
-            throw new UsageException(
-                $"'{idOrPrefix}' matches {matches.Count} running sessions. Use a longer prefix.");
-
-        // Nothing running under that id: say whether it exists at all, which is the more
-        // useful half of the answer. Resolve throws its own message when it does not.
-        var file = Path.GetFileNameWithoutExtension(Resolve(scanner, idOrPrefix).Name);
-        throw new UsageException($"'{file}' is not open in a terminal.");
+        return matches.Count switch
+        {
+            1 => matches[0],
+            0 => null,
+            _ => throw new UsageException(
+                $"'{idOrPrefix}' matches {matches.Count} running sessions. Use a longer prefix."),
+        };
     }
 
     private static bool SessionFileExists(SessionScanner scanner, string sessionId)
