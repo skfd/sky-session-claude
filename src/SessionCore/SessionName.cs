@@ -43,13 +43,151 @@ public static class SessionName
     public static string For(string sessionId, string? cwd, string? title)
     {
         if (Tidy(title) is { Length: > 0 } named) return named;
+        return Floor(sessionId, cwd);
+    }
 
-        var folder = Slug(FolderOf(cwd));
+    /// <summary>
+    /// A name that says what the session is about and where it ran: <c>Subject — repo</c>.
+    ///
+    /// The subject comes first because it is what tells two sessions apart; the folder is
+    /// the disambiguator, not the headline. Three sessions in one repo differ only in their
+    /// subjects, and a subject with no folder attached ("Basemap treatments in Chrome")
+    /// still identifies the work — which is why the folder is the part that gets dropped
+    /// when the line will not hold both.
+    /// </summary>
+    public static string Compose(string? subject, string? cwd)
+    {
+        var repo = RepoOf(cwd);
+        if (repo.Length == 0) return SentenceCase(Tidy(subject));
+
+        var tail = Separator + repo;
+
+        // A name composed last week comes back through here on the next restart, so the
+        // folder is taken off first and put back at the end. Recognising it only after the
+        // budget had already cut it would append a second one to the stump of the first.
+        var stripped = Tidy(subject, int.MaxValue);
+        if (stripped.EndsWith(tail, StringComparison.OrdinalIgnoreCase))
+            stripped = stripped[..^tail.Length];
+
+        // A subject squeezed into a handful of characters says less than the subject alone,
+        // so past that point the folder is the part worth losing.
+        int budget = MaxLength - tail.Length;
+        if (budget < MinSubject) return SentenceCase(Tidy(stripped));
+
+        var head = SentenceCase(TrimSeparator(Tidy(stripped, budget)));
+        return head.Length == 0 ? "" : head + tail;
+    }
+
+    /// <summary>
+    /// Drop a dangling separator left by the cut, so a truncated subject does not read as
+    /// though its folder went missing.
+    /// </summary>
+    private static string TrimSeparator(string text)
+    {
+        var t = text.TrimEnd();
+        while (t.Length > 0 && (t[^1] == '—' || t[^1] == '-'))
+            t = t[..^1].TrimEnd();
+        return t;
+    }
+
+    /// <summary>
+    /// What a session is called when there is nothing to say about it yet: the repo it sits
+    /// in and the id prefix that identifies it everywhere else.
+    ///
+    /// Unlike the CLI's own <c>folder-XX</c>, the two trailing characters are the session
+    /// id's — the same after every restart — so the one part of the name that carries no
+    /// meaning is at least the part that stays put.
+    /// </summary>
+    public static string Floor(string sessionId, string? cwd)
+    {
+        var repo = Slug(RepoOf(cwd));
         var suffix = Suffix(sessionId);
 
-        if (folder.Length == 0) return suffix.Length > 0 ? $"session-{suffix}" : "session";
-        return suffix.Length > 0 ? $"{folder}-{suffix}" : folder;
+        if (repo.Length == 0) return suffix.Length > 0 ? $"session-{suffix}" : "session";
+        return suffix.Length > 0 ? $"{repo}-{suffix}" : repo;
     }
+
+    /// <summary>
+    /// True when <paramref name="name"/> is a placeholder rather than a description — our
+    /// floor, or the <c>folder-XX</c> the CLI derives.
+    ///
+    /// This exists because naming writes into the transcript: a floor passed under
+    /// <c>--name</c> comes back as a <c>custom-title</c>, and read as a title it would be
+    /// composed into a name, written again, and read again — a placeholder made permanent
+    /// by being used once.
+    ///
+    /// It is a shape check, so it is the *fallback*: provenance (<see cref="NameStore"/>) is
+    /// how Sky recognises its own names, and this is only for history written before that
+    /// store existed. It can misfire on a name genuinely typed that happens to look like
+    /// <c>repo-XX</c>, which is why nothing but the pre-store case should lean on it.
+    /// </summary>
+    public static bool IsFloor(string? name, string sessionId, string? cwd)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+
+        var text = name.Trim();
+        if (string.Equals(text, Floor(sessionId, cwd), StringComparison.OrdinalIgnoreCase)) return true;
+
+        var repo = Slug(RepoOf(cwd));
+        var stem = repo.Length > 0 ? repo : "session";
+
+        if (string.Equals(text, stem, StringComparison.OrdinalIgnoreCase)) return true;
+
+        // The CLI's collision suffix is two characters, drawn fresh on each launch.
+        return text.Length == stem.Length + 3
+            && text.StartsWith(stem, StringComparison.OrdinalIgnoreCase)
+            && text[stem.Length] == '-'
+            && char.IsLetterOrDigit(text[^1])
+            && char.IsLetterOrDigit(text[^2]);
+    }
+
+    /// <summary>
+    /// The repo a session belongs to, which is not always the folder it ran in: three
+    /// sessions under <c>&lt;repo&gt;\.claude\worktrees\&lt;branch&gt;</c> are working on one
+    /// repo, and naming them after their branches would hide that.
+    ///
+    /// Anywhere else the leaf folder is taken at face value. Walking up to a real git root
+    /// would also mean a session sitting in <c>src\</c> is named after the repo rather than
+    /// after where it was standing — a change to what a name means, not a fix, so it is not
+    /// made here.
+    /// </summary>
+    public static string RepoOf(string? cwd)
+    {
+        if (string.IsNullOrWhiteSpace(cwd)) return "";
+
+        var parts = cwd.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 1; i + 1 < parts.Length; i++)
+        {
+            if (parts[i].Equals(".claude", StringComparison.OrdinalIgnoreCase)
+                && parts[i + 1].Equals("worktrees", StringComparison.OrdinalIgnoreCase))
+                return parts[i - 1];
+        }
+
+        return parts.Length > 0 ? parts[^1] : "";
+    }
+
+    /// <summary>
+    /// House style: sentence case, in the words they were written in.
+    ///
+    /// Deliberately only the first letter. Lowercasing the rest would read as tidying and
+    /// would quietly eat "Chrome", "OSM" and "Guelph"; the models write sentence case
+    /// already, so there is nothing else here to fix.
+    /// </summary>
+    public static string SentenceCase(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        var t = text.Trim();
+        return char.IsLower(t[0]) ? char.ToUpperInvariant(t[0]) + t[1..] : t;
+    }
+
+    /// <summary>
+    /// What separates the subject from the folder. An em dash rather than a hyphen: the two
+    /// are different things, and the folder names are themselves full of hyphens.
+    /// </summary>
+    private const string Separator = " — ";
+
+    /// <summary>Below this many characters a subject says less than no subject at all.</summary>
+    private const int MinSubject = 20;
 
     /// <summary>Single-quoted for the PowerShell line the name is typed into.</summary>
     public static string Quote(string value) => $"'{value.Replace("'", "''")}'";
@@ -59,16 +197,20 @@ public static class SessionName
     /// rather than slugged — this is read by a person, and "Art persona website design"
     /// beats "art-persona-website-design" on the one surface that shows it.
     /// </summary>
-    private static string Tidy(string? title)
+    /// <param name="max">
+    /// The budget, which is <see cref="MaxLength"/> for a name standing on its own and less
+    /// for a subject that has a folder to fit alongside it (see <see cref="Compose"/>).
+    /// </param>
+    public static string Tidy(string? title, int max = MaxLength)
     {
-        if (string.IsNullOrWhiteSpace(title)) return "";
+        if (string.IsNullOrWhiteSpace(title) || max <= 0) return "";
 
         var text = string.Join(' ', title.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        if (text.Length <= MaxLength) return text;
+        if (text.Length <= max) return text;
 
         // Cut on a word boundary; an ellipsis in a name is noise, so there is none.
-        int cut = text.LastIndexOf(' ', MaxLength);
-        return (cut > MaxLength / 2 ? text[..cut] : text[..MaxLength]).TrimEnd();
+        int cut = text.LastIndexOf(' ', max);
+        return (cut > max / 2 ? text[..cut] : text[..max]).TrimEnd();
     }
 
     /// <summary>
@@ -80,14 +222,6 @@ public static class SessionName
     {
         var id = sessionId.TrimStart('{');
         return id.Length >= 2 ? id[..2].ToLowerInvariant() : "";
-    }
-
-    private static string FolderOf(string? cwd)
-    {
-        if (string.IsNullOrWhiteSpace(cwd)) return "";
-        var trimmed = cwd.TrimEnd('\\', '/');
-        var cut = trimmed.LastIndexOfAny(['\\', '/']);
-        return cut >= 0 ? trimmed[(cut + 1)..] : trimmed;
     }
 
     /// <summary>Lowercase words joined by hyphens, matching the shape the CLI derives.</summary>
