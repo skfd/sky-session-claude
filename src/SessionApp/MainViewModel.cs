@@ -12,6 +12,16 @@ public partial class MainViewModel : ObservableObject
     private readonly SessionScanner _scanner = new();
     private readonly DispositionStore _dispositions = new();
 
+    /// <summary>
+    /// Which names are Sky's own. Held here rather than looked up per call because the
+    /// background pass reads it on every tick, and because one instance per window is what
+    /// keeps its reload-merge-replace meaningful.
+    /// </summary>
+    private readonly NameStore _names = new();
+
+    /// <summary>Every live session's current name, for the collision rule.</summary>
+    private IReadOnlyCollection<string> _liveNames = [];
+
     /// <summary>Backing list; the grid binds to <see cref="RowsView"/> so filters apply.</summary>
     public ObservableCollection<SessionRow> Rows { get; } = new();
 
@@ -200,6 +210,8 @@ public partial class MainViewModel : ObservableObject
                 ? running[0]
                 : null;
 
+        _liveNames = SessionNaming.LiveNamesOf(live);
+
         UpdateStaleCount();
 
         // The dispositions file has another writer — `SessionCli done <id>` on an agent's
@@ -215,6 +227,19 @@ public partial class MainViewModel : ObservableObject
             UpdateWindowTitle();
         }
     }
+
+    /// <summary>
+    /// The command that reopens a session, under the name the policy chose for it — and
+    /// recorded as Sky's in the same breath, because a name that reaches a transcript without
+    /// a record is one nothing will ever improve on again.
+    ///
+    /// Recorded even for the copy-to-clipboard path, which may never be run: a record whose
+    /// name never lands is inert, since a record only speaks while it still matches what the
+    /// session answers to.
+    /// </summary>
+    public string ResumeCommandFor(SessionRow row) =>
+        row.Info.CommandNamed(SessionNaming.NameForLaunch(
+            SessionNaming.InputsFor(row.Info, row.Live, _liveNames), _names));
 
     /// <summary>Push the store's marks onto every row, whoever wrote them.</summary>
     private void SyncDispositions()
@@ -307,7 +332,13 @@ public partial class MainViewModel : ObservableObject
 
                 StatusLine = $"Restarting \"{row.Name}\" ({i + 1} of {targets.Count})…";
 
-                var result = await SessionRestarter.RestartAsync(live, row.Title);
+                // Decided here rather than inside the restart, and recorded as it is decided:
+                // a launch path that names a session for itself re-freezes the last
+                // placeholder every time, and the store buys nothing.
+                var name = SessionNaming.NameForLaunch(
+                    SessionNaming.InputsFor(row.Info, live, _liveNames), _names);
+
+                var result = await SessionRestarter.RestartAsync(live, name);
                 if (result.Ok) done++;
                 else failures.Add($"\"{row.Name}\" — {result.Message}");
 

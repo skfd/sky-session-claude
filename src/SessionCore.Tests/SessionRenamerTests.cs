@@ -85,6 +85,35 @@ public class SessionRenamerTests : IDisposable
     public void AMissingRegistryDirectoryIsNoKey() =>
         Assert.Null(LiveSessionRegistry.KeyPathFor(10304, Path.Combine(_dir, "nope")));
 
+    // --- the peer token ---------------------------------------------------------
+
+    /// <summary>
+    /// The .key file is a small JSON object, not the token. Sending its text authenticates as
+    /// nobody, and an unauthenticated connection is dropped in silence — so this mistake looks
+    /// exactly like a session that ignored the rename, which is how it survived a first pass
+    /// at this code and cost three failed smoke tests to find.
+    /// </summary>
+    [Fact]
+    public void TheTokenIsAFieldInTheKeyFile() =>
+        Assert.Equal("f4088d6a0032a7ac04036682ac8d831a", SessionRenamer.PeerTokenIn(
+            """{"peerToken":"f4088d6a0032a7ac04036682ac8d831a","procStartFt":"134319823877640856"}"""));
+
+    [Fact]
+    public void AKeyFileWithNoTokenYieldsNone() =>
+        Assert.Null(SessionRenamer.PeerTokenIn("""{"procStartFt":"134319823877640856"}"""));
+
+    /// <summary>
+    /// An older or newer layout holding the bare token is still worth trying: the alternative
+    /// is refusing a session we could have renamed.
+    /// </summary>
+    [Fact]
+    public void ABareTokenIsStillAToken() =>
+        Assert.Equal("f4088d6a0032a7ac", SessionRenamer.PeerTokenIn("  f4088d6a0032a7ac\n"));
+
+    [Fact]
+    public void AnEmptyKeyFileYieldsNone() =>
+        Assert.Null(SessionRenamer.PeerTokenIn("   "));
+
     // --- refusing before sending -----------------------------------------------
 
     [Fact]

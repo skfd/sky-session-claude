@@ -164,35 +164,39 @@ public class RestartPolicyTests
             RestartPolicy.ResumeCommand(Live(bridge: "session_01NpwuF1HVr5CRthp5YS8SWH")));
 
     /// <summary>
-    /// The registry records a source only for names the CLI invented, so a name the operator
-    /// chose arrives with the field absent. That is the one case we do not touch.
+    /// Whatever name it is handed is the name that goes on the line. Working out which name
+    /// that should be used to happen here, which made this a second decider that knew nothing
+    /// about which names were Sky's own -- so a restart re-froze the last placeholder every
+    /// time. That decision is NamePolicy's now, and this stays pure.
     /// </summary>
     [Fact]
-    public void ANameYouChoseSurvivesTheRestart() =>
+    public void TheNameItIsHandedIsTheNameItWrites() =>
         Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'night shift' --remote-control",
             RestartPolicy.ResumeCommand(
-                Live(bridge: "session_x", name: "night shift", nameSource: null), title: "Some title"));
+                Live(bridge: "session_x", name: "demo-6c", nameSource: "derived"), "night shift"));
 
     /// <summary>
-    /// A derived name carries the folder and a collision suffix drawn fresh at every launch,
-    /// so leaving it to re-derive is what made a restarted session change names for nothing.
+    /// Including over the name the session currently answers to. Deciding not to rename it is
+    /// something the caller expresses by handing back the name it already has, not by handing
+    /// back nothing.
     /// </summary>
     [Fact]
-    public void ADerivedNameGivesWayToTheSessionsOwnTitle() =>
+    public void ANameItIsHandedOverridesTheOneItHas() =>
         Assert.Equal(
-            "claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'Add retry logic to address-vault download' --remote-control",
+            "claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'Add retry logic to address-vault download'",
             RestartPolicy.ResumeCommand(
-                Live(bridge: "session_x", name: "demo-6c", nameSource: "derived"),
-                title: "Add retry logic to address-vault download"));
+                Live(name: "night shift", nameSource: null),
+                "Add retry logic to address-vault download"));
 
-    /// <summary>A yielded name is no more the operator's choice than a derived one.</summary>
+    /// <summary>
+    /// A command line has to say something, so no name falls to the floor rather than to
+    /// nothing -- leaving it off would let the CLI re-derive one with a fresh suffix, which is
+    /// the churn this whole path exists to stop.
+    /// </summary>
     [Fact]
-    public void ACollisionNameGivesWayToo() =>
-        Assert.Equal(
-            "claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'Art persona website design' --remote-control",
-            RestartPolicy.ResumeCommand(
-                Live(bridge: "session_x", name: "demo-2", nameSource: "collision"),
-                title: "Art persona website design"));
+    public void NoNameFallsToTheFloor() =>
+        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9'",
+            RestartPolicy.ResumeCommand(Live(name: "demo-6c", nameSource: "derived")));
 
     [Fact]
     public void RelaunchReturnsTheShellToTheSessionFolder() =>
@@ -207,11 +211,11 @@ public class RestartPolicyTests
         Assert.StartsWith(@"cd 'C:\it''s\here'; claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1", line);
     }
 
-    /// <summary>A title is typed into a shell like anything else, so it is quoted like one.</summary>
+    /// <summary>A name is typed into a shell like anything else, so it is quoted like one.</summary>
     [Fact]
-    public void AQuoteInATitleCannotBreakOutOfTheCommand() =>
+    public void AQuoteInANameCannotBreakOutOfTheCommand() =>
         Assert.EndsWith("--name 'it''s working'",
-            RestartPolicy.ResumeCommand(Live(), title: "it's working"));
+            RestartPolicy.ResumeCommand(Live(), "it's working"));
 
     [Fact]
     public void NoRecordedFolderMeansJustResumeWhereTheShellStands() =>

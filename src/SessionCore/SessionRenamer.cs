@@ -14,16 +14,24 @@ public readonly record struct RenameResult(bool Ok, string Message)
 /// <summary>
 /// Renames a live session where it stands, over the named pipe it publishes.
 ///
-/// This is the reason renaming reaches further than restarting does. A restart is a kill and
-/// a resume, so it needs a terminal we can drive and a session with nothing in flight; a
-/// rename touches only the name, so it works on the desktop app, on the SDK, and on a session
-/// mid-turn. Nothing can be lost, which is what makes it the one thing Sky may do unasked.
+/// A restart is a kill and a resume, so it needs a terminal we can drive and a session with
+/// nothing in flight. A rename touches only the name, so it reaches a session mid-turn and
+/// costs nothing if it is refused — which is what makes it the one thing Sky may do unasked.
 ///
-/// The protocol is two newline-delimited JSON objects: an auth line carrying the peer token
-/// from the session's <c>&lt;pid&gt;.&lt;hash&gt;.key</c> file, then the rename itself. A
-/// connection that does not authenticate has its lines dropped and is closed — silently, from
-/// this side, which is why success is confirmed by reading the name back out of the registry
-/// rather than by the write not throwing.
+/// The protocol is two newline-delimited JSON objects: an auth line carrying the
+/// <c>peerToken</c> out of the session's <c>&lt;pid&gt;.&lt;hash&gt;.key</c> file — the file is
+/// a small JSON object, not the token itself — then the rename. A connection that does not
+/// authenticate has its lines dropped and is closed, silently from this side, which is why
+/// success is confirmed by reading the name back out of the registry rather than by the write
+/// not throwing.
+///
+/// <b>Only <c>cli</c> sessions act on it.</b> docs/NAMING.md says otherwise, on the strength
+/// of every live session publishing the pipe; publishing it and handling
+/// <c>control/rename</c> turn out to be different things. Measured against this registry: a
+/// <c>cli</c> session takes the rename and appends the <c>custom-title</c> to its transcript,
+/// while <c>claude-desktop</c> and <c>sdk-cli</c> connect, accept the bytes, and do nothing —
+/// no registry change and no transcript record. So the desktop and SDK sessions this was
+/// meant to reach are named on the way back up like any other, and not in place.
 /// </summary>
 public static class SessionRenamer
 {
@@ -41,9 +49,10 @@ public static class SessionRenamer
     /// <summary>
     /// Rename <paramref name="live"/> to <paramref name="name"/>, and confirm it took.
     ///
-    /// Recording the name as Sky's is the caller's job, and has to happen whether or not this
-    /// returns Ok: a rename that landed and was not recorded is exactly the masquerade this
-    /// design exists to fix.
+    /// This is only the mechanism. Deciding the name is <see cref="NamePolicy"/>'s and
+    /// recording it as Sky's is <see cref="SessionNaming.RenameAsync"/>'s — go through that
+    /// rather than this, or the rename lands as a name indistinguishable from one the operator
+    /// typed, which is the bug the design exists to fix.
     /// </summary>
     public static async Task<RenameResult> RenameAsync(LiveSession live, string name)
     {
@@ -56,18 +65,18 @@ public static class SessionRenamer
         if (LiveSessionRegistry.KeyPathFor(live.Pid) is not { } keyPath)
             return RenameResult.Fail($"no peer-token file beside its registry entry (pid {live.Pid})");
 
-        string token;
+        string? token;
         try
         {
-            token = (await File.ReadAllTextAsync(keyPath)).Trim();
+            token = PeerTokenIn(await File.ReadAllTextAsync(keyPath));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             return RenameResult.Fail($"could not read its peer token: {e.Message}");
         }
 
-        if (token.Length == 0)
-            return RenameResult.Fail("its peer-token file is empty");
+        if (string.IsNullOrEmpty(token))
+            return RenameResult.Fail($"its peer-token file carries no token ({Path.GetFileName(keyPath)})");
 
         try
         {
@@ -85,10 +94,46 @@ public static class SessionRenamer
         // The write succeeding proves only that the bytes left; a connection that failed to
         // authenticate is dropped without a word. The registry is the only thing that can say
         // the session actually took the name.
-        return await Confirmed(live, name)
-            ? RenameResult.Done($"renamed to \"{name}\"")
-            : RenameResult.Fail($"the rename was sent but it still answers to \"{live.Name}\"");
+        if (await Confirmed(live, name)) return RenameResult.Done($"renamed to \"{name}\"");
+
+        return RenameResult.Fail(
+            $"the rename was sent but it still answers to \"{live.Name}\"{Because(live)}");
     }
+
+    /// <summary>
+    /// The token out of a <c>.key</c> file, which is a small JSON object rather than the token
+    /// itself: <c>{"peerToken":"…","procStartFt":"…"}</c>. Sending the whole file as the token
+    /// authenticates as nobody, and an unauthenticated connection is dropped in silence — so
+    /// getting this wrong looks exactly like the rename simply not arriving.
+    /// </summary>
+    public static string? PeerTokenIn(string keyFileText)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(keyFileText);
+            return doc.RootElement.TryGetProperty("peerToken", out var el)
+                && el.ValueKind == JsonValueKind.String
+                    ? el.GetString()
+                    : null;
+        }
+        catch (JsonException)
+        {
+            // Not JSON: an older or newer layout holding the bare token. Worth trying, since
+            // the alternative is refusing a session we could have renamed.
+            var text = keyFileText.Trim();
+            return text.Length > 0 ? text : null;
+        }
+    }
+
+    /// <summary>
+    /// The likely reason a rename went unanswered, when we know one. Checked after the fact
+    /// rather than refused up front: a build that starts honouring these should quietly begin
+    /// working rather than keep being turned away by a rule written today.
+    /// </summary>
+    private static string Because(LiveSession live) =>
+        string.Equals(live.Entrypoint, "cli", StringComparison.OrdinalIgnoreCase) || live.Entrypoint.Length == 0
+            ? ""
+            : $" — it runs under {live.Entrypoint}, which publishes a pipe but does not act on a rename";
 
     private static async Task SendAsync(string socketPath, string token, string name)
     {
@@ -104,6 +149,12 @@ public static class SessionRenamer
         await WriteLine(pipe, new { type = "auth", token });
         await WriteLine(pipe, new { type = "control", action = "rename", name });
         await pipe.FlushAsync();
+
+        // Disposing the client can tear the pipe down before the session has read what is
+        // still sitting in it, which would look identical to a rename that was ignored.
+        // SessionCore targets plain net10.0 even though every consumer is Windows, so the
+        // guard is for the analyzer rather than for any platform this runs on.
+        if (OperatingSystem.IsWindows()) pipe.WaitForPipeDrain();
     }
 
     private static async Task WriteLine(Stream stream, object message)

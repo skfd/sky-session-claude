@@ -31,11 +31,11 @@ public static class SessionRestarter
     /// (see <see cref="RestartPolicy"/>); this is only the mechanism.
     /// </summary>
     /// <remarks>
-    /// <paramref name="title"/> is the session's own title, read from its file by the caller
-    /// that has it. It only names the session on the way back up; a restart without it still
-    /// works, and falls back to the folder.
+    /// <paramref name="name"/> is what the session comes back under, decided by the caller
+    /// through <see cref="SessionNaming.NameForLaunch"/> -- which is also what records it as
+    /// Sky's own. A restart without one still works, and falls back to the floor.
     /// </remarks>
-    public static async Task<RestartResult> RestartAsync(LiveSession live, string? title = null)
+    public static async Task<RestartResult> RestartAsync(LiveSession live, string? name = null)
     {
         // Find the shell first: with nothing to hand the terminal back to, quitting Claude
         // would close the tab and strand the session, which is worse than leaving it stale.
@@ -51,7 +51,7 @@ public static class SessionRestarter
 
         await Task.Delay(600);   // let the shell finish repainting its prompt
 
-        var line = RestartPolicy.RelaunchLine(live, title);
+        var line = RestartPolicy.RelaunchLine(live, name);
         if (!await Task.Run(() => ConsoleInput.SendLine(shell, line)))
             return RestartResult.Fail($"it quit, but the resume did not go in — type: {line}");
 

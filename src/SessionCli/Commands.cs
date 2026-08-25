@@ -285,8 +285,13 @@ internal static class Commands
         var live = LiveSessions.Scan();
         bool dry = args.Has("dry-run");
 
-        List<(LiveSession Live, SessionStatus? Tail, string Name, string? Title)> targets;
+        // What a session comes back under is the policy's call, so each target carries what
+        // the policy needs rather than a title this verb would have to interpret itself.
+        List<(LiveSession Live, SessionStatus? Tail, string Name, NameInputs Inputs)> targets;
         List<ActionItem> skipped = new();
+
+        var names = new NameStore();
+        var liveNames = SessionNaming.LiveNamesOf(live);
 
         if (args.Has("stale"))
         {
@@ -297,7 +302,7 @@ internal static class Commands
             var infos = scanner.Scan(new ScanOptions { All = true, Top = int.MaxValue })
                 .ToDictionary(i => i.SessionId, StringComparer.OrdinalIgnoreCase);
 
-            targets = new List<(LiveSession, SessionStatus?, string, string?)>();
+            targets = new List<(LiveSession, SessionStatus?, string, NameInputs)>();
             foreach (var session in live.Values.SelectMany(v => v))
             {
                 var info = infos.GetValueOrDefault(session.SessionId);
@@ -315,7 +320,10 @@ internal static class Commands
                 // A sweep is the set where nothing can be lost, not the set that looks
                 // quiet — anything merely plausible is reported rather than taken.
                 if (!verdict.CanSweep) skipped.Add(Skip(session.SessionId, name, verdict.Reason));
-                else targets.Add((session, info?.Status, name, info?.Title));
+                else targets.Add((session, info?.Status, name,
+                    info is not null
+                        ? SessionNaming.InputsFor(info, session, liveNames)
+                        : SessionNaming.InputsFor(session, liveNames)));
             }
 
             // The sweep drives terminals nobody is looking at, so it states its plan and
@@ -327,7 +335,7 @@ internal static class Commands
             if (args.Positional.Count == 0)
                 throw new UsageException("'restart' needs a session id, or --stale.");
 
-            targets = new List<(LiveSession, SessionStatus?, string, string?)>();
+            targets = new List<(LiveSession, SessionStatus?, string, NameInputs)>();
             foreach (var id in args.Positional)
             {
                 var file = Resolve(scanner, id);
@@ -354,28 +362,32 @@ internal static class Commands
                     continue;
                 }
 
-                targets.Add((running[0], info.Status, name, info.Title));
+                targets.Add((running[0], info.Status, name,
+                    SessionNaming.InputsFor(info, running[0], liveNames)));
             }
         }
 
         var items = new List<ActionItem>();
         int done = 0;
 
-        foreach (var (session, tail, name, title) in targets)
+        foreach (var (session, tail, name, inputs) in targets)
         {
             if (dry)
             {
+                // Planned, not recorded: a dry run changes nothing, names.json included.
+                var planned = SessionNaming.PlanLaunch(inputs, names).Name;
                 items.Add(new ActionItem
                 {
                     SessionId = session.SessionId,
                     Name = name,
                     Ok = true,
-                    Message = $"would restart: {RestartPolicy.RelaunchLine(session, title)}",
+                    Message = $"would restart: {RestartPolicy.RelaunchLine(session, planned)}",
                 });
                 continue;
             }
 
-            var result = SessionRestarter.RestartAsync(session, title).GetAwaiter().GetResult();
+            var launchName = SessionNaming.NameForLaunch(inputs, names);
+            var result = SessionRestarter.RestartAsync(session, launchName).GetAwaiter().GetResult();
             if (result.Ok) done++;
             items.Add(new ActionItem
             {
@@ -449,16 +461,161 @@ internal static class Commands
                 Message = $"\"{info.Name ?? info.SessionId}\" is already open in a terminal (pid {running.Pid}).",
             });
 
-        if (!args.Has("dry-run")) StartTerminal(info.NamedCommand);
+        // The name comes from the policy, not from this verb. A launch that composed its own
+        // would be a second decider, blind to which names are Sky's, and every resume would
+        // write the last placeholder back into the transcript.
+        var store = new NameStore();
+        var inputs = SessionNaming.InputsFor(info, live: null, SessionNaming.LiveNamesOf(LiveSessions.Scan()));
+
+        // A dry run promises to change nothing, and names.json is something.
+        var name = args.Has("dry-run")
+            ? SessionNaming.PlanLaunch(inputs, store).Name!
+            : SessionNaming.NameForLaunch(inputs, store);
+
+        var command = info.CommandNamed(name);
+        if (!args.Has("dry-run")) StartTerminal(command);
 
         return Cli.EmitResult(new ActionResult
         {
             Ok = true,
             Action = "resume",
             Message = args.Has("dry-run")
-                ? $"Would run: {info.NamedCommand}"
-                : $"Opened a terminal running: {info.NamedCommand}",
+                ? $"Would run: {command}"
+                : $"Opened a terminal running: {command}",
         });
+    }
+
+    // --- renaming -----------------------------------------------------------
+
+    /// <summary>
+    /// Give a session a better name, in place.
+    ///
+    /// This is the one verb that acts on the session it is running inside without being
+    /// argued with. Every other refuses -- restarting yourself kills you mid-sentence -- but a
+    /// rename touches only the name, so `--self` is the ordinary case rather than the
+    /// dangerous one, and it is what the CLAUDE.md line calls when a session's subject
+    /// genuinely changes.
+    ///
+    /// With no name given, the policy decides. That is the same decision the app's background
+    /// pass makes, so `rename <id>` and waiting for the app to notice produce the same answer.
+    /// </summary>
+    public static int Rename(Args args)
+    {
+        args.RejectUnknown("self", "dry-run");
+
+        var store = new NameStore();
+        var live = LiveSessions.Scan();
+        var liveNames = SessionNaming.LiveNamesOf(live);
+        bool dry = args.Has("dry-run");
+
+        var (target, given) = Target(args);
+
+        // A prefix has to become a whole id before anything is looked up by it. Doing this
+        // the other way round finds the transcript and then misses the live entry, and the
+        // verb reports a running session as closed.
+        var scanner = new SessionScanner();
+        var info = scanner.ProjectsDirExists && scanner.FindByPrefix(target) is [var file, ..]
+            ? scanner.BuildRow(file, SessionFileParser.DefaultContextWindow)
+            : null;
+
+        var sessionId = info?.SessionId ?? ResolveLive(target)?.SessionId
+            ?? throw new UsageException($"No session matches '{target}'.");
+
+        var running = live.TryGetValue(sessionId, out var found) && found.Count > 0 ? found[0] : null;
+
+        var inputs = info is not null
+            ? SessionNaming.InputsFor(info, running, liveNames)
+            : SessionNaming.InputsFor(running!, liveNames);
+
+        // A name typed by hand is the operator's, whoever typed it -- including a session
+        // naming itself, which is speaking for the conversation rather than for Sky.
+        var (name, origin) = given is { Length: > 0 }
+            ? (SessionName.Tidy(given), args.Has("self") ? NameOrigin.SelfNamed : NameOrigin.Chosen)
+            : Decided(inputs, store);
+
+        if (name.Length == 0)
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = true,
+                Action = "rename",
+                Message = $"{sessionId} keeps the name it has: {NamePolicy.Decide(inputs, store).Why}.",
+            });
+
+        if (dry)
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = true,
+                Action = "rename",
+                Message = $"Would rename {sessionId} to \"{name}\".",
+            });
+
+        // Only a running session has a pipe to be spoken to. A closed one is named on the way
+        // back up instead, by `resume` and `restart`, which ask this same policy -- so there
+        // is nothing to write here, and no reason to forge a record into someone's transcript.
+        if (running is null)
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = true,
+                Action = "rename",
+                Message = $"{sessionId} is not open in a terminal, so there is nothing to rename in place. "
+                    + $"It will come back as \"{name}\" when it is next resumed.",
+            });
+
+        var result = SessionNaming.RenameAsync(running, name, origin, store).GetAwaiter().GetResult();
+
+        return Cli.EmitResult(new ActionResult
+        {
+            Ok = result.Ok,
+            Action = "rename",
+            Message = result.Ok ? $"{sessionId} {result.Message}." : $"Could not rename {sessionId} -- {result.Message}.",
+            Items =
+            [
+                new ActionItem
+                {
+                    SessionId = sessionId,
+                    Name = name,
+                    Ok = result.Ok,
+                    Message = result.Message,
+                },
+            ],
+        });
+    }
+
+    /// <summary>Which session, and what to call it -- `--self` supplying the first.</summary>
+    private static (string SessionId, string? Name) Target(Args args)
+    {
+        if (args.Has("self"))
+        {
+            var self = Environment.GetEnvironmentVariable("CLAUDE_CODE_SESSION_ID");
+            if (string.IsNullOrEmpty(self))
+                throw new UsageException(
+                    "--self needs CLAUDE_CODE_SESSION_ID, which Claude Code exports to every process "
+                    + "it launches. This does not look like one of them.");
+
+            return args.Positional.Count switch
+            {
+                0 => (self, null),
+                1 => (self, args.Positional[0]),
+                _ => throw new UsageException("'rename --self' takes at most one name. Quote a name with spaces."),
+            };
+        }
+
+        return args.Positional.Count switch
+        {
+            1 => (args.Positional[0], null),
+            2 => (args.Positional[0], args.Positional[1]),
+            0 => throw new UsageException("'rename' needs a session id, or --self."),
+            _ => throw new UsageException("'rename' takes a session id and at most one name. Quote a name with spaces."),
+        };
+    }
+
+    /// <summary>The policy's answer, or an empty string when it would leave the name alone.</summary>
+    private static (string Name, NameOrigin Origin) Decided(NameInputs inputs, NameStore store)
+    {
+        var decision = NamePolicy.Decide(inputs, store);
+        return decision.HasName && decision.Origin is { } origin
+            ? (decision.Name!, origin)
+            : ("", NameOrigin.Floor);
     }
 
     // --- looking ------------------------------------------------------------

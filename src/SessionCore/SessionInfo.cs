@@ -76,9 +76,14 @@ public sealed class SessionInfo
     /// <c>--fork-session</c> to it, and the fork is a different session that has not earned
     /// this one's name.
     /// </summary>
-    public string NamedCommand => Command.Length == 0
+    /// <param name="name">
+    /// What to call it, from <see cref="SessionNaming.NameForLaunch"/>. This used to compose a
+    /// name here, which meant a second decider that knew nothing about which names were Sky's
+    /// own — so every resume rewrote the last placeholder back into the transcript.
+    /// </param>
+    public string CommandNamed(string name) => Command.Length == 0
         ? ""
-        : $"{Command} --name {SessionName.Quote(SessionName.For(SessionId, Cwd, Title))}";
+        : $"{Command} --name {SessionName.Quote(name)}";
     public bool Unfinished { get; init; }
     public string WaitingOn { get; init; } = "";
 }

@@ -171,7 +171,6 @@ public sealed class SessionRow : INotifyPropertyChanged
     public string Recap => _info.Recap;
     public double SizeKB => _info.SizeKB;
     public string Command => _info.Command;
-    public string NamedCommand => _info.NamedCommand;
 
     /// <summary>Third line of the card: status · context · file size.</summary>
     public string MetaLine

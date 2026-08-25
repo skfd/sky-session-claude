@@ -91,25 +91,28 @@ public static class RestartPolicy
     /// does not survive the restart, so a session that had it connected asks for it again
     /// on the way back up — otherwise restarting would quietly drop it off your phone.
     ///
-    /// A name you chose is carried over untouched. One the CLI invented is not: it would be
-    /// re-derived with a fresh suffix, so the session comes back under a name that changed
-    /// without meaning anything (see <see cref="SessionName"/>). <paramref name="title"/> is
-    /// the session's own title, which is what it deserves to be called instead.
+    /// <paramref name="name"/> is what the session comes back under, decided elsewhere. This
+    /// used to work it out here — carry a chosen name over, re-derive anything else — and that
+    /// was the gap: a restart re-froze whatever placeholder Sky had written last time, so
+    /// recording provenance bought nothing. Deciding is <see cref="NamePolicy"/>'s and arrives
+    /// here as a parameter, which keeps this function what it was: pure, and testable without
+    /// a store to set up.
     ///
     /// The name goes in under <c>--name</c>, never as the optional argument to
     /// <c>--remote-control</c>. The two are separate flags inside the CLI and only
     /// <c>--name</c> reaches the registry: a name passed to <c>--remote-control</c> is
     /// accepted, ignored, and the session comes back derived anyway.
+    ///
+    /// <c>--name</c> does reach the transcript, as a <c>custom-title</c> record. The comment
+    /// that used to sit here said the opposite and was wrong — which is exactly why the name
+    /// passed in has to be one the policy chose: whatever goes in here is read back as this
+    /// session's title next time.
     /// </summary>
-    public static string ResumeCommand(LiveSession live, string? title = null)
+    public static string ResumeCommand(LiveSession live, string? name = null)
     {
-        var name = SessionName.IsChosen(live)
-            ? live.Name!
-            : SessionName.For(live.SessionId, live.Cwd, title);
+        var chosen = name is { Length: > 0 } ? name : SessionName.Floor(live.SessionId, live.Cwd);
 
-        // --name is written only to the live registry, never to the transcript, so naming a
-        // session here cannot shadow the title the app reads off its file.
-        var command = $"claude --resume {live.SessionId} --name {SessionName.Quote(name)}";
+        var command = $"claude --resume {live.SessionId} --name {SessionName.Quote(chosen)}";
         return live.RemoteControl ? $"{command} --remote-control" : command;
     }
 
@@ -117,10 +120,10 @@ public static class RestartPolicy
     /// The full line typed into the terminal the session vacated: back to its folder first,
     /// because the shell may have been left somewhere else before Claude was started.
     /// </summary>
-    public static string RelaunchLine(LiveSession live, string? title = null) =>
+    public static string RelaunchLine(LiveSession live, string? name = null) =>
         live.Cwd is { Length: > 0 } cwd
-            ? $"cd {SessionName.Quote(cwd)}; {ResumeCommand(live, title)}"
-            : ResumeCommand(live, title);
+            ? $"cd {SessionName.Quote(cwd)}; {ResumeCommand(live, name)}"
+            : ResumeCommand(live, name);
 
 
     private static string Host(string entrypoint) => entrypoint switch

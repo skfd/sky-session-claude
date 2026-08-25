@@ -191,7 +191,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        Start(row.NamedCommand);
+        Start(_vm.ResumeCommandFor(row));
     }
 
     // True if this session is live in a terminal and we brought that window to the front.
@@ -215,7 +215,7 @@ public partial class MainWindow : Window
     private void CopyBtn_Click(object sender, RoutedEventArgs e)
     {
         var commands = Grid.SelectedItems.OfType<SessionRow>()
-            .Select(r => r.NamedCommand)
+            .Select(_vm.ResumeCommandFor)
             .Where(c => !string.IsNullOrEmpty(c))
             .ToList();
 

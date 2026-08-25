@@ -25,7 +25,7 @@ internal sealed class Args
     private static readonly HashSet<string> Switches = new(StringComparer.OrdinalIgnoreCase)
     {
         "newest-per-project", "unfinished", "live", "stale",
-        "tip", "resume", "yes", "force", "dry-run",
+        "tip", "resume", "yes", "force", "dry-run", "self",
     };
 
     private readonly Dictionary<string, string?> _flags = new(StringComparer.OrdinalIgnoreCase);
@@ -131,6 +131,8 @@ internal static class Cli
         Acting
           SessionCli fork <id> --at-prompt <n>   branch from before prompt n (no terminal)
           SessionCli fork <id> --tip             branch at the tip, in a new terminal
+          SessionCli rename <id> [name]          rename it where it stands; no name = we pick
+          SessionCli rename --self [name]        rename the session this is running in
           SessionCli restart <id>...             restart in the terminal it already sits in
           SessionCli restart --stale             restart every stale session that is idle
           SessionCli resume <id>                 open a terminal and resume it
@@ -158,6 +160,7 @@ internal static class Cli
           --trust      on `new`: wait for the trust prompt in that folder and accept it
           --yes        actually do it; `restart --stale` only reports the plan without it
           --force      act on the session this command is running inside (refused otherwise)
+          --self       on `rename`: the session this command is running in
           --dry-run    say what would happen and change nothing
 
         A session id may be shortened to any unique prefix, like a commit sha.
@@ -190,6 +193,7 @@ internal static class Cli
                 "abandon" => Commands.Mark(rest, SessionCore.Disposition.Abandoned),
                 "restore" => Commands.Mark(rest, SessionCore.Disposition.None),
                 "fork" => Commands.Fork(rest),
+                "rename" => Commands.Rename(rest),
                 "restart" => Commands.Restart(rest),
                 "resume" => Commands.Resume(rest),
                 "new" => Commands.New(rest),
