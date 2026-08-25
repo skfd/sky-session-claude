@@ -37,6 +37,28 @@ public sealed class SessionScanner
 
     public bool ProjectsDirExists => Directory.Exists(_projectsDir);
 
+    /// <summary>
+    /// The transcript folder Claude Code keeps a session run in <paramref name="cwd"/> in.
+    ///
+    /// This duplicates a rule that belongs to Claude Code, so prefer the folder a scanned
+    /// session file already sits in wherever there is one — this is for the one caller that
+    /// has a path and no session to read it off, <c>standby --in</c> asking whether a Remote
+    /// Control host is already serving a folder nothing has been scanned for.
+    /// </summary>
+    public string ProjectDirFor(string cwd) => Path.Combine(_projectsDir, Flatten(cwd));
+
+    /// <summary>
+    /// <c>C:\Users\kk\Code\comentality.com</c> → <c>C--Users-kk-Code-comentality-com</c>: every
+    /// one of drive colon, both slashes and the dot becomes a dash, which is why the drive
+    /// letter is followed by two.
+    /// </summary>
+    private static string Flatten(string cwd)
+    {
+        var flat = new System.Text.StringBuilder(cwd.Length);
+        foreach (var c in cwd) flat.Append(c is ':' or '\\' or '/' or '.' ? '-' : c);
+        return flat.ToString();
+    }
+
     /// <summary>Enumerate all session files, newest first, honoring the All/Top options.</summary>
     public IReadOnlyList<FileInfo> SelectFiles(ScanOptions options)
     {

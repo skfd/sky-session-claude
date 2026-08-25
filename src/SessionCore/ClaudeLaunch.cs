@@ -21,6 +21,32 @@ public static class ClaudeLaunch
     /// <summary>The command that brings <paramref name="sessionId"/> back.</summary>
     public static string Resume(string sessionId, string? name = null) => Line(sessionId, name);
 
+    /// <summary>
+    /// A Remote Control <b>host</b> for the folder the shell is in — not a session, but the
+    /// server that makes them. <c>claude rc</c> pre-creates one so the phone has somewhere to
+    /// type immediately, then spawns more on demand.
+    ///
+    /// <paramref name="namePrefix"/> is what every session it creates is named after, and it
+    /// is the difference between a usable phone list and an unusable one. Left off, the prefix
+    /// defaults to the machine's hostname and the rows read <c>cc-pc-sorted-stallman</c> —
+    /// which says nothing about which repo you are about to type into. Given the project, they
+    /// read <c>sky-session-claude-wondrous-seal</c>, and the eye finds the repo.
+    ///
+    /// Note this is the opposite rule to <see cref="Line"/>, where a name must go under
+    /// <c>--name</c> and never on <c>--remote-control</c>. Different flag, different command,
+    /// and this one is the naming lever that works.
+    ///
+    /// The pre-creation is already the default; it is written out anyway because a phone row
+    /// that exists the moment the host does is the whole point of putting one here, and a
+    /// default is a thing that can change.
+    /// </summary>
+    public static string Host(string? namePrefix = null) =>
+        "claude rc"
+        + (namePrefix is { Length: > 0 }
+            ? $" --remote-control-session-name-prefix {SessionName.Quote(namePrefix)}"
+            : "")
+        + " --create-session-in-dir";
+
     private static string Line(string? sessionId, string? name)
     {
         var line = "claude";

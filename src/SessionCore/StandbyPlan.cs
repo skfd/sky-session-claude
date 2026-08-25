@@ -27,22 +27,29 @@ public sealed record StandbyPlan
 }
 
 /// <summary>
-/// Which projects to leave a phone-reachable session in.
+/// Which projects to leave answering the phone.
 ///
 /// The desk and the phone want opposite things from a session list. At the desk a session is
 /// found by remembering what it was about, so every one you ever worked in is worth keeping.
 /// From a phone there is no terminal to open and no folder to <c>cd</c> into: a project you
-/// can reach is one that already has a session running with Remote Control connected, and a
+/// can reach is one that already has something running with Remote Control connected, and a
 /// project that does not is simply not there. So this reads recency off the transcripts and
 /// answers with the folders worth having up before you leave the desk.
 ///
-/// It is folders, not sessions, deliberately — the session it opens is a fresh one. Resuming
-/// the newest would carry a full context window and whatever the last conversation ended
-/// mid-thought about into a phone screen; the ask from a phone is almost always a new one.
+/// What it puts there is a <c>claude rc</c> <b>host</b>, not a session. The two are different
+/// things wearing the same words: <c>claude --remote-control</c> is one interactive session in
+/// a terminal that happens to be bridged, while <c>claude rc</c> is a server that pre-creates
+/// one session so there is somewhere to type immediately and then spawns more on demand, up to
+/// its capacity. A host is the right shape here because the phone is where second thoughts
+/// happen — a session per project caps you at one conversation per repo, and starting another
+/// is the one thing a phone cannot do for itself.
+///
+/// It is folders, not sessions, all the way down: the host decides what conversations exist,
+/// so there was never a resumed-versus-fresh question for this to answer.
 ///
 /// Pure, like <see cref="RestartPolicy"/> and <see cref="ClosePolicy"/>: the caller supplies
-/// the scan, the registry and the clock, and gets back a plan it can print without having
-/// opened anything.
+/// the scan, the registry, the clock and the answers to the few filesystem questions, and gets
+/// back a plan it can print without having opened anything.
 /// </summary>
 public static class Standby
 {
@@ -64,6 +71,11 @@ public static class Standby
     /// Whether a folder is a project rather than somewhere a question got asked. See
     /// <see cref="HasGit"/> for why the test is a <c>.git</c>.
     /// </param>
+    /// <param name="hostFor">
+    /// The <c>claude rc</c> host serving a project's transcript folder, if one is. Asked of the
+    /// transcript folder rather than the repo because that is where the pointer is written, and
+    /// it comes from the scan itself, so no path has to be slugged to ask it.
+    /// </param>
     public static StandbyPlan Decide(
         IEnumerable<SessionInfo> sessions,
         IEnumerable<LiveSession> live,
@@ -71,15 +83,18 @@ public static class Standby
         TimeSpan? window = null,
         int max = int.MaxValue,
         Func<string, bool>? folderExists = null,
-        Func<string, bool>? isRepo = null)
+        Func<string, bool>? isRepo = null,
+        Func<string, BridgePointer?>? hostFor = null)
     {
         var since = now - (window ?? DefaultWindow);
         var exists = folderExists ?? Directory.Exists;
         var repo = isRepo ?? HasGit;
+        var host = hostFor ?? (dir => RemoteControlHosts.ServingFrom(dir));
 
         var running = live as IReadOnlyCollection<LiveSession> ?? live.ToList();
 
-        var newest = new Dictionary<string, (string Folder, DateTime LastActive)>(StringComparer.OrdinalIgnoreCase);
+        var newest = new Dictionary<string, (string Folder, string ProjectDir, DateTime LastActive)>(
+            StringComparer.OrdinalIgnoreCase);
         foreach (var session in sessions)
         {
             if (session.RealCwd is not { Length: > 0 } cwd) continue;
@@ -88,7 +103,11 @@ public static class Standby
 
             var key = Key(cwd);
             if (newest.TryGetValue(key, out var seen) && seen.LastActive >= session.LastActive) continue;
-            newest[key] = (cwd, session.LastActive);
+
+            // The transcript folder the session file sits in, which is where a host writes its
+            // pointer. Taken from the scan rather than slugged from the path, so the one rule
+            // this code would otherwise have to duplicate stays Claude Code's own.
+            newest[key] = (cwd, DirectoryOf(session.FilePath), session.LastActive);
         }
 
         var open = new List<StandbyTarget>();
@@ -97,6 +116,20 @@ public static class Standby
         foreach (var folder in newest.Values.OrderByDescending(e => e.LastActive))
         {
             var project = ProjectOf(folder.Folder);
+
+            // A host first: it is the thing standby itself puts there, so launching a second
+            // one is the mistake this verb is most likely to make. It publishes no session of
+            // its own, so nothing in the registry would have caught it.
+            if (host(folder.ProjectDir) is { } serving)
+            {
+                skipped.Add(new StandbySkip
+                {
+                    Folder = folder.Folder,
+                    Project = project,
+                    Reason = AlreadyReason(serving),
+                });
+                continue;
+            }
 
             if (ReachableIn(running, folder.Folder) is { } already)
             {
@@ -194,6 +227,17 @@ public static class Standby
     /// <summary>How a folder that is already reachable is reported.</summary>
     public static string AlreadyReason(LiveSession already) =>
         $"already on standby — \"{already.Name ?? already.SessionId}\" has Remote Control connected";
+
+    /// <summary>How a folder a host is already serving is reported.</summary>
+    public static string AlreadyReason(BridgePointer serving) =>
+        $"already on standby — a claude rc host (pid {serving.Pid}) is serving this folder";
+
+    /// <summary>
+    /// The folder a session file sits in, tolerating the empty path a hand-built
+    /// <see cref="SessionInfo"/> has.
+    /// </summary>
+    private static string DirectoryOf(string filePath) =>
+        string.IsNullOrEmpty(filePath) ? "" : Path.GetDirectoryName(filePath) ?? "";
 
     /// <summary>What the project in a folder is called: the folder's leaf name.</summary>
     public static string ProjectOf(string path)

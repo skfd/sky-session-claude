@@ -18,7 +18,17 @@ public class StandbyTests
         SessionId = Guid.NewGuid().ToString(),
         Cwd = cwd,
         LastActive = Now.AddDays(-daysAgo),
+
+        // The transcript folder is where a host writes its pointer, and standby reads it off
+        // the scan rather than slugging the path. Named after the repo here only so a test
+        // can tell one from another.
+        FilePath = $@"C:\projects\{ProjectOf(cwd)}\{Guid.NewGuid():N}.jsonl",
     };
+
+    private static string ProjectOf(string cwd) => Standby.ProjectOf(cwd);
+
+    private static BridgePointer Host(int pid = 4242) =>
+        new() { SessionId = "session_01WH7wucUtkLYNU3bM3HM38d", Pid = pid };
 
     /// <summary>Every folder in these tests is pretended to exist unless a test says otherwise.</summary>
     private static StandbyPlan Decide(
@@ -27,9 +37,10 @@ public class StandbyTests
         TimeSpan? window = null,
         int max = int.MaxValue,
         Func<string, bool>? folderExists = null,
-        Func<string, bool>? isRepo = null) =>
+        Func<string, bool>? isRepo = null,
+        Func<string, BridgePointer?>? hostFor = null) =>
         Standby.Decide(sessions, live ?? [], Now, window, max,
-            folderExists ?? (_ => true), isRepo ?? (_ => true));
+            folderExists ?? (_ => true), isRepo ?? (_ => true), hostFor ?? (_ => null));
 
     private static LiveSession Running(string cwd, string name, bool remoteControl) =>
         LiveSessionRegistry.Parse(
@@ -98,6 +109,36 @@ public class StandbyTests
         Assert.Empty(plan.Open);
         Assert.Contains("already on standby", Assert.Single(plan.Skipped).Reason);
         Assert.Contains("sky-6c", plan.Skipped[0].Reason);
+    }
+
+    /// <summary>
+    /// The mistake standby is most likely to make, because it is the one it makes to its own
+    /// output: a `claude rc` host publishes no session of its own, so a folder it is serving
+    /// looks empty in the registry whenever no conversation happens to be open.
+    /// </summary>
+    [Fact]
+    public void SkipsARepoAHostIsAlreadyServing()
+    {
+        var plan = Decide(
+            [In(@"C:\Code\sky", 1)],
+            hostFor: dir => dir.EndsWith("sky") ? Host(pid: 6328) : null);
+
+        Assert.Empty(plan.Open);
+        Assert.Contains("claude rc host (pid 6328)", Assert.Single(plan.Skipped).Reason);
+    }
+
+    /// <summary>
+    /// The pointer is asked of the transcript folder, not the repo — that is where the host
+    /// writes it, and reading it off the scan is what keeps Claude Code's slug rule out of
+    /// this code.
+    /// </summary>
+    [Fact]
+    public void AsksAboutTheTranscriptFolderRatherThanTheRepo()
+    {
+        string? asked = null;
+        Decide([In(@"C:\Code\sky", 1)], hostFor: dir => { asked = dir; return null; });
+
+        Assert.Equal(@"C:\projects\sky", asked);
     }
 
     /// <summary>

@@ -1166,21 +1166,24 @@ internal static class Commands
     // --- standby ------------------------------------------------------------
 
     /// <summary>
-    /// Leave a phone-reachable session up in every project worked in lately.
+    /// Leave a Remote Control host running in every project worked in lately.
     ///
-    /// This is the verb for walking away from the desk, and it exists because of an asymmetry
-    /// in Remote Control: it is per session and per process, so a project with nothing running
-    /// is a project a phone cannot open — and a phone cannot start one either. Everything else
-    /// here can be done when you get back. This one has to happen before you leave.
+    /// This is the verb for walking away from the desk, and it exists because of an asymmetry:
+    /// Remote Control is per process, so a project with nothing running is a project a phone
+    /// cannot open — and a phone cannot start one either. Everything else here can be done when
+    /// you get back. This one has to happen before you leave.
     ///
-    /// It opens fresh sessions rather than resuming the newest in each project. A resumed
-    /// conversation comes back with its context window where it left it and its last question
-    /// still hanging; what gets asked from a phone is nearly always a new thing about a
-    /// familiar repo.
+    /// What it starts is <c>claude rc</c>, the host, rather than <c>claude --remote-control</c>,
+    /// a bridged interactive session. The host pre-creates one session so there is a row on the
+    /// phone immediately and then spawns more on demand, which matters because second thoughts
+    /// are what phones are for: a session per project caps you at one conversation per repo,
+    /// and starting another is precisely the thing a phone cannot do for itself. The cost is
+    /// that a host has no terminal you can type into at the desk, and that what it spawns is
+    /// <c>sdk-cli</c> — the kind <see cref="ClosePolicy"/> refuses to sweep, on purpose.
     ///
     /// Like the other sweeps it drives real terminals, so it states its plan and waits to be
-    /// told twice. Unlike them, nothing it does can lose work — every session it touches is
-    /// one it just made — so the second telling is about the terminals about to appear on
+    /// told twice. Unlike them, nothing it does can lose work — everything it touches is
+    /// something it just made — so the second telling is about the terminals about to appear on
     /// your desktop, not about anything at risk.
     /// </summary>
     public static int Standby(Args args)
@@ -1196,6 +1199,7 @@ internal static class Commands
         var now = DateTime.Now;
         var window = args.Span("since", SessionCore.Standby.DefaultWindow);
         StandbyPlan plan;
+        var untrustedNote = "";
 
         if (args.Has("in"))
         {
@@ -1207,10 +1211,29 @@ internal static class Commands
             if (!Directory.Exists(folder))
                 throw new UsageException($"No such folder: {folder}");
 
-            // Named rather than found, so recency has nothing to say about it. The one check
-            // that still runs is the one that matters from a phone: two sessions on standby in
-            // the same repo are two identical rows in a list that shows no folders.
+            // Named rather than found, so recency and the .git rule have nothing to say about
+            // it — pointing at a folder is a better answer than any rule about it. What still
+            // runs is the check that matters from a phone: a second host in a repo that already
+            // has one is two identical rows in a list that shows no folders.
             var project = SessionCore.Standby.ProjectOf(folder);
+            var projectDir = new SessionScanner().ProjectDirFor(folder);
+
+            if (RemoteControlHosts.ServingFrom(projectDir) is { } host)
+                return Cli.EmitResult(new ActionResult
+                {
+                    Ok = true,
+                    Action = "standby",
+                    Message = $"{project} is {SessionCore.Standby.AlreadyReason(host)}.",
+                    Items = [new ActionItem
+                    {
+                        SessionId = "",
+                        Name = project,
+                        Folder = folder,
+                        Ok = false,
+                        Message = $"skipped — {SessionCore.Standby.AlreadyReason(host)}",
+                    }],
+                });
+
             plan = SessionCore.Standby.ReachableIn(live, folder) is { } already
                 ? new StandbyPlan
                 {
@@ -1234,6 +1257,13 @@ internal static class Commands
             plan = SessionCore.Standby.Decide(
                 scanner.Scan(new ScanOptions { All = true, Top = int.MaxValue }),
                 live, now, window, args.Int("recent", int.MaxValue));
+
+            // Standby is where a folder Claude Code has never been trusted with shows up, and
+            // `claude rc` will not ask: it says to run `claude` there first and stops. Nothing
+            // outside that terminal can see it happen, so this is said rather than detected.
+            if (plan.Open.Count > 0) untrustedNote =
+                " A folder Claude Code has not been trusted with will not start a host — run"
+                + " `claude` there once to answer the trust prompt.";
         }
 
         // No --yes is a plan, the same as the other sweeps; --dry-run says so outright.
@@ -1242,16 +1272,17 @@ internal static class Commands
         var items = new List<ActionItem>();
         foreach (var target in plan.Open)
         {
-            // The name is left to Claude Code, as it is for `new`: a session with no content
-            // has no subject to be called by yet, and the folder-derived name it picks is both
-            // the honest one and the one the rest of Sky expects to find.
-            var command = NewSessionLine(target.Folder, name: null);
+            // The project is the name prefix, not a session name: what this starts is a host,
+            // and everything it goes on to create is named after the prefix. Left off, they
+            // would all be named after this machine instead — see ClaudeLaunch.Host.
+            var command = LaunchLine.HostIn(target.Folder, target.Project);
             if (!dry) StartTerminal(command);
 
             items.Add(new ActionItem
             {
-                // No id: like `new`, this names a session that does not exist until someone
-                // types into it. The folder is what identifies the row until then.
+                // No id, and further from having one than `new` is: a host is not a session at
+                // all, and the sessions it pre-creates and spawns are its business. The folder
+                // is what identifies the row.
                 SessionId = "",
                 Name = target.Project,
                 Folder = target.Folder,
@@ -1280,10 +1311,13 @@ internal static class Commands
                 : $"No project has been worked in within {Spell(window)}. Widen it with --since 30d.";
         else if (dry)
             message = $"Would put {plan.Open.Count} project(s) on standby: {named}{also}."
-                + (args.Has("dry-run") ? "" : " Re-run with --yes to open them.");
+                + (args.Has("dry-run") ? "" : " Re-run with --yes to open them.")
+                + untrustedNote;
         else
             message = $"{plan.Open.Count} project(s) on standby: {named}{also}."
-                + " Each is a fresh session answering Remote Control; give them a moment to connect.";
+                + " Each is a claude rc host: one session ready on your phone now, more when you"
+                + " start them. Give them a moment to connect."
+                + untrustedNote;
 
         return Cli.EmitResult(new ActionResult
         {

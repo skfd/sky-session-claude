@@ -14,4 +14,12 @@ public static class LaunchLine
 {
     public static string NewIn(string folder, string? name = null) =>
         $"cd {SessionName.Quote(folder)}; {ClaudeLaunch.New(name)}";
+
+    /// <summary>
+    /// A Remote Control host for a folder — what <c>standby</c> leaves running. The sessions
+    /// it creates are named after <paramref name="namePrefix"/>; see
+    /// <see cref="ClaudeLaunch.Host"/> for why that is not optional in practice.
+    /// </summary>
+    public static string HostIn(string folder, string? namePrefix = null) =>
+        $"cd {SessionName.Quote(folder)}; {ClaudeLaunch.Host(namePrefix)}";
 }
