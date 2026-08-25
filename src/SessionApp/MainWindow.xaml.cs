@@ -12,6 +12,7 @@ public partial class MainWindow : Window
     private readonly MainViewModel _vm = new();
     private ProjectsWatcher? _watcher;
     private DispatcherTimer? _liveTimer;
+    private TrayIcon? _tray;
 
     public MainWindow()
     {
@@ -19,16 +20,30 @@ public partial class MainWindow : Window
         DataContext = _vm;
         ThemeManager.Attach(this);   // dark title bar + live system theme switching
         _vm.SelectionKeeper = KeepSelection;
+        StartTray();
         Loaded += async (_, _) =>
         {
             await _vm.RefreshAsync();
+            DrawTray();          // first real count: the icon appears now, not saying 0
             StartWatcher();
             StartLiveTimer();
+        };
+        // The X puts Sky in the tray instead of quitting it. Everything that keeps the
+        // count honest — the watcher, the three-second poll, the parse cache — carries on
+        // behind the hidden window, so the number by the clock stays true and coming back
+        // costs nothing. Leaving for good is the tray menu's Exit, and App.Exiting is how
+        // this tells that (and a Windows sign-out) apart from a click on the X.
+        Closing += (_, e) =>
+        {
+            if (App.Exiting) return;
+            e.Cancel = true;
+            Hide();
         };
         Closed += (_, _) =>
         {
             _watcher?.Dispose();
             _liveTimer?.Stop();
+            _tray?.Dispose();
         };
     }
 
@@ -47,6 +62,40 @@ public partial class MainWindow : Window
 
         Grid.SelectedItems.Clear();
         foreach (var row in survivors) Grid.SelectedItems.Add(row);
+    }
+
+    // The icon by the clock. It lives on this window's HWND (see TrayIcon), so it is built
+    // here rather than in App, and it shows the same number the title bar spells out.
+    private void StartTray()
+    {
+        _tray = new TrayIcon(this);
+        _tray.Clicked += ToggleFromTray;
+        _tray.MenuRequested += () => TrayMenu.ShowAtCursor(((App)Application.Current).ShowMainWindow);
+
+        // Every scan recomputes the count, so the icon follows the view model rather than
+        // running a poll of its own.
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.UnfinishedCount)) DrawTray();
+        };
+    }
+
+    private void DrawTray()
+    {
+        int n = _vm.UnfinishedCount;
+        // The tooltip carries the exact figure, which matters above 99 where the glyph
+        // gives up and says "99+".
+        _tray?.Update(n, $"Sky Session Claude\n{n} session{(n == 1 ? "" : "s")} still on the hook");
+    }
+
+    // A left click on the icon toggles: up if Sky is away or minimised, back to the tray if
+    // it is already up. Deliberately not "activate if not focused" — clicking the tray hands
+    // the foreground to the taskbar first, so the window's own IsActive is false by the time
+    // this runs and every click would read as "show".
+    private void ToggleFromTray()
+    {
+        if (IsVisible && WindowState != WindowState.Minimized) Hide();
+        else ((App)Application.Current).ShowMainWindow();
     }
 
     // Auto-refresh when a session file changes (debounced in ProjectsWatcher).

@@ -84,6 +84,12 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     [ObservableProperty] private string _windowTitle = "Sky sessions";
 
+    /// <summary>
+    /// How many sessions are still on the hook — unfinished and not crossed out. The window
+    /// title says it in words and the tray icon <em>is</em> it, so both read the one number.
+    /// </summary>
+    [ObservableProperty] private int _unfinishedCount;
+
     public const string AllStatusesLabel = "(all statuses)";
     public const string AllProjectsLabel = "(all projects)";
 
@@ -518,6 +524,7 @@ public partial class MainViewModel : ObservableObject
     private void UpdateWindowTitle()
     {
         int n = Rows.Count(r => !r.Settled && !r.Abandoned);
+        UnfinishedCount = n;
         WindowTitle = $"Sky {n} session{(n == 1 ? "" : "s")}";
     }
 

@@ -4,9 +4,14 @@ namespace SessionCore;
 /// What opening a session again means right now: a command to type, a terminal that is
 /// already showing it, or a reason it cannot be done.
 /// </summary>
-/// <param name="Command">The line to run in a new terminal. Null when there is nothing to run.</param>
-/// <param name="AlreadyLive">The session, when it is already open somewhere.</param>
-/// <param name="Refusal">Why not, when neither of the other two is set.</param>
+/// <param name="Command">The line to run in a new terminal. Null only when there is nothing to run.</param>
+/// <param name="AlreadyLive">
+/// The session, when the registry already has it open somewhere. Reported rather than acted
+/// on: raising that terminal is right for a click, and wrong for <c>resume --force</c>, which
+/// exists to end a holder and start again. So the command comes back either way and the
+/// caller decides.
+/// </param>
+/// <param name="Refusal">Why not, when there is no command to give.</param>
 public sealed record ResumePlan(string? Command, LiveSession? AlreadyLive, string? Refusal);
 
 /// <summary>
@@ -31,16 +36,11 @@ public static class SessionResume
             return new ResumePlan(null, null,
                 $"{info.SessionId} has no resumable command (no recorded cwd).");
 
-        // Already up: a second `claude --resume` against the same session would be a
-        // duplicate of it, so the answer is the terminal that exists, not a new one.
-        if (LiveSessions.Find(info.SessionId) is { } running)
-            return new ResumePlan(null, running, null);
-
         var inputs = SessionNaming.InputsFor(info, live: null, SessionNaming.LiveNamesOf(LiveSessions.Scan()));
         var name = dry
             ? SessionNaming.PlanLaunch(inputs, names).Name!
             : SessionNaming.NameForLaunch(inputs, names);
 
-        return new ResumePlan(info.CommandNamed(name), null, null);
+        return new ResumePlan(info.CommandNamed(name), LiveSessions.Find(info.SessionId), null);
     }
 }

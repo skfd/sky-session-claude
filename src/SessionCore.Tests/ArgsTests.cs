@@ -104,6 +104,51 @@ public class ArgsTests
         args.RejectUnknown("stale", "yes", "force", "dry-run");   // does not throw
     }
 
+    // --- spans --------------------------------------------------------------
+
+    [Fact]
+    public void ReadsASpanInDaysHoursOrMinutes()
+    {
+        Assert.Equal(TimeSpan.FromDays(7), Parse("standby", "--since", "7d").Span("since", default));
+        Assert.Equal(TimeSpan.FromHours(12), Parse("standby", "--since", "12h").Span("since", default));
+        Assert.Equal(TimeSpan.FromMinutes(90), Parse("standby", "--since", "90m").Span("since", default));
+        Assert.Equal(TimeSpan.FromHours(36), Parse("standby", "--since=1.5d").Span("since", default));
+    }
+
+    // "7" typed at a flag that asks how far back to look means seven days. Reading it as
+    // seven seconds would answer "nothing has been worked on" to a question about a week.
+    [Fact]
+    public void ReadsABareNumberAsDays()
+    {
+        Assert.Equal(TimeSpan.FromDays(7), Parse("standby", "--since", "7").Span("since", default));
+    }
+
+    [Fact]
+    public void SpanFallsBackWhenTheFlagIsAbsent()
+    {
+        Assert.Equal(TimeSpan.FromDays(7), Parse("standby").Span("since", TimeSpan.FromDays(7)));
+    }
+
+    [Fact]
+    public void SpanRejectsAUnitItDoesNotKnow()
+    {
+        Assert.Throws<UsageException>(() => Parse("standby", "--since", "7q").Span("since", default));
+        Assert.Throws<UsageException>(() => Parse("standby", "--since", "lately").Span("since", default));
+        Assert.Throws<UsageException>(() => Parse("standby", "--since", "-3d").Span("since", default));
+        Assert.Throws<UsageException>(() => Parse("standby", "--since").Span("since", default));
+    }
+
+    // --remote-control takes an optional name in Claude Code's own CLI; here it never does,
+    // so `standby --rc --in C:\Code\sky` must not read the folder as the name.
+    [Fact]
+    public void RemoteControlIsASwitchAndDoesNotEatTheNextWord()
+    {
+        var args = Parse("new", "--rc", "--in", @"C:\Code\sky");
+        Assert.True(args.Has("rc"));
+        Assert.Null(args.Value("rc"));
+        Assert.Equal(@"C:\Code\sky", args.Value("in"));
+    }
+
     /// <summary>
     /// `--done` is a switch, which is the only thing that lets `link --done <id>` be read
     /// correctly. Without it in the switch list the parser takes the id as the flag's value,

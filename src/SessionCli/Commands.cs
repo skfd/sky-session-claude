@@ -609,41 +609,86 @@ internal static class Commands
 
     public static int Resume(Args args)
     {
-        args.RejectUnknown("dry-run");
+        args.RejectUnknown("dry-run", "force", "remote-control", "rc");
 
         var scanner = RequireScanner();
         var file = Resolve(scanner, OneId(args, "resume"));
         var info = scanner.BuildRow(file, SessionFileParser.DefaultContextWindow);
 
-        // What reopening this means is SessionResume's call, not this verb's: the app runs
-        // the same decision when a link is clicked, and a second copy of it here is how the
-        // two would drift.
-        var plan = SessionResume.Plan(info, new NameStore(), dry: args.Has("dry-run"));
+        if (string.IsNullOrEmpty(info.Command))
+            throw new UsageException($"{info.SessionId} has no resumable command (no recorded cwd).");
 
-        if (plan.Refusal is { Length: > 0 } refusal)
-            throw new UsageException(refusal);
+        bool force = args.Has("force");
+        bool dry = args.Has("dry-run");
+        var label = info.Name ?? info.SessionId;
 
-        // Already up: this side of the app cannot raise the window it is already in.
-        if (plan.AlreadyLive is { } running)
+        if (force && IsSelf(info.SessionId))
+            throw new UsageException(
+                "That is the session this command is running in; force-resuming it would kill this "
+                + "process mid-sentence. Do it from the app or another session.");
+
+        // Who has it, by registry and by command line both. The command line is what makes
+        // this honest: a session that hung before registering holds a terminal that the
+        // registry knows nothing about, and saying "not open" about it is how one gets
+        // stranded with no way back.
+        var holders = SessionReviver.Holders(info.SessionId);
+
+        if (holders.Count > 0 && !force)
             return Cli.EmitResult(new ActionResult
             {
                 Ok = true,
                 Action = "resume",
-                Message = $"\"{info.Name ?? info.SessionId}\" is already open in a terminal (pid {running.Pid}).",
+                Message = Held(label, holders),
+                Items = holders.Select(h => new ActionItem
+                {
+                    SessionId = info.SessionId,
+                    Name = label,
+                    Ok = true,
+                    Message = h.Registered
+                        ? $"pid {h.Pid} is running it"
+                        : $"pid {h.Pid} is running it but never registered — it may be stuck starting up",
+                }).ToList(),
             });
 
-        var command = plan.Command!;
-        if (!args.Has("dry-run")) StartTerminal(command);
+        // What reopening this means is SessionResume's call, not this verb's: the app runs the
+        // same decision when a skysession://resume link is clicked, and a second copy of it
+        // here is how the two would drift on the thing that matters — the name, which comes
+        // from the policy rather than from whoever is composing the launch.
+        //
+        // Only the command is taken. Whether something already holds the session is decided
+        // above by SessionReviver, which sees a terminal the registry does not.
+        var command = SessionResume.Plan(info, new NameStore(), dry).Command!;
 
+        if (dry)
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = true,
+                Action = "resume",
+                Message = holders.Count == 0
+                    ? $"Would run: {command}"
+                    : $"Would end {Listed(holders)}, then run: {command}",
+            });
+
+        if (holders.Count == 0)
+        {
+            StartTerminal(command);
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = true,
+                Action = "resume",
+                Message = $"Opened a terminal running: {command}",
+            });
+        }
+
+        var result = SessionReviver.Revive(info.SessionId, command, holders);
         return Cli.EmitResult(new ActionResult
         {
-            Ok = true,
+            Ok = result.Ok,
             Action = "resume",
-            Message = args.Has("dry-run")
-                ? $"Would run: {command}"
-                : $"Opened a terminal running: {command}",
+            Message = result.Ok ? result.Message : $"Could not force-resume \"{label}\": {result.Message}.",
         });
     }
+
 
     // --- renaming -----------------------------------------------------------
 
@@ -906,6 +951,20 @@ internal static class Commands
         });
     }
 
+    /// <summary>
+    /// How a session is being held, said the way it matters: "already open" is a reason to
+    /// leave it alone, "running but never registered" is a reason to reach for --force.
+    /// </summary>
+    private static string Held(string name, IReadOnlyList<SessionHolder> holders) =>
+        holders.All(h => h.Registered)
+            ? $"\"{name}\" is already open in a terminal ({Listed(holders)}). "
+              + "Add --force to end it and resume."
+            : $"\"{name}\" is running ({Listed(holders)}) but never registered — it may be stuck "
+              + "starting up. Add --force to end it and resume.";
+
+    private static string Listed(IReadOnlyList<SessionHolder> holders) =>
+        holders.Count == 1 ? $"pid {holders[0].Pid}" : "pids " + string.Join(", ", holders.Select(h => h.Pid));
+
     // --- launching ----------------------------------------------------------
 
     /// <summary>
@@ -925,7 +984,7 @@ internal static class Commands
     /// </summary>
     public static int New(Args args)
     {
-        args.RejectUnknown("in", "name", "trust", "dry-run");
+        args.RejectUnknown("in", "name", "trust", "dry-run", "remote-control", "rc");
 
         // The only positional this verb could plausibly be given is a session id, which
         // would mean the caller wanted `resume`. An unquoted multi-word --name lands here
@@ -994,7 +1053,23 @@ internal static class Commands
     private static readonly TimeSpan TrustWait = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan TrustPoll = TimeSpan.FromSeconds(1);
 
-    /// <summary>The line a new session is launched with: into the folder, then Claude.</summary>
+    /// <summary>
+    /// The line a new session is launched with: into the folder, then Claude.
+    ///
+    /// Composed by <see cref="LaunchLine"/>, which is also what the app uses when a
+    /// <c>skysession://new</c> link is clicked, so a folder with an apostrophe in it is
+    /// quoted the same way whichever front end opened it.
+    ///
+    /// It used to take a <c>remoteControl</c> flag, and no longer does, because every launch
+    /// carries it now — see <see cref="ClaudeLaunch"/>. <c>--rc</c> and <c>--remote-control</c>
+    /// are still accepted so nothing that passes them breaks; they ask for what already
+    /// happens.
+    ///
+    /// A name never rides on <c>--remote-control</c>, even though that flag accepts one. The
+    /// two are separate flags inside the CLI and only <c>--name</c> reaches the registry —
+    /// see <see cref="RestartPolicy.ResumeCommand"/>, which learned the same thing on the way
+    /// back up from a restart.
+    /// </summary>
     internal static string NewSessionLine(string folder, string? name) =>
         LaunchLine.NewIn(folder, name);
 
@@ -1048,7 +1123,7 @@ internal static class Commands
                 Ok = true,
                 Action = "link",
                 Message = url,
-                Items = [new ActionItem { SessionId = "", Ok = true, Message = folder, Link = url }],
+                Items = [new ActionItem { SessionId = "", Ok = true, Message = folder, Folder = folder, Link = url }],
             });
         }
 
@@ -1073,6 +1148,153 @@ internal static class Commands
             }],
         });
     }
+
+    // --- standby ------------------------------------------------------------
+
+    /// <summary>
+    /// Leave a phone-reachable session up in every project worked in lately.
+    ///
+    /// This is the verb for walking away from the desk, and it exists because of an asymmetry
+    /// in Remote Control: it is per session and per process, so a project with nothing running
+    /// is a project a phone cannot open — and a phone cannot start one either. Everything else
+    /// here can be done when you get back. This one has to happen before you leave.
+    ///
+    /// It opens fresh sessions rather than resuming the newest in each project. A resumed
+    /// conversation comes back with its context window where it left it and its last question
+    /// still hanging; what gets asked from a phone is nearly always a new thing about a
+    /// familiar repo.
+    ///
+    /// Like the other sweeps it drives real terminals, so it states its plan and waits to be
+    /// told twice. Unlike them, nothing it does can lose work — every session it touches is
+    /// one it just made — so the second telling is about the terminals about to appear on
+    /// your desktop, not about anything at risk.
+    /// </summary>
+    public static int Standby(Args args)
+    {
+        args.RejectUnknown("in", "since", "recent", "yes", "dry-run");
+
+        if (args.Positional.Count > 0)
+            throw new UsageException(
+                $"'standby' finds its own projects, so it takes no bare arguments (got '{args.Positional[0]}'). "
+                + "Use --in <path> for one folder, or --since <span> for how far back to look.");
+
+        var live = LiveSessions.Scan().Values.SelectMany(sessions => sessions).ToList();
+        var now = DateTime.Now;
+        var window = args.Span("since", SessionCore.Standby.DefaultWindow);
+        StandbyPlan plan;
+
+        if (args.Has("in"))
+        {
+            if (args.Has("since") || args.Has("recent"))
+                throw new UsageException(
+                    "'standby --in' names the folder itself, so it takes neither --since nor --recent.");
+
+            var folder = Path.GetFullPath(args.Require("in"));
+            if (!Directory.Exists(folder))
+                throw new UsageException($"No such folder: {folder}");
+
+            // Named rather than found, so recency has nothing to say about it. The one check
+            // that still runs is the one that matters from a phone: two sessions on standby in
+            // the same repo are two identical rows in a list that shows no folders.
+            var project = SessionCore.Standby.ProjectOf(folder);
+            plan = SessionCore.Standby.ReachableIn(live, folder) is { } already
+                ? new StandbyPlan
+                {
+                    Open = [],
+                    Skipped = [new StandbySkip
+                    {
+                        Folder = folder,
+                        Project = project,
+                        Reason = SessionCore.Standby.AlreadyReason(already),
+                    }],
+                }
+                : new StandbyPlan
+                {
+                    Open = [new StandbyTarget { Folder = folder, Project = project, LastActive = now }],
+                    Skipped = [],
+                };
+        }
+        else
+        {
+            var scanner = RequireScanner();
+            plan = SessionCore.Standby.Decide(
+                scanner.Scan(new ScanOptions { All = true, Top = int.MaxValue }),
+                live, now, window, args.Int("recent", int.MaxValue));
+        }
+
+        // No --yes is a plan, the same as the other sweeps; --dry-run says so outright.
+        bool dry = args.Has("dry-run") || !args.Has("yes");
+
+        var items = new List<ActionItem>();
+        foreach (var target in plan.Open)
+        {
+            // The name is left to Claude Code, as it is for `new`: a session with no content
+            // has no subject to be called by yet, and the folder-derived name it picks is both
+            // the honest one and the one the rest of Sky expects to find.
+            var command = NewSessionLine(target.Folder, name: null);
+            if (!dry) StartTerminal(command);
+
+            items.Add(new ActionItem
+            {
+                // No id: like `new`, this names a session that does not exist until someone
+                // types into it. The folder is what identifies the row until then.
+                SessionId = "",
+                Name = target.Project,
+                Folder = target.Folder,
+                Ok = true,
+                Message = dry ? $"would run: {command}" : $"opened a terminal running: {command}",
+            });
+        }
+
+        foreach (var skip in plan.Skipped)
+            items.Add(new ActionItem
+            {
+                SessionId = "",
+                Name = skip.Project,
+                Folder = skip.Folder,
+                Ok = false,
+                Message = $"skipped — {skip.Reason}",
+            });
+
+        var named = string.Join(", ", plan.Open.Select(t => t.Project));
+        var also = plan.Skipped.Count > 0 ? $"; skipping {plan.Skipped.Count}" : "";
+
+        string message;
+        if (plan.Open.Count == 0)
+            message = plan.Skipped.Count > 0
+                ? $"Nothing to put on standby — all {plan.Skipped.Count} project(s) found were passed over."
+                : $"No project has been worked in within {Spell(window)}. Widen it with --since 30d.";
+        else if (dry)
+            message = $"Would put {plan.Open.Count} project(s) on standby: {named}{also}."
+                + (args.Has("dry-run") ? "" : " Re-run with --yes to open them.");
+        else
+            message = $"{plan.Open.Count} project(s) on standby: {named}{also}."
+                + " Each is a fresh session answering Remote Control; give them a moment to connect.";
+
+        return Cli.EmitResult(new ActionResult
+        {
+            // A sweep that reports what it passed over has done its job; only a usage error
+            // makes this verb fail, and that has already thrown by here.
+            Ok = true,
+            Action = "standby",
+            Message = message,
+            Items = items,
+        });
+    }
+
+    /// <summary>How a span reads back to the person who typed it.</summary>
+    private static string Spell(TimeSpan window) =>
+        window.TotalDays >= 1 ? $"{window.TotalDays:0.#} day(s)"
+        : window.TotalHours >= 1 ? $"{window.TotalHours:0.#} hour(s)"
+        : $"{window.TotalMinutes:0.#} minute(s)";
+
+    /// <summary>
+    /// Whether the caller asked for a session their phone can reach. Spelled either way,
+    /// because <c>--rc</c> is what it is called out loud and <c>--remote-control</c> is what
+    /// Claude Code itself calls it.
+    /// </summary>
+    private static bool WantsRemoteControl(Args args) =>
+        args.Has("remote-control") || args.Has("rc");
 
     // --- answering ----------------------------------------------------------
 
@@ -1177,6 +1399,225 @@ internal static class Commands
             Screen = after,
         };
     }
+
+    // --- the inbox ----------------------------------------------------------
+
+    /// <summary>How long a queued command stays runnable. See the age gate below.</summary>
+    private const int DefaultMaxAgeMinutes = 120;
+
+    /// <summary>
+    /// Run the commands the brief queued, then get the file out of the way.
+    ///
+    /// This is the one verb whose caller is not in the room. Everything else here is typed
+    /// by someone watching a terminal, who sees the answer and can undo it; this arrives
+    /// from a folder, minutes or hours after it was decided, and runs against sessions the
+    /// decider could not see the current state of. Three things follow from that, and they
+    /// are the whole design:
+    ///
+    /// <list type="bullet">
+    /// <item><b>Nothing runs twice.</b> The file is moved aside before the results are
+    ///       written, so a task that fires every minute finds an empty inbox on the second
+    ///       minute rather than resuming everything again.</item>
+    /// <item><b>Nothing runs late.</b> A queue older than <c>--max-age</c> is refused
+    ///       whole. The failure this prevents is specific: the machine is off when the
+    ///       brief writes, and a week later a boot opens six terminals for decisions made
+    ///       about sessions that have all moved on.</item>
+    /// <item><b>Nothing is trusted.</b> No command carries <c>--force</c> or <c>--trust</c>,
+    ///       and <c>new</c> may only start in a folder that already has sessions in it —
+    ///       an allowlist nobody has to maintain, because it is a list of places you have
+    ///       already worked.</item>
+    /// </list>
+    /// </summary>
+    public static int Inbox(Args args)
+    {
+        args.RejectUnknown("run", "max-age", "dry-run");
+
+        var input = args.Require("run");
+        bool dry = args.Has("dry-run");
+
+        // The ordinary case, several hundred times a day: nobody queued anything. That is
+        // success, not an error — a scheduled task that logged a failure every minute for
+        // being asked to do nothing would be turned off within a week.
+        if (!File.Exists(input))
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = true,
+                Action = "inbox",
+                Message = $"Nothing queued at {input}.",
+            });
+
+        var (spent, resultPath) = InboxFile.Paths(input);
+        InboxFile.Parsed queue;
+        try
+        {
+            queue = InboxFile.Read(File.ReadAllText(input));
+        }
+        catch (InboxFile.RejectedException e)
+        {
+            // A file we cannot read is still moved aside. Left in place it would be re-read
+            // and re-rejected every minute until someone noticed, and the report of what was
+            // wrong with it would scroll past a hundred times over.
+            if (!dry) Move(input, spent);
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = false,
+                Action = "inbox",
+                Message = $"Rejected the queue at {input} — {e.Message}  Moved to {spent}.",
+            });
+        }
+
+        var issued = queue.IssuedAt ?? new DateTimeOffset(File.GetLastWriteTime(input));
+        var age = DateTimeOffset.Now - issued;
+        var maxAge = TimeSpan.FromMinutes(args.Int("max-age", DefaultMaxAgeMinutes));
+        if (age > maxAge)
+        {
+            if (!dry) Move(input, spent);
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = false,
+                Action = "inbox",
+                Message = $"Refused {queue.Commands.Count} command(s): the queue was written "
+                    + $"{Ago(age)} and only stays runnable for {maxAge.TotalMinutes:0} minutes. "
+                    + $"Moved to {spent}.",
+            });
+        }
+
+        var items = queue.Commands.Select(c => Run(c, dry)).ToList();
+        int ok = items.Count(i => i.Ok);
+
+        var result = new ActionResult
+        {
+            Ok = items.All(i => i.Ok),
+            Action = "inbox",
+            Message = dry
+                ? $"Would run {items.Count} command(s) from {input}."
+                : $"Ran {items.Count} command(s) from {input}: {ok} ok, {items.Count - ok} failed.",
+            Items = items,
+        };
+
+        if (!dry)
+        {
+            // Move first, write second. If writing the result throws, the worst case is a
+            // run nobody hears about; the other order's worst case is a run that happens
+            // again next minute.
+            Move(input, spent);
+            Cli.Emit(result, resultPath);
+        }
+
+        return Cli.EmitResult(result);
+    }
+
+    /// <summary>
+    /// One queued command, run through the very verb a person would have typed.
+    /// </summary>
+    private static ActionItem Run(InboxFile.Entry entry, bool dry)
+    {
+        var flags = dry ? new[] { "--dry-run" } : [];
+
+        Args Built(params string[] positional) =>
+            new(entry.Action, positional.Concat(flags));
+
+        Func<int> verb;
+        switch (entry.Action)
+        {
+            case "new":
+                if (entry.In is not { Length: > 0 } folder)
+                    return Failed(entry, "'new' needs a folder — give it \"in\".");
+                if (KnownFolder(folder) is not { } known)
+                    return Failed(entry,
+                        $"\"{folder}\" has no Claude sessions in it. The inbox only starts sessions "
+                        + "in folders you have already worked in, so a queue cannot point one "
+                        + "somewhere new.");
+
+                var newArgs = new List<string> { "--in", known };
+                if (entry.Name is { Length: > 0 } n) { newArgs.Add("--name"); newArgs.Add(n); }
+                newArgs.AddRange(flags);
+                verb = () => New(new Args("new", newArgs));
+                break;
+
+            case "resume":
+            case "restart":
+                if (entry.Id is not { Length: > 0 } id)
+                    return Failed(entry, $"'{entry.Action}' needs a session id.");
+                verb = entry.Action == "resume"
+                    ? () => Resume(Built(id))
+                    : () => Restart(Built(id));
+                break;
+
+            default:
+                if (entry.Id is not { Length: > 0 } markId)
+                    return Failed(entry, $"'{entry.Action}' needs a session id.");
+                var disposition = entry.Action switch
+                {
+                    "done" => Disposition.Done,
+                    "abandon" => Disposition.Abandoned,
+                    _ => Disposition.None,
+                };
+                verb = () => Mark(Built(markId), disposition);
+                break;
+        }
+
+        var outcome = Cli.Capture(entry.Action, verb);
+
+        // A verb's headline counts what it did; the reason it did not do the rest lives in
+        // its items. Dropping those would leave the brief reporting "restart 0, skipping 1"
+        // tomorrow morning with no way to tell whether that was a session mid-turn, a
+        // question waiting on an answer, or this very process declining to kill itself.
+        var detail = outcome.Items is { Count: > 0 } inner
+            ? " — " + string.Join("; ", inner.Select(i => i.Message))
+            : "";
+
+        return new ActionItem
+        {
+            SessionId = entry.Id ?? entry.In ?? "",
+            Ok = outcome.Ok,
+            Message = $"{entry.Action}: {outcome.Message}{detail}",
+            Name = outcome.Items?.FirstOrDefault()?.Name,
+        };
+    }
+
+    private static ActionItem Failed(InboxFile.Entry entry, string why) => new()
+    {
+        SessionId = entry.Id ?? entry.In ?? "",
+        Ok = false,
+        Message = $"{entry.Action}: {why}",
+    };
+
+    /// <summary>
+    /// The folder as this machine spells it, or null if no session has ever run there.
+    ///
+    /// This is the allowlist for <c>new</c>, and it costs nothing to keep: the set of
+    /// folders you have worked in is already recorded, one <c>cwd</c> per session. Matching
+    /// against it means a queue can open a session in any of your repos and in none of the
+    /// places that are not — no configuration, and nothing to forget to update when a repo
+    /// is added.
+    /// </summary>
+    private static string? KnownFolder(string folder)
+    {
+        string wanted;
+        try { wanted = Path.GetFullPath(folder).TrimEnd('\\', '/'); }
+        catch (Exception) { return null; }
+
+        return RequireScanner()
+            .Scan(new ScanOptions { All = true, Top = int.MaxValue })
+            .Select(info => info.Cwd)
+            .OfType<string>()
+            .FirstOrDefault(cwd => string.Equals(
+                cwd.TrimEnd('\\', '/'), wanted, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void Move(string from, string to)
+    {
+        try { File.Move(from, to, overwrite: true); }
+        catch (IOException) { /* someone is holding it; the age gate stops it running twice */ }
+    }
+
+    private static string Ago(TimeSpan age) => age.TotalMinutes switch
+    {
+        < 90 => $"{age.TotalMinutes:0} minutes ago",
+        < 48 * 60 => $"{age.TotalHours:0} hours ago",
+        _ => $"{age.TotalDays:0} days ago",
+    };
 
     // --- shared -------------------------------------------------------------
 

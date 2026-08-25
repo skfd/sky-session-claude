@@ -26,7 +26,7 @@ internal sealed class Args
     {
         "newest-per-project", "unfinished", "live", "stale",
         "tip", "resume", "yes", "force", "dry-run", "self", "ask",
-        "finished", "keep-terminal", "done",
+        "finished", "keep-terminal", "remote-control", "rc", "done",
     };
 
     private readonly Dictionary<string, string?> _flags = new(StringComparer.OrdinalIgnoreCase);
@@ -84,6 +84,37 @@ internal sealed class Args
     public string Require(string name) =>
         Value(name) ?? throw new UsageException($"--{name} requires a value.");
 
+    /// <summary>
+    /// A flag written the way a person says a stretch of time: <c>7d</c>, <c>12h</c>,
+    /// <c>90m</c>. A bare number means days, because every caller of this so far is asking
+    /// how far back to look and nobody means 7 seconds by "7".
+    /// </summary>
+    public TimeSpan Span(string name, TimeSpan fallback)
+    {
+        if (!_flags.TryGetValue(name, out var raw)) return fallback;
+        if (raw is null) throw new UsageException($"--{name} requires a value.");
+
+        var text = raw.Trim();
+        if (text.Length == 0)
+            throw new UsageException($"--{name} expects a span like 7d, 12h or 90m, got '{raw}'.");
+
+        var unit = char.ToLowerInvariant(text[^1]);
+        var digits = char.IsAsciiDigit(unit) ? text : text[..^1];
+
+        if (!double.TryParse(digits, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var n) || n < 0)
+            throw new UsageException($"--{name} expects a span like 7d, 12h or 90m, got '{raw}'.");
+
+        return unit switch
+        {
+            'd' => TimeSpan.FromDays(n),
+            'h' => TimeSpan.FromHours(n),
+            'm' => TimeSpan.FromMinutes(n),
+            _ when char.IsAsciiDigit(unit) => TimeSpan.FromDays(n),
+            _ => throw new UsageException($"--{name} expects a span like 7d, 12h or 90m, got '{raw}'."),
+        };
+    }
+
     public int Int(string name, int fallback)
     {
         if (!_flags.TryGetValue(name, out var raw)) return fallback;
@@ -140,8 +171,15 @@ internal static class Cli
           SessionCli close <id>...               quit it, and close its terminal
           SessionCli close --finished            end of day: close every session that is over
           SessionCli resume <id>                 open a terminal and resume it
+          SessionCli resume <id> --force         end whatever holds it, then resume
           SessionCli new [--in <path>]           open a terminal on a brand-new session
+          SessionCli standby                     a phone-reachable session per recent project
           SessionCli trust <id>                  answer the trust prompt it is sitting on
+          SessionCli inbox --run <path>          run the commands the brief queued in a file
+
+        Flags for `inbox`
+          --run <path>      the queue file; missing is success, not an error
+          --max-age <mins>  refuse a queue written longer ago than this (default 120)
 
         Writing links     (skysession:// — clickable wherever a custom scheme survives)
           SessionCli link <id>                a link that reopens that session
@@ -164,7 +202,13 @@ internal static class Cli
           --json <path>         write to a file instead of stdout
 
         Flags for the acting verbs
-          --in <path>  folder `new` starts in (default: the folder you are in)
+          --in <path>  folder `new` starts in (default: the folder you are in); on
+                       `standby`, the one folder to open instead of the recent ones
+          --remote-control, --rc  redundant: every session this opens answers your phone.
+                       Still accepted so nothing that passes it breaks.
+          --since <span>  on `standby`: how far back "recently worked on" reaches,
+                       written 7d / 12h / 90m (default: 7d)
+          --recent <n>  on `standby`: cap how many projects come up (default: all)
           --name <n>   what a new session answers to (default: the CLI derives one)
           --trust      on `new`: wait for the trust prompt in that folder and accept it
           --yes        actually do it; the sweeps only report their plan without it
@@ -216,7 +260,9 @@ internal static class Cli
                 "close" => Commands.Close(rest),
                 "resume" => Commands.Resume(rest),
                 "new" => Commands.New(rest),
+                "standby" => Commands.Standby(rest),
                 "trust" => Commands.Trust(rest),
+                "inbox" => Commands.Inbox(rest),
                 "link" => Commands.Link(rest),
                 "help" or "-h" or "-?" => Print(HelpText),
                 _ => throw new UsageException($"Unknown command: {args[0]}"),
@@ -274,7 +320,52 @@ internal static class Cli
     /// <summary>Emit an action's result and turn it into the process's exit code.</summary>
     public static int EmitResult(ActionResult result)
     {
+        if (_capturing)
+        {
+            _captured = result;
+            return result.Ok ? 0 : 1;
+        }
+
         Emit(result);
         return result.Ok ? 0 : 1;
+    }
+
+    private static bool _capturing;
+    private static ActionResult? _captured;
+
+    /// <summary>
+    /// Run one verb with its JSON held back, and hand over what it would have printed.
+    ///
+    /// The inbox runs the same verbs a person types, which is the point: it inherits every
+    /// refusal they already make — the session this process is running in, a terminal that
+    /// still holds the session, a restart that cannot be taken safely — rather than
+    /// re-deciding any of it against a second, worse copy of the rules. What it cannot
+    /// inherit is their habit of writing to stdout, since a queue of ten commands would
+    /// come back as ten unrelated documents instead of one answer.
+    /// </summary>
+    public static ActionResult Capture(string action, Func<int> verb)
+    {
+        _capturing = true;
+        _captured = null;
+        try
+        {
+            verb();
+            return _captured ?? new ActionResult { Ok = true, Action = action, Message = "did nothing and said nothing." };
+        }
+        catch (UsageException e)
+        {
+            return new ActionResult { Ok = false, Action = action, Message = e.Message };
+        }
+        catch (Exception e)
+        {
+            // One command failing is not the queue failing. The others still deserve to run,
+            // and the brief deserves to be told which one broke and why.
+            return new ActionResult { Ok = false, Action = action, Message = $"{e.GetType().Name}: {e.Message}" };
+        }
+        finally
+        {
+            _capturing = false;
+            _captured = null;
+        }
     }
 }

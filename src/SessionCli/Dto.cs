@@ -168,6 +168,13 @@ internal sealed class ActionItem
     public string? NewSessionId { get; init; }
 
     /// <summary>
+    /// The folder a row is about, for `standby` — the one verb whose rows are projects
+    /// rather than sessions, because the session it reports does not exist yet. Null
+    /// everywhere else, where <see cref="SessionId"/> already says which one is meant.
+    /// </summary>
+    public string? Folder { get; init; }
+
+    /// <summary>
     /// The <c>skysession://</c> link <c>link</c> produced; null for every other verb. Its own
     /// field rather than only in the message, because the caller that wants this is a brief
     /// writing an href and should not have to find it in a sentence.
