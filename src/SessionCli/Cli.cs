@@ -192,7 +192,8 @@ internal static class Cli
           --project <name>      substring match on the project
           --search <text>       substring match on name, prompt or recap
           --disposition <d>     none, done or abandoned
-          --unfinished          drop everything settled (complete, or marked done)
+          --unfinished          only what is still on the hook: drops complete, done
+                                and abandoned (--disposition abandoned brings those back)
           --live                only sessions open in a terminal right now
           --stale               only live sessions behind the installed build
           --top <n>             cap how many session files are scanned (default: all)

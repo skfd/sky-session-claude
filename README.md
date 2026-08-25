@@ -107,7 +107,7 @@ That covers two rather different callers. Some tools (like the morning brief) ru
 ```powershell
 # Reading
 SessionCli                          # every session as JSON (same as `list`)
-SessionCli list --unfinished        # drop everything settled — the useful default
+SessionCli list --unfinished        # only what is still on the hook — the useful default
 SessionCli list --status waiting-you --project foo --search migration
 SessionCli list --live              # open in a terminal right now
 SessionCli list --stale             # live, but behind the installed build

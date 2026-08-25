@@ -85,8 +85,9 @@ internal sealed class SessionDto
 
     /// <summary>
     /// Nothing left to do here: the classifier said complete, or someone marked it done.
-    /// This is what "hide completed" hides, and the one field an agent should filter on to
-    /// find work that is still outstanding.
+    /// This is what "hide completed" hides. It is not by itself the answer to "what is
+    /// still outstanding" — an abandoned session is not settled and is still off the hook,
+    /// which is why <c>--unfinished</c> drops both.
     /// </summary>
     public required bool Settled { get; init; }
 

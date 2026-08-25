@@ -73,7 +73,11 @@ internal static class Commands
         if (args.Value("disposition") is { } disposition
             && !row.Disposition.Equals(disposition, StringComparison.OrdinalIgnoreCase)) return false;
 
-        if (args.Has("unfinished") && row.Settled) return false;
+        // "Still on the hook" is the question --unfinished answers, so an abandoned session
+        // is out even though it is not Settled: the operator already said they are not going
+        // back, and the app's list hides it for the same reason. Its Status stays whatever it
+        // earned — --disposition abandoned is how you ask for those back.
+        if (args.Has("unfinished") && (row.Settled || row.Disposition == "abandoned")) return false;
         if (args.Has("live") && row.Live is null) return false;
         if (args.Has("stale") && row.Live is not { Stale: true }) return false;
 
