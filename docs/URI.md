@@ -124,8 +124,13 @@ bugs are all one bug: a page navigates to a scheme, Windows appends the attacker
 7. `HKCU\Software\Classes\skysession` — per-user, matching the
    `%LOCALAPPDATA%\Programs\SkySessionClaude` install, no admin. Written by `publish.ps1`,
    removed on uninstall.
-8. **Route into the running window.** Single-instance handling takes the URL rather than
-   starting a second app.
+8. **No second window, and no second parser.** Windows starts a copy of the app carrying
+   the URL; that copy does the work and exits, never claiming the single-instance slot and
+   never building a main window. This began as "route the URL into the running instance",
+   which needs a channel carrying a payload — the one this app has means only "come
+   forward". Adding one would buy nothing, because every decision behind a link already
+   lives in `SessionCore` and is the same decision wherever it runs. That is what lets a
+   click and the brief's inbox be two writers over one set of verbs.
 
 Rule 6 is the one that moved, and it is worth being honest about the cost: once Chrome is
 told "always allow", a page you browse can fire `resume` and `done` without asking. That is

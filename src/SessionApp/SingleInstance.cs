@@ -25,7 +25,14 @@ public sealed class SingleInstance : IDisposable
     // Local\ rather than Global\: the guard is per logged-in desktop, so two people on one
     // machine each get their own window rather than one silently stealing the other's.
     private const string MutexName = @"Local\sky-session-claude-app";
-    private const string ActivateName = @"Local\sky-session-claude-activate";
+
+    /// <summary>
+    /// The "come forward" handle. Internal rather than private because a link-handling launch
+    /// opens it too (see <see cref="LinkHandler"/>): it never claims the slot, but a
+    /// <c>skysession://done</c> wants the window that is already up to show the mark it just
+    /// wrote. Opening this is also how that launch discovers whether there is a window at all.
+    /// </summary>
+    internal const string ActivateName = @"Local\sky-session-claude-activate";
 
     private readonly Mutex? _mutex;
     private readonly EventWaitHandle? _activate;

@@ -615,12 +615,16 @@ internal static class Commands
         var file = Resolve(scanner, OneId(args, "resume"));
         var info = scanner.BuildRow(file, SessionFileParser.DefaultContextWindow);
 
-        if (string.IsNullOrEmpty(info.Command))
-            throw new UsageException($"{info.SessionId} has no resumable command (no recorded cwd).");
+        // What reopening this means is SessionResume's call, not this verb's: the app runs
+        // the same decision when a link is clicked, and a second copy of it here is how the
+        // two would drift.
+        var plan = SessionResume.Plan(info, new NameStore(), dry: args.Has("dry-run"));
 
-        // Already up: a second `claude --resume` against the same session would be a
-        // duplicate, and this side of the app cannot raise the window it is already in.
-        if (LiveSessions.Find(info.SessionId) is { } running)
+        if (plan.Refusal is { Length: > 0 } refusal)
+            throw new UsageException(refusal);
+
+        // Already up: this side of the app cannot raise the window it is already in.
+        if (plan.AlreadyLive is { } running)
             return Cli.EmitResult(new ActionResult
             {
                 Ok = true,
@@ -628,18 +632,7 @@ internal static class Commands
                 Message = $"\"{info.Name ?? info.SessionId}\" is already open in a terminal (pid {running.Pid}).",
             });
 
-        // The name comes from the policy, not from this verb. A launch that composed its own
-        // would be a second decider, blind to which names are Sky's, and every resume would
-        // write the last placeholder back into the transcript.
-        var store = new NameStore();
-        var inputs = SessionNaming.InputsFor(info, live: null, SessionNaming.LiveNamesOf(LiveSessions.Scan()));
-
-        // A dry run promises to change nothing, and names.json is something.
-        var name = args.Has("dry-run")
-            ? SessionNaming.PlanLaunch(inputs, store).Name!
-            : SessionNaming.NameForLaunch(inputs, store);
-
-        var command = info.CommandNamed(name);
+        var command = plan.Command!;
         if (!args.Has("dry-run")) StartTerminal(command);
 
         return Cli.EmitResult(new ActionResult
@@ -1003,7 +996,7 @@ internal static class Commands
 
     /// <summary>The line a new session is launched with: into the folder, then Claude.</summary>
     internal static string NewSessionLine(string folder, string? name) =>
-        $"cd {SessionName.Quote(folder)}; {ClaudeLaunch.New(name)}";
+        LaunchLine.NewIn(folder, name);
 
     // --- links --------------------------------------------------------------
 
