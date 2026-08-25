@@ -1,7 +1,30 @@
 # Implementing the naming design
 
 `docs/NAMING.md` is the design and the *why*. This is the build order and the traps.
-Nothing here has been written yet — the last session ended at the plan.
+
+**Built, all ten steps.** Kept as written, because the traps it named are the ones that bit
+and this is the record of what was expected. Four things turned out otherwise:
+
+- **Rename reaches `cli` sessions only.** The desktop app and the SDK publish the pipe, take
+  the message and do nothing. `docs/NAMING.md` is corrected; the background pass is gated on
+  the entrypoint so it does not spend ten seconds of timeouts per tick on sessions that will
+  never comply, while the verb still tries anything, so a future build starts working on its
+  own.
+- **A `.key` file is a small JSON object**, and the auth line wants its `peerToken` field.
+  Sending the file authenticates as nobody, silently — three failed smoke tests before the
+  file's shape was checked rather than assumed.
+- **The oracle is behind `rename --ask`, not on the poll.** The design calls the blocking
+  call tolerable only while it stays rare, and nothing has self-named yet, so an automatic
+  sweep today would be a minute of waiting and a bill nobody asked for. Renaming is free and
+  happens unasked; this is not free, so it does not.
+- **`NameOrigin` ranks the oracle above `aiTitle`**, which reads backwards against the source
+  order in the design. That list is cheapest-viable-first — the order worth *spending* in —
+  while the ladder is quality order, and an `aiTitle` is written in a session's first ten
+  minutes and never revisited.
+
+Both step-8 checks came back as this file guessed: `CLAUDE_CODE_SESSION_ID` survives the
+ancestry, so `--self` works from inside a session; `SessionCli` is not on PATH, so the line
+carries the full path.
 
 ## Already done (do not redo)
 
