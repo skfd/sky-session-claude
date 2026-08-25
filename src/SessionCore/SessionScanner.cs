@@ -133,18 +133,24 @@ public sealed class SessionScanner
         bool noReply = !string.IsNullOrEmpty(fields.LastPrompt) && string.IsNullOrEmpty(fields.Recap);
 
         var lastActive = LastActiveOf(file, fields);
+        var sessionId = Path.GetFileNameWithoutExtension(file.Name);
 
         return new SessionInfo
         {
             Cwd = cwd,
-            Name = string.IsNullOrEmpty(fields.Name) ? SessionInfo.Untitled : fields.Name,
+            // The one point a title is resolved, so a placeholder Sky wrote back into the
+            // transcript is refused once rather than in each of display, launch and policy.
+            Name = SessionName.RealTitle(fields.CustomTitle, fields.AiTitle, sessionId, fields.Cwd)
+                   ?? SessionInfo.Untitled,
+            CustomTitle = fields.CustomTitle,
+            AiTitle = fields.AiTitle,
             LastPrompt = fields.LastPrompt,
             Recap = fields.Recap,
             Status = fields.Status,
             ContextTokens = fields.ContextTokens,
             ContextPct = fields.ContextPct,
             IsLargeContext = fields.IsLargeContext,
-            SessionId = Path.GetFileNameWithoutExtension(file.Name),
+            SessionId = sessionId,
             FilePath = file.FullName,
             LastActive = lastActive,
             LastTouched = file.LastWriteTime,
@@ -152,7 +158,7 @@ public sealed class SessionScanner
             AgeDays = Math.Round((DateTime.Now - lastActive).TotalDays, 1),
             SizeKB = Math.Round(file.Length / 1024.0, 1),
             Project = LeafOf(cwd),
-            Command = $"cd \"{cwd}\"; claude --resume {Path.GetFileNameWithoutExtension(file.Name)}",
+            Command = $"cd \"{cwd}\"; claude --resume {sessionId}",
             Unfinished = openQ || noReply,
             WaitingOn = noReply ? "agent" : openQ ? "you" : "",
         };

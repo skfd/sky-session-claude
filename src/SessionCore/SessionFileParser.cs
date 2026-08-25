@@ -8,6 +8,18 @@ public sealed record SessionFileFields
 {
     public string? Cwd { get; init; }
     public string? Name { get; init; }
+
+    /// <summary>
+    /// The <c>custom-title</c> record, which is what <c>--name</c> and a rename write. Kept
+    /// apart from <see cref="AiTitle"/> because the two have different provenance and only
+    /// one of them can be a placeholder Sky put there: collapsing them at parse time is what
+    /// let a slug be read back as a title and written again.
+    /// </summary>
+    public string? CustomTitle { get; init; }
+
+    /// <summary>The model-written <c>ai-title</c> record, generated once and never revisited.</summary>
+    public string? AiTitle { get; init; }
+
     public string LastPrompt { get; init; } = "";
     public string Recap { get; init; } = "";
     public SessionStatus Status { get; init; }
@@ -130,6 +142,8 @@ public static class SessionFileParser
         {
             Cwd = cwd,
             Name = custom ?? name,                             // manual title wins over AI one
+            CustomTitle = custom,
+            AiTitle = name,
             LastPrompt = TextUtil.FormatLine(prompt),
             Recap = TextUtil.FormatLine(recap),
             Status = status,

@@ -14,6 +14,23 @@ public sealed class SessionInfo
     public string? Name { get; init; }          // custom title wins over AI title
 
     /// <summary>
+    /// The <c>custom-title</c> in the file — what <c>--name</c> or a rename wrote. It is the
+    /// only name a session that is not running has, and the only one that can be a placeholder
+    /// Sky put there itself.
+    /// </summary>
+    public string? CustomTitle { get; init; }
+
+    /// <summary>The model-written title, generated once early and never revisited.</summary>
+    public string? AiTitle { get; init; }
+
+    /// <summary>
+    /// Whether the session has done anything at all. A terminal opened and never used has no
+    /// subject to find, so the floor is the honest name for it rather than a failure to find
+    /// a better one.
+    /// </summary>
+    public bool HasContent => !string.IsNullOrEmpty(LastPrompt) || !string.IsNullOrEmpty(Recap);
+
+    /// <summary>
     /// The session's own title, or null when it has none. <see cref="Name"/> is filled in
     /// with <see cref="Untitled"/> so a column always has something to show, which makes it
     /// the wrong field to ask whether a title exists — asking it that way once named a

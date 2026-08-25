@@ -189,6 +189,30 @@ public static class SessionName
     /// <summary>Below this many characters a subject says less than no subject at all.</summary>
     private const int MinSubject = 20;
 
+    /// <summary>
+    /// The title a session has actually earned, out of the two its file can carry.
+    ///
+    /// <paramref name="custom"/> normally wins — it is what a rename or a <c>--name</c> launch
+    /// wrote, and that is more recent than the model's first impression. But naming writes
+    /// into the transcript, so a placeholder Sky passed under <c>--name</c> is sitting in that
+    /// same field, and taken at face value it would be composed into a name, written again,
+    /// and read again: a placeholder made permanent by having been used once. So a custom
+    /// title shaped like a placeholder is refused here, at the one point where a title is
+    /// resolved, which is what stops it from reaching the display, the launch paths and the
+    /// policy alike.
+    ///
+    /// Provenance (<see cref="NameStore"/>) is the reliable test and the policy uses it. This
+    /// is the pure one, for the two callers that have no store to hand and for history written
+    /// before there was one — and it can misfire on a title genuinely typed that happens to
+    /// read like <c>repo-XX</c>, which then shows as untitled beside its project.
+    /// </summary>
+    public static string? RealTitle(string? custom, string? ai, string sessionId, string? cwd)
+    {
+        if (custom is { Length: > 0 } && !IsFloor(custom, sessionId, cwd)) return custom;
+        if (ai is { Length: > 0 } && !IsFloor(ai, sessionId, cwd)) return ai;
+        return null;
+    }
+
     /// <summary>Single-quoted for the PowerShell line the name is typed into.</summary>
     public static string Quote(string value) => $"'{value.Replace("'", "''")}'";
 
