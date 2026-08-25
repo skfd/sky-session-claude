@@ -212,7 +212,13 @@ public partial class MainViewModel : ObservableObject
 
         _liveNames = SessionNaming.LiveNamesOf(live);
 
+        // Another writer -- `SessionCli rename`, or a session renaming itself -- may have
+        // recorded a name since the last tick. Without this the pass reads that name as one
+        // the operator chose and leaves it alone forever.
+        _names.ReloadIfChanged();
+
         UpdateStaleCount();
+        await RenamePassAsync();
 
         // The dispositions file has another writer — `SessionCli done <id>` on an agent's
         // behalf — and a mark made there changes no session file, so the watcher would
@@ -240,6 +246,71 @@ public partial class MainViewModel : ObservableObject
     public string ResumeCommandFor(SessionRow row) =>
         row.Info.CommandNamed(SessionNaming.NameForLaunch(
             SessionNaming.InputsFor(row.Info, row.Live, _liveNames), _names));
+
+    // --- naming -------------------------------------------------------------
+
+    /// <summary>
+    /// Give every live session a better name where one is available.
+    ///
+    /// This runs on the existing poll rather than at restart time, which is what makes
+    /// "the name follows the conversation" true rather than aspirational: doing it only when
+    /// something restarts would leave a session under a wrong name until an unrelated event
+    /// happened to move it.
+    ///
+    /// It is safe to have at all because there is exactly one app -- a second launch signals
+    /// the window already up and exits (SingleInstance) -- so there is one actor and no
+    /// leader to elect. And it is allowed to happen unasked because renaming is the only
+    /// thing that cannot lose anything: a restart can drop a pending approval, `trust` can
+    /// close a session, answering a question puts words in your mouth.
+    /// </summary>
+    private async Task RenamePassAsync()
+    {
+        if (_renaming) return;
+        _renaming = true;
+        try
+        {
+            foreach (var row in Rows.ToList())
+            {
+                if (row.Live is not { } live || !Renameable(live)) continue;
+
+                var decision = NamePolicy.Decide(
+                    SessionNaming.InputsFor(row.Info, live, _liveNames), _names);
+
+                if (!decision.HasName || decision.Origin is not { } origin) continue;
+
+                var result = await SessionNaming.RenameAsync(live, decision.Name!, origin, _names);
+                if (result.Ok) StatusLine = $"Renamed \"{row.Name}\" to \"{decision.Name}\" -- {decision.Why}.";
+            }
+        }
+        catch
+        {
+            // A pass that cannot finish is not worth a message; the next tick tries again.
+        }
+        finally
+        {
+            _renaming = false;
+        }
+    }
+
+    /// <summary>One pass at a time: a tick during a pass would decide from the same stale rows.</summary>
+    private bool _renaming;
+
+    /// <summary>
+    /// Whether the background pass should try this session at all.
+    ///
+    /// Only `cli` sessions act on a rename -- the desktop app and the SDK publish the pipe,
+    /// accept the bytes and do nothing. The verb still tries anything, because a build that
+    /// starts honouring these should quietly begin working; a poll loop must not, or every
+    /// tick spends ten seconds of timeouts per session that will never comply, forever.
+    ///
+    /// Nor is a session mid-turn worth waiting on: it is not lost, it is just busy, and the
+    /// next tick costs nothing.
+    /// </summary>
+    private static bool Renameable(LiveSession live) =>
+        live.CanRename
+        && string.Equals(live.Entrypoint, "cli", StringComparison.OrdinalIgnoreCase)
+        && (string.Equals(live.Status, "idle", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(live.Status, "waiting", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Push the store's marks onto every row, whoever wrote them.</summary>
     private void SyncDispositions()

@@ -513,9 +513,12 @@ internal static class Commands
         // A prefix has to become a whole id before anything is looked up by it. Doing this
         // the other way round finds the transcript and then misses the live entry, and the
         // verb reports a running session as closed.
+        //
+        // Ambiguity is an error rather than a guess, as it is everywhere else here: this verb
+        // writes into a transcript, and the newest of several matches is not an answer.
         var scanner = new SessionScanner();
-        var info = scanner.ProjectsDirExists && scanner.FindByPrefix(target) is [var file, ..]
-            ? scanner.BuildRow(file, SessionFileParser.DefaultContextWindow)
+        var info = scanner.ProjectsDirExists && scanner.FindByPrefix(target) is { Count: > 0 } matches
+            ? scanner.BuildRow(One(matches, target), SessionFileParser.DefaultContextWindow)
             : null;
 
         var sessionId = info?.SessionId ?? ResolveLive(target)?.SessionId
@@ -552,14 +555,23 @@ internal static class Commands
         // Only a running session has a pipe to be spoken to. A closed one is named on the way
         // back up instead, by `resume` and `restart`, which ask this same policy -- so there
         // is nothing to write here, and no reason to forge a record into someone's transcript.
+        //
+        // Which also means a name typed here would go nowhere: `resume` asks the policy, and
+        // the policy has never heard of it. Saying it will come back under that name would be
+        // a promise nothing keeps, so say what it will actually be called instead.
         if (running is null)
+        {
+            var next = SessionNaming.PlanLaunch(inputs, store).Name;
             return Cli.EmitResult(new ActionResult
             {
                 Ok = true,
                 Action = "rename",
                 Message = $"{sessionId} is not open in a terminal, so there is nothing to rename in place. "
-                    + $"It will come back as \"{name}\" when it is next resumed.",
+                    + (given is { Length: > 0 } && !string.Equals(next, name, StringComparison.Ordinal)
+                        ? $"A name given here reaches no one; it will come back as \"{next}\" when it is next resumed."
+                        : $"It will come back as \"{next}\" when it is next resumed."),
             });
+        }
 
         var result = SessionNaming.RenameAsync(running, name, origin, store).GetAwaiter().GetResult();
 
@@ -580,6 +592,19 @@ internal static class Commands
             ],
         });
     }
+
+    /// <summary>
+    /// The single file a prefix names. Same refusal to guess as <see cref="Resolve"/>, without
+    /// its insistence that a session file exist at all -- `rename` can act on a running
+    /// session whose transcript has not been written yet.
+    /// </summary>
+    private static FileInfo One(IReadOnlyList<FileInfo> matches, string prefix) =>
+        matches.Count == 1
+            ? matches[0]
+            : throw new UsageException(
+                $"'{prefix}' matches {matches.Count} sessions: "
+                + string.Join(", ", matches.Take(5).Select(m => Path.GetFileNameWithoutExtension(m.Name)))
+                + (matches.Count > 5 ? ", ..." : "") + ". Use a longer prefix.");
 
     /// <summary>Which session, and what to call it -- `--self` supplying the first.</summary>
     private static (string SessionId, string? Name) Target(Args args)
