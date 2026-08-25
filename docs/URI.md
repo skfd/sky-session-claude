@@ -160,9 +160,19 @@ would make the whole feature not worth having.
    dialog; then the existing resume / done / new paths run unchanged.
 5. **`publish.ps1`** writes the `HKCU` key; the uninstall path removes it.
 6. **`brief-spec.md`** — Needs-attention items emit `skysession://resume/<SessionId>` and
-   `skysession://done/<SessionId>`; non-session items that live in a repo emit
-   `skysession://new?in=<path>`. The ids are already in `sessions-unfinished.json`, and the
-   brief writes no links at all today, so this is purely additive.
+   `skysession://done/<SessionId>`. The ids are already in `sessions-unfinished.json`.
+
+   Two things this turned out to be, rather than what the line above first said. It is not
+   additive: the brief already puts a button on every such item, pointing at
+   `claude.ai/new?q=…` with the context in the query string. That link opens a *new*
+   conversation, which is the right answer on a phone and the wrong one at the desk, where
+   the session that is halfway through the work stays halfway through it. So rule 9 puts
+   both on an item and says neither is a fallback for the other.
+
+   And the brief emits no `new` links, against what this plan said. A brief's items are
+   sessions, so there was nothing for it to point at; and `new` is the widest verb, the only
+   one that starts an agent, which is not a thing to have a generated document reach for.
+   `new` stays for a note, a `TODO.md`, or an agent handing over an offer.
 
 Steps 1–5 are this repo. Step 6 is `morning-briefs`, takes effect on the next 07:00 run, and
 needs no desktop-app edit because the spec is authoritative for behaviour.
