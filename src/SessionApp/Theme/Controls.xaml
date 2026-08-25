@@ -259,4 +259,33 @@
         </Style.Triggers>
     </Style>
 
+    <!--
+        A row in the tray menu (see TrayMenu, which is a window rather than a WPF menu).
+        Its own style rather than the implicit Button one: a menu row has no border, fills
+        the width, and reads left.
+    -->
+    <Style x:Key="MenuRow" TargetType="Button">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="12,7"/>
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" CornerRadius="3" Background="{TemplateBinding Background}">
+                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                          HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Brush.Control.Hover}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>
