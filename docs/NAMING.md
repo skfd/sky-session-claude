@@ -19,7 +19,18 @@ can.
   An unauthenticated connection has its lines dropped and is closed.
 - **Every live session publishes that pipe**, including the desktop app and the SDK — all
   nine non-terminal sessions in this registry have both a `messagingSocketPath` and a key.
-  So rename reaches sessions restart cannot.
+  ~~So rename reaches sessions restart cannot.~~ **Wrong, and it was the pipe being there that
+  made it look right.** Publishing the pipe and acting on `control/rename` are different
+  things. Measured while building this: a `cli` session takes the rename, updates its registry
+  entry and appends the `custom-title` to its transcript; `claude-desktop` and `sdk-cli`
+  connect, accept the bytes, and do nothing at all — no registry change, no transcript record.
+  So **rename reaches `cli` sessions only**, and `code-20`, `cowork-7a`, `cowork-57` and
+  `cowork-48` are named on the way back up like every other session, not in place.
+- **A `.key` file is a small JSON object, not a token.** `{"peerToken":"…","procStartFt":"…"}`
+  — the auth line carries the `peerToken` field. Sending the file's text authenticates as
+  nobody, and an unauthenticated connection is dropped in silence, so getting this wrong looks
+  exactly like a session that ignored the rename.
+
 - **A pipe rename is indistinguishable from one you typed.** It writes `nameSource` absent,
   exactly like `--name`. The `"remote"` source in the binary belongs to the SDK
   control-request path, not this one. There is no field that tells Sky which names are its
@@ -45,10 +56,15 @@ can.
 ## Decisions
 
 **Reach.** Sky names at every moment it can: launch verbs (`new`, `resume`, `restart`),
-inbox-queued actions, and live sessions over the pipe — **including sessions it cannot
-restart**. Restart is refused because work could be lost; a rename drops nothing, so the
-refusal does not carry over. That alone fixes `code-20`, `cowork-7a`, `cowork-57` and
-`cowork-48`.
+inbox-queued actions, and live sessions over the pipe. Restart is refused because work could
+be lost; a rename drops nothing, so that refusal does not carry over, and a rename lands on a
+session that is mid-turn.
+
+It does not reach as far as this section first claimed. Only `cli` sessions act on the
+message (see above), so `code-20`, `cowork-7a`, `cowork-57` and `cowork-48` — a desktop
+session and three SDK ones — are not fixed in place after all. They are fixed when they are
+next launched, which for a desktop session is not something Sky can bring about. The rest of
+the design is unaffected: it never depended on renaming in place, only on renaming being safe.
 
 **What a name refers to.** The subject first, then the folder: `Subject — folder`. The
 subject is what the session was *about*, which is not always where it ran — `93e5d264` sat
@@ -140,7 +156,7 @@ CLAUDE.md. It says *genuinely changes*, not *after each task*, to match the drif
 | `697155ed` vagabond-map, no content | `vagabond maps` | `vagabond maps` — chosen, nothing to improve on |
 | `c6811c81` force-resume worktree | `sky-session-claude-87` | `Protocol implementation brainstorm — sky-session-claude` |
 | `d1ffa628` cowork, ended in settings.json | `Start Chrome` | the largest thing it did, not the first step |
-| `code-20` desktop app, `~/Code` | `code-20` | renamed over the pipe, though it cannot be restarted |
+| `code-20` desktop app, `~/Code` | `code-20` | ~~renamed over the pipe~~ — the desktop app ignores the message; it keeps `code-20` until something launches it afresh |
 
 ## The `claude -p` path
 
