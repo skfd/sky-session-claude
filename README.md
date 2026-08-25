@@ -165,7 +165,7 @@ The pre-verb command line still works exactly as it did — `SessionCli --json <
 The split between the core and the app is "does this need a desktop?", not "is this the model?". Scanning, classifying, forking, deciding whether a restart is safe, typing into someone's terminal, and remembering your marks all work with no window in sight, so they live in the core and both front ends share them. What genuinely needs a desktop — raising a window, picking the right Windows Terminal tab — is the only thing left in the app.
 
 - **`src/SessionCore`** — session scanning, session-file parsing, status detection, live-refresh cache/watcher; the live-session registry and process tree, the console-input writer that restarts a session in place, the fork writer, the restart policy, and the disposition store.
-- **`src/SessionApp`** — the WPF card list and view model; `SessionWindows` raises the terminal showing a live session; `Theme/` holds the light/dark palettes, the themed control chrome, and the system-theme watcher.
+- **`src/SessionApp`** — the WPF card list and view model; `SessionWindows` raises the terminal showing a live session; `TrayIcon`/`CountIcon`/`TrayMenu` put the count in the notification area; `Theme/` holds the light/dark palettes, the themed control chrome, and the system-theme watcher.
 - **`src/SessionCli`** — the headless front end: the JSON scan the morning brief reads, and the verbs an agent drives.
 - **`src/SessionCore.Tests`** — unit tests for the core and the CLI's argument parsing.
 - **`schedule-add.ps1`** / **`schedule-remove.ps1`** — register/remove the daily task that refreshes `sessions.json` for the morning brief.
