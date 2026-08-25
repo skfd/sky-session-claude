@@ -271,20 +271,26 @@ public partial class MainViewModel : ObservableObject
         {
             foreach (var row in Rows.ToList())
             {
-                if (row.Live is not { } live || !Renameable(live)) continue;
+                // Per session, not around the loop. One session that throws must not end the
+                // pass for the ones after it -- the order is stable, so a single bad row would
+                // otherwise hide the same tail of the list on every tick, forever.
+                try
+                {
+                    if (row.Live is not { } live || !Renameable(live)) continue;
 
-                var decision = NamePolicy.Decide(
-                    SessionNaming.InputsFor(row.Info, live, _liveNames), _names);
+                    var decision = NamePolicy.Decide(
+                        SessionNaming.InputsFor(row.Info, live, _liveNames), _names);
 
-                if (!decision.HasName || decision.Origin is not { } origin) continue;
+                    if (!decision.HasName || decision.Origin is not { } origin) continue;
 
-                var result = await SessionNaming.RenameAsync(live, decision.Name!, origin, _names);
-                if (result.Ok) StatusLine = $"Renamed \"{row.Name}\" to \"{decision.Name}\" -- {decision.Why}.";
+                    var result = await SessionNaming.RenameAsync(live, decision.Name!, origin, _names);
+                    if (result.Ok) StatusLine = $"Renamed \"{row.Name}\" to \"{decision.Name}\" -- {decision.Why}.";
+                }
+                catch
+                {
+                    // Nothing was lost; the next tick tries this one again.
+                }
             }
-        }
-        catch
-        {
-            // A pass that cannot finish is not worth a message; the next tick tries again.
         }
         finally
         {
