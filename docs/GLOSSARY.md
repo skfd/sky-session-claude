@@ -63,7 +63,7 @@ session, and the scanner never sets it. A session carries at most one.
 | **Disposition** | | What the operator decided to do about a session. Independent of Status. |
 | **Abandoned** | **X** | "This session is genuinely unfinished, and I'm not going back to it." |
 | **Done** | **D** | "This session is finished — whatever the classifier says." |
-| **Settled** | | Collective term for a session with nothing left to do: Status `complete` *or* disposition Done. This, not `complete` alone, is what **Hide completed** hides and what the title's open count skips. |
+| **Settled** | | Collective term for a session with nothing left to do: Status `complete` *or* disposition Done. This, not `complete` alone, is what **Hide completed** hides. It is not the same as *off the hook*: the title's open count and `list --unfinished` skip the Abandoned too, which are unfinished by Status and still not coming back. |
 
 The rule that keeps the two axes honest: **a disposition never changes Status.**
 An abandoned `cut-off` session stays `cut-off`; a Done `waiting-you` session
