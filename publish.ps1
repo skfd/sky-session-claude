@@ -66,6 +66,23 @@ if (-not $SkipInstall) {
     Copy-Item "$root/$OutDir/SessionCli.exe" $targetCli -Force
     Write-Host "Installed: $targetCli"
 
+    # Register skysession:// so a link in a local page, a note or a terminal opens a session.
+    #
+    # HKCU, not HKLM: this matches where the app installs (%LOCALAPPDATA%), needs no admin,
+    # and keeps the handler to the account that asked for it. The command is "%1" quoted --
+    # everything after the scheme is data, re-validated in-process by SessionUri, and never
+    # concatenated into a shell. See docs/URI.md for the eight rules that keep it boring.
+    $protocol = 'HKCU:\Software\Classes\skysession'
+    New-Item -Path "$protocol\shell\open\command" -Force | Out-Null
+    New-Item -Path "$protocol\DefaultIcon" -Force | Out-Null
+    Set-ItemProperty -Path $protocol -Name '(Default)'   -Value 'URL:Sky Session Claude'
+    # The presence of this value is what makes Windows treat the key as a URL scheme at all;
+    # its content is ignored and is empty by convention.
+    Set-ItemProperty -Path $protocol -Name 'URL Protocol' -Value ''
+    Set-ItemProperty -Path "$protocol\DefaultIcon"     -Name '(Default)' -Value "$targetExe,0"
+    Set-ItemProperty -Path "$protocol\shell\open\command" -Name '(Default)' -Value "`"$targetExe`" `"%1`""
+    Write-Host "Registered: skysession:// -> $targetExe"
+
     # Put back what we closed. A publish that leaves the desktop emptier than it found it
     # is a publish you have to remember to finish by hand — and only ever what was up:
     # starting an app nobody had open would be this script deciding something for you.

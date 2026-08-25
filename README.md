@@ -147,15 +147,54 @@ The pre-verb command line still works exactly as it did — `SessionCli --json <
 
 `~/.claude/skills/sky-session/` teaches an agent the surface above, and — more usefully — the distinction the tool is built on that a transcript alone won't teach: **Status** is what the classifier read from the file, **Disposition** is what you decided, and **Settled** is the two combined. Filtering on Settled is what answers "what am I still on the hook for?" without the noise of sessions that ended on a question you've long since acted on.
 
+## Links
+
+`publish.ps1` registers **`skysession://`**, so a link can reference a session or start one.
+Three verbs, and no more — the ones a bad link would want (`fork`, `restart`, `trust`,
+`close`) are refused by name rather than merely unimplemented.
+
+```
+skysession://resume/<id>      reopen it in a terminal, or raise the one already showing it
+skysession://done/<id>        tick it off; the running window comes forward showing the tick
+skysession://new?in=<path>    start one in a folder, after a confirmation
+```
+
+`SessionCli link <id>` writes them — add `--done` for the second, or `link --new <path>` for
+the third. It checks what a click will check, so a folder no link may open is refused while
+you are writing the link rather than weeks later by whoever clicked it.
+
+The point of a link rather than a command is that it survives being written down. A morning
+brief listing what is still on the hook can put one beside each item; a `TODO.md` or a code
+comment can point at the conversation that was halfway through the migration. What it will
+not survive is a sanitizer: chat UIs and GitHub markdown allowlist `http`/`https`/`mailto`
+and render a custom scheme as dead text, and a phone has no Windows handler at all. A local
+HTML page opened in a browser is the surface this is for — Chrome asks once per origin and
+then remembers.
+
+Where `new` may open a session is configuration, in
+`%APPDATA%\sky-session-claude\settings.json` beside the marks and the names:
+
+```json
+{ "linkRoots": ["~/Code"] }
+```
+
+That defaults to `~/Code` when the file is absent, and an empty list turns `new` off. A file
+that is there and unreadable allows nothing rather than falling back — the default is wider
+than whatever you had narrowed it to.
+
+`docs/URI.md` is the design, including the eight rules that keep a registered URL handler
+from being an exec surface. `protocol-remove.ps1` takes the registration back out.
+
 ## Project layout
 
 The split between the core and the app is "does this need a desktop?", not "is this the model?". Scanning, classifying, forking, deciding whether a restart is safe, typing into someone's terminal, and remembering your marks all work with no window in sight, so they live in the core and both front ends share them. What genuinely needs a desktop — raising a window, picking the right Windows Terminal tab — is the only thing left in the app.
 
-- **`src/SessionCore`** — session scanning, session-file parsing, status detection, live-refresh cache/watcher; the live-session registry and process tree, the console-input writer that restarts a session in place, the fork writer, the restart policy, and the disposition store.
-- **`src/SessionApp`** — the WPF card list and view model; `SessionWindows` raises the terminal showing a live session; `Theme/` holds the light/dark palettes, the themed control chrome, and the system-theme watcher.
+- **`src/SessionCore`** — session scanning, session-file parsing, status detection, live-refresh cache/watcher; the live-session registry and process tree, the console-input writer that restarts a session in place, the fork writer, the restart policy, and the disposition store. `SessionUri` parses `skysession://` links and is the whole security boundary of that feature; `LinkRoots` says which folders one may open a session in; `ClaudeLaunch`, `LaunchLine` and `SessionResume` are the one copy each of how a session is launched, how a folder line is written, and what reopening one means.
+- **`src/SessionApp`** — the WPF card list and view model; `SessionWindows` raises the terminal showing a live session; `LinkHandler` answers a clicked `skysession://` link in a launch that shows no main window and exits; `Theme/` holds the light/dark palettes, the themed control chrome, and the system-theme watcher.
 - **`src/SessionCli`** — the headless front end: the JSON scan the morning brief reads, and the verbs an agent drives.
 - **`src/SessionCore.Tests`** — unit tests for the core and the CLI's argument parsing.
 - **`schedule-add.ps1`** / **`schedule-remove.ps1`** — register/remove the daily task that refreshes `sessions.json` for the morning brief.
+- **`protocol-remove.ps1`** — take the `skysession://` handler back out; `publish.ps1` puts it in.
 
 ## License
 
