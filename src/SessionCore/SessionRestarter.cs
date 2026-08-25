@@ -23,7 +23,6 @@ public readonly record struct RestartResult(bool Ok, string Message)
 /// </summary>
 public static class SessionRestarter
 {
-    private static readonly TimeSpan ExitTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan ReturnTimeout = TimeSpan.FromSeconds(45);
 
     /// <summary>
@@ -43,11 +42,9 @@ public static class SessionRestarter
             return RestartResult.Fail(
                 "its terminal has no PowerShell to come back to — restart this one by hand");
 
-        if (!await Task.Run(() => ConsoleInput.SendExitGesture(live.Pid)))
-            return RestartResult.Fail("could not reach its terminal");
-
-        if (!await WaitForExit(live.Pid, ExitTimeout))
-            return RestartResult.Fail("it did not quit — left alone, nothing was changed");
+        // Asking it to quit, and waiting for it, is the half a close does too — one copy,
+        // in SessionCloser, so both verbs use the same gesture and the same timeout.
+        if (await SessionCloser.QuitAsync(live.Pid) is { } why) return RestartResult.Fail(why);
 
         await Task.Delay(600);   // let the shell finish repainting its prompt
 
@@ -66,22 +63,6 @@ public static class SessionRestarter
             note += back.RemoteControl ? ", Remote Control reconnected" : ", but Remote Control did not reconnect";
 
         return RestartResult.Done(note);
-    }
-
-    private static async Task<bool> WaitForExit(int pid, TimeSpan timeout)
-    {
-        var until = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < until)
-        {
-            try
-            {
-                using var process = Process.GetProcessById(pid);
-                if (process.HasExited) return true;
-            }
-            catch { return true; }   // gone from the table entirely
-            await Task.Delay(250);
-        }
-        return false;
     }
 
     /// <summary>

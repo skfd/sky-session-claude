@@ -434,6 +434,149 @@ internal static class Commands
         });
     }
 
+    // --- closing ------------------------------------------------------------
+
+    /// <summary>
+    /// Quit live sessions and take their terminals with them — the end-of-day cleanup.
+    ///
+    /// Two forms, and the difference between them is whose judgment is being used.
+    /// <c>close &lt;id&gt;</c> is you pointing at a session, so it proceeds on anything the
+    /// policy merely wants to ask about. <c>close --finished</c> drives terminals nobody is
+    /// looking at, so it takes only what <see cref="ClosePolicy"/> can prove is over, states
+    /// its plan, and waits to be told twice.
+    /// </summary>
+    public static int Close(Args args)
+    {
+        args.RejectUnknown("finished", "yes", "force", "dry-run", "keep-terminal");
+
+        var live = LiveSessions.Scan();
+        var store = new DispositionStore();
+        bool dry = args.Has("dry-run");
+        bool keepTerminal = args.Has("keep-terminal");
+
+        var targets = new List<(LiveSession Live, string Name)>();
+        var skipped = new List<ActionItem>();
+
+        if (args.Has("finished"))
+        {
+            if (args.Positional.Count > 0)
+                throw new UsageException("'close --finished' takes no session ids.");
+
+            var scanner = RequireScanner();
+            var infos = scanner.Scan(new ScanOptions { All = true, Top = int.MaxValue })
+                .ToDictionary(i => i.SessionId, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var session in live.Values.SelectMany(v => v))
+            {
+                // Not a candidate rather than a refusal: there is no console behind the
+                // desktop app or the SDK, so naming each one would bury the real report.
+                if (!session.InTerminal) continue;
+
+                var info = infos.GetValueOrDefault(session.SessionId);
+                var name = Titled(info?.Name) ?? session.Name ?? session.SessionId;
+
+                if (IsSelf(session.SessionId) && !args.Has("force"))
+                {
+                    skipped.Add(Skip(session.SessionId, name, "it is the session this command is running in"));
+                    continue;
+                }
+
+                var verdict = ClosePolicy.Judge(session, info?.Status, store.Get(session.SessionId), DateTime.Now);
+                if (verdict.CanSweep) targets.Add((session, name));
+                else skipped.Add(Skip(session.SessionId, name, verdict.Reason));
+            }
+
+            if (!args.Has("yes")) dry = true;
+        }
+        else
+        {
+            if (args.Positional.Count == 0)
+                throw new UsageException("'close' needs a session id, or --finished.");
+
+            var scanner = RequireScanner();
+            foreach (var id in args.Positional)
+            {
+                var info = scanner.BuildRow(Resolve(scanner, id), SessionFileParser.DefaultContextWindow);
+                var name = info.Name ?? info.SessionId;
+
+                if (!live.TryGetValue(info.SessionId, out var running) || running.Count == 0)
+                {
+                    skipped.Add(Skip(info.SessionId, name, "it is not open in a terminal"));
+                    continue;
+                }
+
+                if (IsSelf(info.SessionId) && !args.Has("force"))
+                {
+                    skipped.Add(Skip(info.SessionId, name,
+                        "it is the session this command is running in — pass --force if you mean it"));
+                    continue;
+                }
+
+                var verdict = ClosePolicy.Judge(running[0], info.Status, store.Get(info.SessionId), DateTime.Now);
+                if (verdict.Safety == SweepSafety.Unsafe)
+                {
+                    skipped.Add(Skip(info.SessionId, name, verdict.Reason));
+                    continue;
+                }
+
+                targets.Add((running[0], name));
+            }
+        }
+
+        var items = new List<ActionItem>();
+        int done = 0;
+
+        foreach (var (session, name) in targets)
+        {
+            if (dry)
+            {
+                items.Add(new ActionItem
+                {
+                    SessionId = session.SessionId,
+                    Name = name,
+                    Ok = true,
+                    Message = $"would close: pid {session.Pid}"
+                        + (session.Cwd is { Length: > 0 } cwd ? $" in {cwd}" : "")
+                        + (keepTerminal ? "" : ", and its terminal"),
+                });
+                continue;
+            }
+
+            var result = SessionCloser.CloseAsync(session, keepTerminal).GetAwaiter().GetResult();
+            if (result.Ok) done++;
+            items.Add(new ActionItem
+            {
+                SessionId = session.SessionId,
+                Name = name,
+                Ok = result.Ok,
+                Message = result.Message,
+            });
+        }
+
+        items.AddRange(skipped);
+
+        var message = dry
+            ? $"Would close {targets.Count} session(s)"
+                + (skipped.Count > 0 ? $"; leaving {skipped.Count}" : "")
+                + (args.Has("finished") && !args.Has("yes") ? ". Re-run with --yes to do it." : ".")
+            : $"Closed {done} of {targets.Count}"
+                + (skipped.Count > 0 ? $"; left {skipped.Count}" : "") + ".";
+
+        // A sweep that leaves some behind is doing its job; a session you named and did not
+        // get is a failure the caller should see in the exit code.
+        bool ok = dry
+            || (args.Has("finished") ? done == targets.Count
+                                     : done == targets.Count && skipped.Count == 0);
+
+        return Cli.EmitResult(new ActionResult
+        {
+            Ok = ok,
+            Action = "close",
+            Message = message,
+            Items = items,
+        });
+    }
+
     /// <summary>
     /// A real title, or null — <see cref="SessionInfo.Title"/> for a name that did not come
     /// from a scanned <see cref="SessionInfo"/>. The placeholder is a shrug rather than a

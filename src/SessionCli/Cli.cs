@@ -26,6 +26,7 @@ internal sealed class Args
     {
         "newest-per-project", "unfinished", "live", "stale",
         "tip", "resume", "yes", "force", "dry-run", "self", "ask",
+        "finished", "keep-terminal",
     };
 
     private readonly Dictionary<string, string?> _flags = new(StringComparer.OrdinalIgnoreCase);
@@ -136,6 +137,8 @@ internal static class Cli
           SessionCli rename <id> --ask           pay a small model to read it and name it
           SessionCli restart <id>...             restart in the terminal it already sits in
           SessionCli restart --stale             restart every stale session that is idle
+          SessionCli close <id>...               quit it, and close its terminal
+          SessionCli close --finished            end of day: close every session that is over
           SessionCli resume <id>                 open a terminal and resume it
           SessionCli new [--in <path>]           open a terminal on a brand-new session
           SessionCli trust <id>                  answer the trust prompt it is sitting on
@@ -159,12 +162,13 @@ internal static class Cli
           --in <path>  folder `new` starts in (default: the folder you are in)
           --name <n>   what a new session answers to (default: the CLI derives one)
           --trust      on `new`: wait for the trust prompt in that folder and accept it
-          --yes        actually do it; `restart --stale` only reports the plan without it
+          --yes        actually do it; the sweeps only report their plan without it
           --force      act on the session this command is running inside (refused otherwise)
           --self       on `rename`: the session this command is running in
           --ask        on `rename`: read the session with `claude -p` when nothing free
                        can name it (~2c and ~5s; refused when a free source would do)
           --dry-run    say what would happen and change nothing
+          --keep-terminal  on `close`: leave the terminal open once the session is gone
 
         A session id may be shortened to any unique prefix, like a commit sha.
         """;
@@ -198,6 +202,7 @@ internal static class Cli
                 "fork" => Commands.Fork(rest),
                 "rename" => Commands.Rename(rest),
                 "restart" => Commands.Restart(rest),
+                "close" => Commands.Close(rest),
                 "resume" => Commands.Resume(rest),
                 "new" => Commands.New(rest),
                 "trust" => Commands.Trust(rest),

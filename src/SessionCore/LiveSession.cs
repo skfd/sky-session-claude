@@ -62,6 +62,16 @@ public sealed record LiveSession
 
     /// <summary>True when this session can be renamed in place.</summary>
     public bool CanRename => !string.IsNullOrEmpty(MessagingSocketPath);
+
+    /// <summary>
+    /// True when this session sits in a terminal we can type into — the precondition for
+    /// restarting or closing it. The desktop app and the SDK publish registry entries like
+    /// anything else and there is no console behind either, so a sweep over everything live
+    /// passes them by rather than listing each one as a session it declined to touch.
+    /// </summary>
+    public bool InTerminal =>
+        string.Equals(Kind, "interactive", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(Entrypoint, "cli", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>Reads the live-session registry directory into <see cref="LiveSession"/> records.</summary>
