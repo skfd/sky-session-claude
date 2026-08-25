@@ -26,7 +26,7 @@ internal sealed class Args
     {
         "newest-per-project", "unfinished", "live", "stale",
         "tip", "resume", "yes", "force", "dry-run", "self", "ask",
-        "finished", "keep-terminal",
+        "finished", "keep-terminal", "remote-control", "rc",
     };
 
     private readonly Dictionary<string, string?> _flags = new(StringComparer.OrdinalIgnoreCase);
@@ -83,6 +83,37 @@ internal sealed class Args
 
     public string Require(string name) =>
         Value(name) ?? throw new UsageException($"--{name} requires a value.");
+
+    /// <summary>
+    /// A flag written the way a person says a stretch of time: <c>7d</c>, <c>12h</c>,
+    /// <c>90m</c>. A bare number means days, because every caller of this so far is asking
+    /// how far back to look and nobody means 7 seconds by "7".
+    /// </summary>
+    public TimeSpan Span(string name, TimeSpan fallback)
+    {
+        if (!_flags.TryGetValue(name, out var raw)) return fallback;
+        if (raw is null) throw new UsageException($"--{name} requires a value.");
+
+        var text = raw.Trim();
+        if (text.Length == 0)
+            throw new UsageException($"--{name} expects a span like 7d, 12h or 90m, got '{raw}'.");
+
+        var unit = char.ToLowerInvariant(text[^1]);
+        var digits = char.IsAsciiDigit(unit) ? text : text[..^1];
+
+        if (!double.TryParse(digits, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var n) || n < 0)
+            throw new UsageException($"--{name} expects a span like 7d, 12h or 90m, got '{raw}'.");
+
+        return unit switch
+        {
+            'd' => TimeSpan.FromDays(n),
+            'h' => TimeSpan.FromHours(n),
+            'm' => TimeSpan.FromMinutes(n),
+            _ when char.IsAsciiDigit(unit) => TimeSpan.FromDays(n),
+            _ => throw new UsageException($"--{name} expects a span like 7d, 12h or 90m, got '{raw}'."),
+        };
+    }
 
     public int Int(string name, int fallback)
     {
@@ -141,6 +172,7 @@ internal static class Cli
           SessionCli close --finished            end of day: close every session that is over
           SessionCli resume <id>                 open a terminal and resume it
           SessionCli new [--in <path>]           open a terminal on a brand-new session
+          SessionCli standby                     a phone-reachable session per recent project
           SessionCli trust <id>                  answer the trust prompt it is sitting on
 
         Filters for `list`
@@ -159,7 +191,12 @@ internal static class Cli
           --json <path>         write to a file instead of stdout
 
         Flags for the acting verbs
-          --in <path>  folder `new` starts in (default: the folder you are in)
+          --in <path>  folder `new` starts in (default: the folder you are in); on
+                       `standby`, the one folder to open instead of the recent ones
+          --remote-control, --rc  bring the session up answering your phone
+          --since <span>  on `standby`: how far back "recently worked on" reaches,
+                       written 7d / 12h / 90m (default: 7d)
+          --recent <n>  on `standby`: cap how many projects come up (default: all)
           --name <n>   what a new session answers to (default: the CLI derives one)
           --trust      on `new`: wait for the trust prompt in that folder and accept it
           --yes        actually do it; the sweeps only report their plan without it
@@ -206,6 +243,7 @@ internal static class Cli
                 "close" => Commands.Close(rest),
                 "resume" => Commands.Resume(rest),
                 "new" => Commands.New(rest),
+                "standby" => Commands.Standby(rest),
                 "trust" => Commands.Trust(rest),
                 "help" or "-h" or "-?" => Print(HelpText),
                 _ => throw new UsageException($"Unknown command: {args[0]}"),

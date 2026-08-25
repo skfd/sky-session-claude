@@ -62,4 +62,18 @@ public class NewSessionTests
     {
         Assert.Throws<UsageException>(() => Commands.New(Parse("--prompt", "hello", "--dry-run")));
     }
+
+    // The name goes in under --name even when Remote Control is asked for, because only
+    // --name reaches the registry — the same thing RestartPolicy.ResumeCommand knows.
+    [Fact]
+    public void AsksForRemoteControlWithoutHangingTheNameOnIt()
+    {
+        Assert.Equal(
+            @"cd 'C:\Code\sky'; claude --remote-control",
+            Commands.NewSessionLine(@"C:\Code\sky", null, remoteControl: true));
+
+        Assert.Equal(
+            @"cd 'C:\Code\sky'; claude --name 'night shift' --remote-control",
+            Commands.NewSessionLine(@"C:\Code\sky", "night shift", remoteControl: true));
+    }
 }

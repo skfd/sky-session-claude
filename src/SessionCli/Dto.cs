@@ -166,4 +166,11 @@ internal sealed class ActionItem
 
     /// <summary>The id a fork produced; null for every other verb.</summary>
     public string? NewSessionId { get; init; }
+
+    /// <summary>
+    /// The folder a row is about, for `standby` — the one verb whose rows are projects
+    /// rather than sessions, because the session it reports does not exist yet. Null
+    /// everywhere else, where <see cref="SessionId"/> already says which one is meant.
+    /// </summary>
+    public string? Folder { get; init; }
 }

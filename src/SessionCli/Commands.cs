@@ -609,7 +609,7 @@ internal static class Commands
 
     public static int Resume(Args args)
     {
-        args.RejectUnknown("dry-run");
+        args.RejectUnknown("dry-run", "remote-control", "rc");
 
         var scanner = RequireScanner();
         var file = Resolve(scanner, OneId(args, "resume"));
@@ -639,7 +639,8 @@ internal static class Commands
             ? SessionNaming.PlanLaunch(inputs, store).Name!
             : SessionNaming.NameForLaunch(inputs, store);
 
-        var command = info.CommandNamed(name);
+        var command = info.CommandNamed(name)
+            + (WantsRemoteControl(args) ? " --remote-control" : "");
         if (!args.Has("dry-run")) StartTerminal(command);
 
         return Cli.EmitResult(new ActionResult
@@ -932,7 +933,7 @@ internal static class Commands
     /// </summary>
     public static int New(Args args)
     {
-        args.RejectUnknown("in", "name", "trust", "dry-run");
+        args.RejectUnknown("in", "name", "trust", "dry-run", "remote-control", "rc");
 
         // The only positional this verb could plausibly be given is a session id, which
         // would mean the caller wanted `resume`. An unquoted multi-word --name lands here
@@ -947,7 +948,8 @@ internal static class Commands
         if (!Directory.Exists(folder))
             throw new UsageException($"No such folder: {folder}");
 
-        var command = NewSessionLine(folder, args.Has("name") ? args.Require("name") : null);
+        var command = NewSessionLine(
+            folder, args.Has("name") ? args.Require("name") : null, WantsRemoteControl(args));
         if (args.Has("dry-run"))
             return Cli.EmitResult(new ActionResult
             {
@@ -1001,10 +1003,165 @@ internal static class Commands
     private static readonly TimeSpan TrustWait = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan TrustPoll = TimeSpan.FromSeconds(1);
 
-    /// <summary>The line a new session is launched with: into the folder, then Claude.</summary>
-    internal static string NewSessionLine(string folder, string? name) =>
-        $"cd {SessionName.Quote(folder)}; "
-        + (name is { Length: > 0 } ? $"claude --name {SessionName.Quote(name)}" : "claude");
+    /// <summary>
+    /// The line a new session is launched with: into the folder, then Claude.
+    ///
+    /// A name never rides on <c>--remote-control</c>, even though that flag accepts one. The
+    /// two are separate flags inside the CLI and only <c>--name</c> reaches the registry —
+    /// see <see cref="RestartPolicy.ResumeCommand"/>, which learned the same thing on the way
+    /// back up from a restart.
+    /// </summary>
+    internal static string NewSessionLine(string folder, string? name, bool remoteControl = false) =>
+        $"cd {SessionName.Quote(folder)}; claude"
+        + (name is { Length: > 0 } ? $" --name {SessionName.Quote(name)}" : "")
+        + (remoteControl ? " --remote-control" : "");
+
+    // --- standby ------------------------------------------------------------
+
+    /// <summary>
+    /// Leave a phone-reachable session up in every project worked in lately.
+    ///
+    /// This is the verb for walking away from the desk, and it exists because of an asymmetry
+    /// in Remote Control: it is per session and per process, so a project with nothing running
+    /// is a project a phone cannot open — and a phone cannot start one either. Everything else
+    /// here can be done when you get back. This one has to happen before you leave.
+    ///
+    /// It opens fresh sessions rather than resuming the newest in each project. A resumed
+    /// conversation comes back with its context window where it left it and its last question
+    /// still hanging; what gets asked from a phone is nearly always a new thing about a
+    /// familiar repo.
+    ///
+    /// Like the other sweeps it drives real terminals, so it states its plan and waits to be
+    /// told twice. Unlike them, nothing it does can lose work — every session it touches is
+    /// one it just made — so the second telling is about the terminals about to appear on
+    /// your desktop, not about anything at risk.
+    /// </summary>
+    public static int Standby(Args args)
+    {
+        args.RejectUnknown("in", "since", "recent", "yes", "dry-run");
+
+        if (args.Positional.Count > 0)
+            throw new UsageException(
+                $"'standby' finds its own projects, so it takes no bare arguments (got '{args.Positional[0]}'). "
+                + "Use --in <path> for one folder, or --since <span> for how far back to look.");
+
+        var live = LiveSessions.Scan().Values.SelectMany(sessions => sessions).ToList();
+        var now = DateTime.Now;
+        var window = args.Span("since", SessionCore.Standby.DefaultWindow);
+        StandbyPlan plan;
+
+        if (args.Has("in"))
+        {
+            if (args.Has("since") || args.Has("recent"))
+                throw new UsageException(
+                    "'standby --in' names the folder itself, so it takes neither --since nor --recent.");
+
+            var folder = Path.GetFullPath(args.Require("in"));
+            if (!Directory.Exists(folder))
+                throw new UsageException($"No such folder: {folder}");
+
+            // Named rather than found, so recency has nothing to say about it. The one check
+            // that still runs is the one that matters from a phone: two sessions on standby in
+            // the same repo are two identical rows in a list that shows no folders.
+            var project = SessionCore.Standby.ProjectOf(folder);
+            plan = SessionCore.Standby.ReachableIn(live, folder) is { } already
+                ? new StandbyPlan
+                {
+                    Open = [],
+                    Skipped = [new StandbySkip
+                    {
+                        Folder = folder,
+                        Project = project,
+                        Reason = SessionCore.Standby.AlreadyReason(already),
+                    }],
+                }
+                : new StandbyPlan
+                {
+                    Open = [new StandbyTarget { Folder = folder, Project = project, LastActive = now }],
+                    Skipped = [],
+                };
+        }
+        else
+        {
+            var scanner = RequireScanner();
+            plan = SessionCore.Standby.Decide(
+                scanner.Scan(new ScanOptions { All = true, Top = int.MaxValue }),
+                live, now, window, args.Int("recent", int.MaxValue));
+        }
+
+        // No --yes is a plan, the same as the other sweeps; --dry-run says so outright.
+        bool dry = args.Has("dry-run") || !args.Has("yes");
+
+        var items = new List<ActionItem>();
+        foreach (var target in plan.Open)
+        {
+            // The name is left to Claude Code, as it is for `new`: a session with no content
+            // has no subject to be called by yet, and the folder-derived name it picks is both
+            // the honest one and the one the rest of Sky expects to find.
+            var command = NewSessionLine(target.Folder, name: null, remoteControl: true);
+            if (!dry) StartTerminal(command);
+
+            items.Add(new ActionItem
+            {
+                // No id: like `new`, this names a session that does not exist until someone
+                // types into it. The folder is what identifies the row until then.
+                SessionId = "",
+                Name = target.Project,
+                Folder = target.Folder,
+                Ok = true,
+                Message = dry ? $"would run: {command}" : $"opened a terminal running: {command}",
+            });
+        }
+
+        foreach (var skip in plan.Skipped)
+            items.Add(new ActionItem
+            {
+                SessionId = "",
+                Name = skip.Project,
+                Folder = skip.Folder,
+                Ok = false,
+                Message = $"skipped — {skip.Reason}",
+            });
+
+        var named = string.Join(", ", plan.Open.Select(t => t.Project));
+        var also = plan.Skipped.Count > 0 ? $"; skipping {plan.Skipped.Count}" : "";
+
+        string message;
+        if (plan.Open.Count == 0)
+            message = plan.Skipped.Count > 0
+                ? $"Nothing to put on standby — all {plan.Skipped.Count} project(s) found were passed over."
+                : $"No project has been worked in within {Spell(window)}. Widen it with --since 30d.";
+        else if (dry)
+            message = $"Would put {plan.Open.Count} project(s) on standby: {named}{also}."
+                + (args.Has("dry-run") ? "" : " Re-run with --yes to open them.");
+        else
+            message = $"{plan.Open.Count} project(s) on standby: {named}{also}."
+                + " Each is a fresh session answering Remote Control; give them a moment to connect.";
+
+        return Cli.EmitResult(new ActionResult
+        {
+            // A sweep that reports what it passed over has done its job; only a usage error
+            // makes this verb fail, and that has already thrown by here.
+            Ok = true,
+            Action = "standby",
+            Message = message,
+            Items = items,
+        });
+    }
+
+    /// <summary>How a span reads back to the person who typed it.</summary>
+    private static string Spell(TimeSpan window) =>
+        window.TotalDays >= 1 ? $"{window.TotalDays:0.#} day(s)"
+        : window.TotalHours >= 1 ? $"{window.TotalHours:0.#} hour(s)"
+        : $"{window.TotalMinutes:0.#} minute(s)";
+
+    /// <summary>
+    /// Whether the caller asked for a session their phone can reach. Spelled either way,
+    /// because <c>--rc</c> is what it is called out loud and <c>--remote-control</c> is what
+    /// Claude Code itself calls it.
+    /// </summary>
+    private static bool WantsRemoteControl(Args args) =>
+        args.Has("remote-control") || args.Has("rc");
 
     // --- answering ----------------------------------------------------------
 
