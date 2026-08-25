@@ -501,7 +501,7 @@ internal static class Commands
     /// </summary>
     public static int Rename(Args args)
     {
-        args.RejectUnknown("self", "dry-run");
+        args.RejectUnknown("self", "dry-run", "ask");
 
         var store = new NameStore();
         var live = LiveSessions.Scan();
@@ -530,11 +530,48 @@ internal static class Commands
             ? SessionNaming.InputsFor(info, running, liveNames)
             : SessionNaming.InputsFor(running!, liveNames);
 
+        if (args.Has("ask") && info is null)
+            throw new UsageException(
+                $"{sessionId} has no transcript to read yet, so there is nothing to ask about.");
+
+        // Paying a model to read the session is the one thing here that costs anything, so it
+        // happens because it was asked for. Renaming is free and Sky does it unasked; this is
+        // not free, so it does not -- and `--ask` on a session a free source could have named
+        // is refused rather than quietly spent.
+        string? oracleSessionId = null;
+        if (args.Has("ask") && given is null)
+        {
+            if (!NamePolicy.WantsOracle(inputs, store))
+                return Cli.EmitResult(new ActionResult
+                {
+                    Ok = true,
+                    Action = "rename",
+                    Message = $"{sessionId} does not need asking: {NamePolicy.Decide(inputs, store).Why}.",
+                });
+
+            var answer = NameOracle.SubjectOfAsync(info!).GetAwaiter().GetResult();
+            oracleSessionId = answer.SessionId;
+
+            if (!answer.Ok)
+                return Cli.EmitResult(new ActionResult
+                {
+                    Ok = false,
+                    Action = "rename",
+                    Message = $"Could not read {sessionId} -- {answer.Error}.",
+                });
+
+            inputs = inputs with { Subject = answer.Subject };
+        }
+
         // A name typed by hand is the operator's, whoever typed it -- including a session
         // naming itself, which is speaking for the conversation rather than for Sky.
         var (name, origin) = given is { Length: > 0 }
             ? (SessionName.Tidy(given), args.Has("self") ? NameOrigin.SelfNamed : NameOrigin.Chosen)
             : Decided(inputs, store);
+
+        // The call left a transcript of its own, which would otherwise turn up in `list` as a
+        // session nobody started. Deleted by the id it reported, never one we inferred.
+        NameOracle.CleanUp(oracleSessionId);
 
         if (name.Length == 0)
             return Cli.EmitResult(new ActionResult

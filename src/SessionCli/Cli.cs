@@ -25,7 +25,7 @@ internal sealed class Args
     private static readonly HashSet<string> Switches = new(StringComparer.OrdinalIgnoreCase)
     {
         "newest-per-project", "unfinished", "live", "stale",
-        "tip", "resume", "yes", "force", "dry-run", "self",
+        "tip", "resume", "yes", "force", "dry-run", "self", "ask",
     };
 
     private readonly Dictionary<string, string?> _flags = new(StringComparer.OrdinalIgnoreCase);
@@ -133,6 +133,7 @@ internal static class Cli
           SessionCli fork <id> --tip             branch at the tip, in a new terminal
           SessionCli rename <id> [name]          rename it where it stands; no name = we pick
           SessionCli rename --self [name]        rename the session this is running in
+          SessionCli rename <id> --ask           pay a small model to read it and name it
           SessionCli restart <id>...             restart in the terminal it already sits in
           SessionCli restart --stale             restart every stale session that is idle
           SessionCli resume <id>                 open a terminal and resume it
@@ -161,6 +162,8 @@ internal static class Cli
           --yes        actually do it; `restart --stale` only reports the plan without it
           --force      act on the session this command is running inside (refused otherwise)
           --self       on `rename`: the session this command is running in
+          --ask        on `rename`: read the session with `claude -p` when nothing free
+                       can name it (~2c and ~5s; refused when a free source would do)
           --dry-run    say what would happen and change nothing
 
         A session id may be shortened to any unique prefix, like a commit sha.
