@@ -146,22 +146,31 @@ public class RestartPolicyTests
     // --- the command that brings it back ------------------------------------
 
     /// <summary>
-    /// Without Remote Control the name still goes in, under --name: the point is that the
-    /// session comes back answering to the same thing, not that it is on a phone.
+    /// The name goes in under --name, and the session comes back answering to the same thing.
     /// </summary>
     [Fact]
     public void ASessionWithNoTitleIsNamedForItsFolderAndId() =>
-        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9'",
+        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9' --remote-control",
             RestartPolicy.ResumeCommand(Live()));
 
     /// <summary>
     /// Remote Control is per-session and dies with the process, so a restart that forgets to
     /// ask for it again silently drops the session off the operator's phone.
+    ///
+    /// It is asked for whether or not the session had it, which is the part that changed:
+    /// this used to carry over what was there, so a session started without it could never
+    /// acquire it and stayed reachable only from the desk it sat on. A terminal Sky opened
+    /// is by definition one nobody is watching, which is exactly the session that wants
+    /// answering from elsewhere.
     /// </summary>
     [Fact]
-    public void RemoteControlIsRequestedAgainOnTheWayBackUp() =>
-        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9' --remote-control",
+    public void EverySessionComesBackOnRemoteControl()
+    {
+        Assert.EndsWith("--remote-control",
             RestartPolicy.ResumeCommand(Live(bridge: "session_01NpwuF1HVr5CRthp5YS8SWH")));
+        Assert.EndsWith("--remote-control",
+            RestartPolicy.ResumeCommand(Live(bridge: null)));
+    }
 
     /// <summary>
     /// Whatever name it is handed is the name that goes on the line. Working out which name
@@ -183,7 +192,7 @@ public class RestartPolicyTests
     [Fact]
     public void ANameItIsHandedOverridesTheOneItHas() =>
         Assert.Equal(
-            "claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'Add retry logic to address-vault download'",
+            "claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'Add retry logic to address-vault download' --remote-control",
             RestartPolicy.ResumeCommand(
                 Live(name: "night shift", nameSource: null),
                 "Add retry logic to address-vault download"));
@@ -195,13 +204,13 @@ public class RestartPolicyTests
     /// </summary>
     [Fact]
     public void NoNameFallsToTheFloor() =>
-        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9'",
+        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9' --remote-control",
             RestartPolicy.ResumeCommand(Live(name: "demo-6c", nameSource: "derived")));
 
     [Fact]
     public void RelaunchReturnsTheShellToTheSessionFolder() =>
         Assert.Equal(
-            @"cd 'C:\Users\kk\Code\demo'; claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9'",
+            @"cd 'C:\Users\kk\Code\demo'; claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9' --remote-control",
             RestartPolicy.RelaunchLine(Live()));
 
     [Fact]
@@ -214,11 +223,11 @@ public class RestartPolicyTests
     /// <summary>A name is typed into a shell like anything else, so it is quoted like one.</summary>
     [Fact]
     public void AQuoteInANameCannotBreakOutOfTheCommand() =>
-        Assert.EndsWith("--name 'it''s working'",
+        Assert.Contains("--name 'it''s working'",
             RestartPolicy.ResumeCommand(Live(), "it's working"));
 
     [Fact]
     public void NoRecordedFolderMeansJustResumeWhereTheShellStands() =>
-        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'session-b9'",
+        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'session-b9' --remote-control",
             RestartPolicy.RelaunchLine(Live(cwd: null)));
 }

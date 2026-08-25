@@ -86,6 +86,11 @@ public sealed class SessionInfo
     /// this same session. Left off <see cref="Command"/> itself because forking appends
     /// <c>--fork-session</c> to it, and the fork is a different session that has not earned
     /// this one's name.
+    ///
+    /// Rebuilt through <see cref="ClaudeLaunch"/> rather than appended to <see cref="Command"/>:
+    /// that line now ends with <c>--remote-control</c>, which takes an optional name, and a
+    /// <c>--name</c> tacked on after it reads as an argument to the wrong flag. Composing in
+    /// one place is what keeps the order a decision rather than an accident.
     /// </summary>
     /// <param name="name">
     /// What to call it, from <see cref="SessionNaming.NameForLaunch"/>. This used to compose a
@@ -94,7 +99,7 @@ public sealed class SessionInfo
     /// </param>
     public string CommandNamed(string name) => Command.Length == 0
         ? ""
-        : $"{Command} --name {SessionName.Quote(name)}";
+        : $"cd \"{Cwd}\"; {ClaudeLaunch.Resume(SessionId, name)}";
     public bool Unfinished { get; init; }
     public string WaitingOn { get; init; } = "";
 }

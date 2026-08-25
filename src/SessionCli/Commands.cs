@@ -1003,8 +1003,7 @@ internal static class Commands
 
     /// <summary>The line a new session is launched with: into the folder, then Claude.</summary>
     internal static string NewSessionLine(string folder, string? name) =>
-        $"cd {SessionName.Quote(folder)}; "
-        + (name is { Length: > 0 } ? $"claude --name {SessionName.Quote(name)}" : "claude");
+        $"cd {SessionName.Quote(folder)}; {ClaudeLaunch.New(name)}";
 
     // --- answering ----------------------------------------------------------
 

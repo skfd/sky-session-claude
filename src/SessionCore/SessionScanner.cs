@@ -158,7 +158,7 @@ public sealed class SessionScanner
             AgeDays = Math.Round((DateTime.Now - lastActive).TotalDays, 1),
             SizeKB = Math.Round(file.Length / 1024.0, 1),
             Project = LeafOf(cwd),
-            Command = $"cd \"{cwd}\"; claude --resume {sessionId}",
+            Command = $"cd \"{cwd}\"; {ClaudeLaunch.Resume(sessionId)}",
             Unfinished = openQ || noReply,
             WaitingOn = noReply ? "agent" : openQ ? "you" : "",
         };

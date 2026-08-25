@@ -15,14 +15,14 @@ public class NewSessionTests
     [Fact]
     public void LaunchesInTheFolderWithNoNameOfItsOwn()
     {
-        Assert.Equal(@"cd 'C:\Code\sky'; claude", Commands.NewSessionLine(@"C:\Code\sky", null));
+        Assert.Equal(@"cd 'C:\Code\sky'; claude --remote-control", Commands.NewSessionLine(@"C:\Code\sky", null));
     }
 
     [Fact]
     public void PassesAChosenNameThrough()
     {
         Assert.Equal(
-            @"cd 'C:\Code\sky'; claude --name 'nightly triage'",
+            @"cd 'C:\Code\sky'; claude --name 'nightly triage' --remote-control",
             Commands.NewSessionLine(@"C:\Code\sky", "nightly triage"));
     }
 
@@ -32,14 +32,27 @@ public class NewSessionTests
     public void QuotesAFolderOrNameThatContainsAQuote()
     {
         Assert.Equal(
-            @"cd 'C:\Code\kk''s repo'; claude --name 'kk''s session'",
+            @"cd 'C:\Code\kk''s repo'; claude --name 'kk''s session' --remote-control",
             Commands.NewSessionLine(@"C:\Code\kk's repo", "kk's session"));
+    }
+
+    /// <summary>
+    /// A session this app starts is one in a terminal nobody is watching, which is precisely
+    /// the session that wants answering from somewhere else. Remote Control can only be
+    /// asked for at launch or from inside the session, so a line that leaves it off is a
+    /// session that can be seen on a phone and never typed at.
+    /// </summary>
+    [Fact]
+    public void EveryNewSessionIsReachableFromElsewhere()
+    {
+        Assert.EndsWith("--remote-control", Commands.NewSessionLine(@"C:\Code\sky", null));
+        Assert.EndsWith("--remote-control", Commands.NewSessionLine(@"C:\Code\sky", "nightly triage"));
     }
 
     [Fact]
     public void TreatsAnEmptyNameAsNoName()
     {
-        Assert.Equal(@"cd 'C:\Code\sky'; claude", Commands.NewSessionLine(@"C:\Code\sky", ""));
+        Assert.Equal(@"cd 'C:\Code\sky'; claude --remote-control", Commands.NewSessionLine(@"C:\Code\sky", ""));
     }
 
     [Fact]

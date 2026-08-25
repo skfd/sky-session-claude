@@ -90,9 +90,11 @@ public static class RestartPolicy
     }
 
     /// <summary>
-    /// The command that brings this session back. Remote Control is opt-in per session and
-    /// does not survive the restart, so a session that had it connected asks for it again
-    /// on the way back up — otherwise restarting would quietly drop it off your phone.
+    /// The command that brings this session back. Remote Control does not survive a restart,
+    /// and <see cref="ClaudeLaunch"/> asks for it again on the way back up — for a session
+    /// that had it connected, because dropping it off your phone is not what a restart was
+    /// for; for one that never did, because that is now how this app opens any session at
+    /// all. A terminal Sky opened is by definition one nobody was watching.
     ///
     /// <paramref name="name"/> is what the session comes back under, decided elsewhere. This
     /// used to work it out here — carry a chosen name over, re-derive anything else — and that
@@ -115,8 +117,7 @@ public static class RestartPolicy
     {
         var chosen = name is { Length: > 0 } ? name : SessionName.Floor(live.SessionId, live.Cwd);
 
-        var command = $"claude --resume {live.SessionId} --name {SessionName.Quote(chosen)}";
-        return live.RemoteControl ? $"{command} --remote-control" : command;
+        return ClaudeLaunch.Resume(live.SessionId, chosen);
     }
 
     /// <summary>
