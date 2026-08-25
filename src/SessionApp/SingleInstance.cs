@@ -26,17 +26,21 @@ public sealed class SingleInstance : IDisposable
     // machine each get their own window rather than one silently stealing the other's.
     private const string MutexName = @"Local\sky-session-claude-app";
     private const string ActivateName = @"Local\sky-session-claude-activate";
+    private const string QuitName = @"Local\sky-session-claude-quit";
 
     private readonly Mutex? _mutex;
     private readonly EventWaitHandle? _activate;
+    private readonly EventWaitHandle? _quit;
     private RegisteredWaitHandle? _registration;
+    private RegisteredWaitHandle? _quitRegistration;
 
     public bool IsFirst { get; }
 
-    private SingleInstance(Mutex? mutex, EventWaitHandle? activate, bool isFirst)
+    private SingleInstance(Mutex? mutex, EventWaitHandle? activate, EventWaitHandle? quit, bool isFirst)
     {
         _mutex = mutex;
         _activate = activate;
+        _quit = quit;
         IsFirst = isFirst;
     }
 
@@ -46,20 +50,39 @@ public sealed class SingleInstance : IDisposable
     /// </summary>
     public static SingleInstance Claim(bool allowMultiple)
     {
-        if (allowMultiple) return new SingleInstance(null, null, isFirst: true);
+        if (allowMultiple) return new SingleInstance(null, null, null, isFirst: true);
 
         // createdNew is the whole answer: whoever creates the mutex owns the slot. An
         // instance that crashed without disposing leaves an abandoned mutex, which the
         // next launch acquires normally — the slot frees itself.
         var mutex = new Mutex(initiallyOwned: true, MutexName, out bool createdNew);
         var activate = new EventWaitHandle(false, EventResetMode.AutoReset, ActivateName);
+        var quit = new EventWaitHandle(false, EventResetMode.AutoReset, QuitName);
 
-        if (createdNew) return new SingleInstance(mutex, activate, isFirst: true);
+        if (createdNew) return new SingleInstance(mutex, activate, quit, isFirst: true);
 
         activate.Set();          // ask the window that is already up to show itself
         mutex.Dispose();
         activate.Dispose();
-        return new SingleInstance(null, null, isFirst: false);
+        quit.Dispose();
+        return new SingleInstance(null, null, null, isFirst: false);
+    }
+
+    /// <summary>
+    /// Ask the running window to exit, the way its own Exit does. False if there was nothing
+    /// to ask — nobody holds the slot, or the one that does opted out with <c>--multi</c>.
+    ///
+    /// This exists because closing the window stopped meaning quit: it hides to the tray and
+    /// the process stays. Anything that used to shut Sky down by closing its window — most of
+    /// all <c>publish.ps1</c>, which has to free the exe before overwriting it — needs a way
+    /// to say the other thing, and killing the process would leave the icon behind in the
+    /// tray for the shell to notice later.
+    /// </summary>
+    public static bool RequestQuit()
+    {
+        if (!EventWaitHandle.TryOpenExisting(QuitName, out var quit)) return false;
+        using (quit) quit.Set();
+        return true;
     }
 
     /// <summary>
@@ -74,10 +97,24 @@ public sealed class SingleInstance : IDisposable
             _activate, (_, _) => show(), state: null, Timeout.Infinite, executeOnlyOnce: false);
     }
 
+    /// <summary>
+    /// Run <paramref name="quit"/> when something asks this instance to exit — see
+    /// <see cref="RequestQuit"/>. Arrives on a pool thread, so the caller marshals.
+    /// </summary>
+    public void OnQuitRequested(Action quit)
+    {
+        if (_quit is null) return;
+
+        _quitRegistration = ThreadPool.RegisterWaitForSingleObject(
+            _quit, (_, _) => quit(), state: null, Timeout.Infinite, executeOnlyOnce: true);
+    }
+
     public void Dispose()
     {
         _registration?.Unregister(null);
+        _quitRegistration?.Unregister(null);
         _activate?.Dispose();
+        _quit?.Dispose();
 
         if (_mutex is null) return;
         try { _mutex.ReleaseMutex(); } catch (ApplicationException) { /* never acquired */ }

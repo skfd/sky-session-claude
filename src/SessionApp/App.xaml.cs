@@ -25,6 +25,16 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // --quit: not a launch at all, a message to the launch that is already up. Closing
+        // the window hides it now, so this is how anything outside the app — publish.ps1
+        // most of all — gets Sky to actually leave.
+        if (e.Args.Any(a => string.Equals(a, "--quit", StringComparison.OrdinalIgnoreCase)))
+        {
+            SingleInstance.RequestQuit();
+            Shutdown();
+            return;
+        }
+
         // Before anything builds a window: a second launch has nothing to show, and the
         // instance already up is being asked to come forward instead (see SingleInstance).
         _instance = SingleInstance.Claim(
@@ -42,6 +52,7 @@ public partial class App : Application
         base.OnStartup(e);
 
         _instance.OnActivateRequested(() => Dispatcher.Invoke(ShowMainWindow));
+        _instance.OnQuitRequested(() => Dispatcher.Invoke(Quit));
 
         // Signing out or shutting down closes windows the same way a click on the X does,
         // and a window that answers that by hiding would sit there refusing to go.

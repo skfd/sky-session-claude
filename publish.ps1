@@ -49,12 +49,18 @@ if (-not $SkipInstall) {
     # There is one Sky window per desktop now (see SingleInstance), so a dev build left
     # running here will keep the stable app from starting afterwards. Launch the dev build
     # with --multi when you want to publish underneath it.
-    $wasRunning = @(Get-Process SkySessionClaude -ErrorAction SilentlyContinue |
-        Where-Object { $_.Path -eq $targetExe }).Count -gt 0
+    $stable = @(Get-Process SkySessionClaude -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -eq $targetExe })
+    $wasRunning = $stable.Count -gt 0
 
-    Get-Process SkySessionClaude -ErrorAction SilentlyContinue |
-        Where-Object { $_.Path -eq $targetExe } |
-        ForEach-Object { $_.CloseMainWindow() | Out-Null; if (-not $_.WaitForExit(5000)) { $_.Kill() } }
+    # Ask it to leave, rather than closing its window: closing only hides Sky to the tray
+    # now, so CloseMainWindow would time out and we would be killing it -- which skips the
+    # tidy-up and leaves its icon behind in the tray. --quit signals the instance that holds
+    # the single-instance slot (see SingleInstance) and returns immediately.
+    if ($wasRunning) {
+        & $targetExe --quit | Out-Null
+        foreach ($proc in $stable) { if (-not $proc.WaitForExit(5000)) { $proc.Kill() } }
+    }
 
     Copy-Item "$root/$OutDir/SkySessionClaude.exe" $targetExe -Force
     Write-Host "Installed: $targetExe"
