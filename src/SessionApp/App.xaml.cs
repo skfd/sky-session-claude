@@ -56,10 +56,19 @@ public partial class App : Application
             return;
         }
 
+        // Windows starts Sky at sign-in with --tray (publish.ps1 writes the Run entry). The
+        // count belongs by the clock from the moment you log in, but a window in front of
+        // everything else that opens then is not what was asked for, so this launch ends up
+        // exactly where a click on the X leaves Sky: running, counting, out of the way.
+        bool tray = e.Args.Any(a => string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase));
+
         // Before anything builds a window: a second launch has nothing to show, and the
         // instance already up is being asked to come forward instead (see SingleInstance).
+        // A tray start is the exception — it is Windows opening Sky rather than you, so
+        // finding a window already up it leaves quietly instead of yanking that one forward.
         _instance = SingleInstance.Claim(
-            allowMultiple: e.Args.Any(a => string.Equals(a, "--multi", StringComparison.OrdinalIgnoreCase)));
+            allowMultiple: e.Args.Any(a => string.Equals(a, "--multi", StringComparison.OrdinalIgnoreCase)),
+            activateExisting: !tray);
 
         if (!_instance.IsFirst)
         {
@@ -67,10 +76,18 @@ public partial class App : Application
             return;
         }
 
-        // Ahead of base.OnStartup, which builds the StartupUri window: the palette has
-        // to be in the resources before anything resolves a brush against it.
+        // Ahead of the window below, which resolves brushes against the palette as it builds.
         ThemeManager.Initialize();
         base.OnStartup(e);
+
+        // The window is built either way, because the tray icon rides its HWND (see TrayIcon)
+        // and there is no count by the clock without one. A tray start creates the handle and
+        // stops there; anything else puts it on screen. This is why App.xaml no longer names a
+        // StartupUri: that shows the window it builds, and one of these two must not.
+        var window = new MainWindow();
+        MainWindow = window;
+        if (tray) window.StartHidden();
+        else window.Show();
 
         _instance.OnActivateRequested(() => Dispatcher.Invoke(ShowMainWindow));
         _instance.OnQuitRequested(() => Dispatcher.Invoke(Quit));

@@ -55,8 +55,13 @@ public sealed class SingleInstance : IDisposable
     /// <summary>
     /// Claim the single-instance slot. <see cref="IsFirst"/> is false when another window
     /// already holds it, having first asked that one to come forward.
+    ///
+    /// <paramref name="activateExisting"/> false drops that ask, for a launch that was not a
+    /// person wanting to see Sky: the <c>--tray</c> start Windows makes at sign-in finds the
+    /// window from the last session still up often enough, and pulling it to the front then
+    /// would be the login doing something nobody asked for.
     /// </summary>
-    public static SingleInstance Claim(bool allowMultiple)
+    public static SingleInstance Claim(bool allowMultiple, bool activateExisting = true)
     {
         if (allowMultiple) return new SingleInstance(null, null, null, isFirst: true);
 
@@ -69,7 +74,7 @@ public sealed class SingleInstance : IDisposable
 
         if (createdNew) return new SingleInstance(mutex, activate, quit, isFirst: true);
 
-        activate.Set();          // ask the window that is already up to show itself
+        if (activateExisting) activate.Set();   // ask the window already up to show itself
         mutex.Dispose();
         activate.Dispose();
         quit.Dispose();

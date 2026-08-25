@@ -62,6 +62,8 @@ So: last real turn is an agent turn → `complete` (or `waiting-you` if it ends 
 
   Windows files a new tray icon into the `^` overflow the first time it sees one. Drag it out onto the taskbar once (or *Settings → Personalisation → Taskbar → Other system tray icons*) and it stays out.
 
+  **Sky starts with Windows**, into the tray. `publish.ps1` registers it the same way it registers the `skysession://` handler, so the count is by the clock from the moment you sign in — no window in front of whatever else opens at login, because a `--tray` start builds the window and never shows it. It is a normal startup app: *Settings → Apps → Startup* and Task Manager's **Startup** tab both list it, and turning it off there sticks, since Windows records that answer separately from the command and a later publish only rewrites the command. `startup-remove.ps1` takes it out altogether.
+
 - **Dark mode** → follows the Windows apps theme, title bar included, and switches live when you flip the system setting — no restart, and no in-app toggle to keep in sync. The window and taskbar icon switch too: by night the cloud gets a moon and stars <img src="docs/icon-night.png" width="20" align="top" alt="">.
 
 ### Keyboard shortcuts
@@ -251,6 +253,7 @@ The split between the core and the app is "does this need a desktop?", not "is t
 - **`src/SessionCore.Tests`** — unit tests for the core and the CLI's argument parsing.
 - **`schedule-add.ps1`** / **`schedule-remove.ps1`** — register/remove the two tasks the morning brief needs: the daily one that refreshes `sessions.json` for it to read, and the short-interval one that runs the `commands.json` it writes back.
 - **`protocol-remove.ps1`** — take the `skysession://` handler back out; `publish.ps1` puts it in.
+- **`startup-remove.ps1`** — stop Sky starting with Windows, and clear the on/off record Settings keeps beside the entry; `publish.ps1` puts it in.
 
 ## License
 

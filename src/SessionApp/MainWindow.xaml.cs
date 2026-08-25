@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using SessionCore;
 
@@ -13,6 +14,7 @@ public partial class MainWindow : Window
     private ProjectsWatcher? _watcher;
     private DispatcherTimer? _liveTimer;
     private TrayIcon? _tray;
+    private bool _started;
 
     public MainWindow()
     {
@@ -21,13 +23,7 @@ public partial class MainWindow : Window
         ThemeManager.Attach(this);   // dark title bar + live system theme switching
         _vm.SelectionKeeper = KeepSelection;
         StartTray();
-        Loaded += async (_, _) =>
-        {
-            await _vm.RefreshAsync();
-            DrawTray();          // first real count: the icon appears now, not saying 0
-            StartWatcher();
-            StartLiveTimer();
-        };
+        Loaded += async (_, _) => await StartAsync();
         // The X puts Sky in the tray instead of quitting it. Everything that keeps the
         // count honest — the watcher, the three-second poll, the parse cache — carries on
         // behind the hidden window, so the number by the clock stays true and coming back
@@ -45,6 +41,33 @@ public partial class MainWindow : Window
             _liveTimer?.Stop();
             _tray?.Dispose();
         };
+    }
+
+    /// <summary>
+    /// Come up with nothing on screen — how a sign-in start arrives (see App.OnStartup).
+    /// <c>EnsureHandle</c> builds the window's HWND without showing it, and that handle is
+    /// all the tray icon and the themed title bar were waiting on, so the count appears by
+    /// the clock while the window itself stays where the X would have put it.
+    /// </summary>
+    public void StartHidden()
+    {
+        new WindowInteropHelper(this).EnsureHandle();
+        _ = StartAsync();
+    }
+
+    // Everything that has to be running for the count to be true. Loaded is the usual way in,
+    // but it does not fire until the window is first shown and a tray start may never show it
+    // — so that path calls this itself, and the flag keeps the Loaded that eventually arrives
+    // (the first time you click the icon) from starting a second watcher and a second poll.
+    private async Task StartAsync()
+    {
+        if (_started) return;
+        _started = true;
+
+        await _vm.RefreshAsync();
+        DrawTray();          // first real count: the icon appears now, not saying 0
+        StartWatcher();
+        StartLiveTimer();
     }
 
     // Rescans and filter changes reset the collection view, and the ListBox drops its
