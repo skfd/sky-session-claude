@@ -6,8 +6,15 @@ namespace SessionCore.Tests;
 /// `standby` answers a question none of the other verbs ask: not "which session", but "which
 /// folders should have one up at all", because from a phone a project with nothing running is
 /// a project that is not there. What can go wrong is the list it produces — a folder that has
-/// been deleted, a worktree an agent made and will delete, the same repo twice, or a repo
-/// already answering the phone getting a second identical row.
+/// been deleted, a worktree an agent made and will delete, the same repo twice, or a repo a
+/// host is already serving getting a second identical row.
+///
+/// A live host is the only thing that means "already on standby", and the tests below hold
+/// that line from both sides: a host stops a folder, and nothing else does. It was once any
+/// session with Remote Control connected, which read as reasonable and was wrong — a folder
+/// held by a bridged `claude --remote-control` terminal is reachable from a phone and still
+/// offers no way to start a second conversation there, so passing it over left the repo in
+/// exactly the state standby exists to fix.
 /// </summary>
 public class StandbyTests
 {
@@ -33,23 +40,17 @@ public class StandbyTests
     /// <summary>Every folder in these tests is pretended to exist unless a test says otherwise.</summary>
     private static StandbyPlan Decide(
         IEnumerable<SessionInfo> sessions,
-        IEnumerable<LiveSession>? live = null,
         TimeSpan? window = null,
         int max = int.MaxValue,
         Func<string, bool>? folderExists = null,
         Func<string, bool>? isRepo = null,
         Func<string, BridgePointer?>? hostFor = null) =>
-        Standby.Decide(sessions, live ?? [], Now, window, max,
+        Standby.Decide(sessions, Now, window, max,
             folderExists ?? (_ => true), isRepo ?? (_ => true), hostFor ?? (_ => null));
 
-    private static LiveSession Running(string cwd, string name, bool remoteControl) =>
-        LiveSessionRegistry.Parse(
-            $$"""
-            {"pid":4242,"sessionId":"b9e83ad3-8742-4f86-b5e3-40e844f24da1",
-             "cwd":"{{cwd.Replace(@"\", @"\\")}}","version":"2.1.241","kind":"interactive",
-             "entrypoint":"cli","name":"{{name}}"
-             {{(remoteControl ? ",\"bridgeSessionId\":\"session_01NpwuF1HVr5CRthp5YS8SWH\"" : "")}}}
-            """)!;
+    /// <summary>A host serving the transcript folder of the named project, and nothing else.</summary>
+    private static Func<string, BridgePointer?> HostServing(string project, int pid = 4242) =>
+        dir => ProjectOf(dir).Equals(project, StringComparison.OrdinalIgnoreCase) ? Host(pid) : null;
 
     [Fact]
     public void TakesTheFoldersWorkedInInsideTheWindow()
@@ -96,35 +97,41 @@ public class StandbyTests
     }
 
     /// <summary>
-    /// The one thing standby must not do. Two sessions on standby in one repo are two
-    /// identical rows on a phone, in a list that shows no folders to tell them apart.
-    /// </summary>
-    [Fact]
-    public void SkipsARepoThatIsAlreadyAnsweringThePhone()
-    {
-        var plan = Decide(
-            [In(@"C:\Code\sky", 1)],
-            [Running(@"C:\Code\sky", "sky-6c", remoteControl: true)]);
-
-        Assert.Empty(plan.Open);
-        Assert.Contains("already on standby", Assert.Single(plan.Skipped).Reason);
-        Assert.Contains("sky-6c", plan.Skipped[0].Reason);
-    }
-
-    /// <summary>
-    /// The mistake standby is most likely to make, because it is the one it makes to its own
-    /// output: a `claude rc` host publishes no session of its own, so a folder it is serving
-    /// looks empty in the registry whenever no conversation happens to be open.
+    /// The one thing standby must not do, and the mistake it is most likely to make, because
+    /// it is the one it makes to its own output: a `claude rc` host publishes no session of its
+    /// own, so a folder it is serving looks empty in the registry whenever no conversation
+    /// happens to be open. Two hosts in one repo are two identical rows on a phone, in a list
+    /// that shows no folders to tell them apart.
     /// </summary>
     [Fact]
     public void SkipsARepoAHostIsAlreadyServing()
     {
-        var plan = Decide(
-            [In(@"C:\Code\sky", 1)],
-            hostFor: dir => dir.EndsWith("sky") ? Host(pid: 6328) : null);
+        var plan = Decide([In(@"C:\Code\sky", 1)], hostFor: HostServing("sky", pid: 6328));
 
         Assert.Empty(plan.Open);
-        Assert.Contains("claude rc host (pid 6328)", Assert.Single(plan.Skipped).Reason);
+        Assert.Contains("already on standby", Assert.Single(plan.Skipped).Reason);
+        Assert.Contains("claude rc host (pid 6328)", plan.Skipped[0].Reason);
+    }
+
+    /// <summary>
+    /// The other half of that rule, and the one this used to get wrong. With no host serving
+    /// it a folder opens, whatever else happens to be running there — which is now a fact
+    /// about the signature as much as about this assertion, since `Decide` is no longer handed
+    /// the registry and so cannot pass a folder over for anything it finds in one.
+    ///
+    /// That is the point. What it used to find was a bridged `claude --remote-control`
+    /// terminal, which is reachable from a phone and offers exactly one conversation there
+    /// with no way to open a second — the state standby exists to get you out of, read as a
+    /// reason not to. A host opens beside it now, and since the terminal is not in the way,
+    /// the plan does not mention it either.
+    /// </summary>
+    [Fact]
+    public void OnlyAHostStopsAFolderFromOpening()
+    {
+        var plan = Decide([In(@"C:\Code\sky", 1)], hostFor: HostServing("somewhere-else"));
+
+        Assert.Equal([@"C:\Code\sky"], plan.Open.Select(t => t.Folder));
+        Assert.Empty(plan.Skipped);
     }
 
     /// <summary>
@@ -142,30 +149,18 @@ public class StandbyTests
     }
 
     /// <summary>
-    /// A session at the desk is not reachable from anywhere. Remote Control is the bridge,
-    /// and a busy terminal without one is exactly the case standby exists to fix.
+    /// Two sessions in one repo do not have to agree on how to spell its path — a `cd` with a
+    /// trailing slash, a drive letter typed in either case. Spelled two ways they would be two
+    /// projects, which is two rows on the phone and two hosts in one folder.
     /// </summary>
     [Fact]
-    public void ASessionWithoutRemoteControlDoesNotCountAsReachable()
+    public void MatchesOneFolderThroughSlashesAndCase()
     {
-        var plan = Decide(
-            [In(@"C:\Code\sky", 1)],
-            [Running(@"C:\Code\sky", "sky-6c", remoteControl: false)]);
+        var plan = Decide([In(@"C:\Code\Sky", 2), In(@"c:/code/sky/", 1)]);
 
-        Assert.Single(plan.Open);
+        var only = Assert.Single(plan.Open);
+        Assert.Equal(Now.AddDays(-1), only.LastActive);
         Assert.Empty(plan.Skipped);
-    }
-
-    /// <summary>The registry and the transcripts do not have to agree on how to spell a path.</summary>
-    [Fact]
-    public void MatchesAReachableFolderThroughSlashesAndCase()
-    {
-        var plan = Decide(
-            [In(@"C:\Code\Sky", 1)],
-            [Running(@"c:/code/sky/", "sky-6c", remoteControl: true)]);
-
-        Assert.Empty(plan.Open);
-        Assert.Single(plan.Skipped);
     }
 
     /// <summary>
@@ -282,15 +277,15 @@ public class StandbyTests
 
     /// <summary>
     /// A project already on standby is reported, not opened, so it should not eat one of the
-    /// slots — otherwise `--recent 3` with one repo already up opens two.
+    /// slots — otherwise `--recent 2` with one repo already served opens one.
     /// </summary>
     [Fact]
-    public void AReachableProjectDoesNotSpendOneOfTheSlots()
+    public void AServedProjectDoesNotSpendOneOfTheSlots()
     {
         var plan = Decide(
             [In(@"C:\Code\a", 1), In(@"C:\Code\b", 2), In(@"C:\Code\c", 3)],
-            [Running(@"C:\Code\a", "a-6c", remoteControl: true)],
-            max: 2);
+            max: 2,
+            hostFor: HostServing("a"));
 
         Assert.Equal(["b", "c"], plan.Open.Select(t => t.Project));
         Assert.Equal("a", Assert.Single(plan.Skipped).Project);

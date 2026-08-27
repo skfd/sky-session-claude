@@ -32,9 +32,9 @@ public sealed record StandbyPlan
 /// The desk and the phone want opposite things from a session list. At the desk a session is
 /// found by remembering what it was about, so every one you ever worked in is worth keeping.
 /// From a phone there is no terminal to open and no folder to <c>cd</c> into: a project you
-/// can reach is one that already has something running with Remote Control connected, and a
-/// project that does not is simply not there. So this reads recency off the transcripts and
-/// answers with the folders worth having up before you leave the desk.
+/// can reach is one that already has a <c>claude rc</c> host serving it, and a project that
+/// does not is simply not there. So this reads recency off the transcripts and answers with
+/// the folders worth having up before you leave the desk.
 ///
 /// What it puts there is a <c>claude rc</c> <b>host</b>, not a session. The two are different
 /// things wearing the same words: <c>claude --remote-control</c> is one interactive session in
@@ -44,12 +44,21 @@ public sealed record StandbyPlan
 /// happen — a session per project caps you at one conversation per repo, and starting another
 /// is the one thing a phone cannot do for itself.
 ///
+/// Which is also why a bridged session does not count as one. It was tempting to read the
+/// registry and pass over any folder with Remote Control connected — the phone can reach it,
+/// after all — but reaching is not the thing standby is for. A folder held only by a
+/// <c>claude --remote-control</c> terminal shows exactly one conversation on the phone and no
+/// way to open a second, which is the state this verb exists to get you out of. So the only
+/// thing that means "already on standby" is a live host, and a bridged terminal in the folder
+/// is passed over in silence: it is not in the way, and one extra row is a smaller cost than
+/// a repo you cannot start a thought in.
+///
 /// It is folders, not sessions, all the way down: the host decides what conversations exist,
 /// so there was never a resumed-versus-fresh question for this to answer.
 ///
 /// Pure, like <see cref="RestartPolicy"/> and <see cref="ClosePolicy"/>: the caller supplies
-/// the scan, the registry, the clock and the answers to the few filesystem questions, and gets
-/// back a plan it can print without having opened anything.
+/// the scan, the clock and the answers to the few filesystem questions, and gets back a plan
+/// it can print without having opened anything.
 /// </summary>
 public static class Standby
 {
@@ -57,7 +66,6 @@ public static class Standby
     public static readonly TimeSpan DefaultWindow = TimeSpan.FromDays(7);
 
     /// <param name="sessions">Scanned sessions — only their folder and last turn are read.</param>
-    /// <param name="live">The registry, for the projects that are already reachable.</param>
     /// <param name="now">The clock, injected so a test can pick one.</param>
     /// <param name="window">How far back to look.</param>
     /// <param name="max">Cap on how many folders come back; the newest survive.</param>
@@ -72,13 +80,15 @@ public static class Standby
     /// <see cref="HasGit"/> for why the test is a <c>.git</c>.
     /// </param>
     /// <param name="hostFor">
-    /// The <c>claude rc</c> host serving a project's transcript folder, if one is. Asked of the
-    /// transcript folder rather than the repo because that is where the pointer is written, and
-    /// it comes from the scan itself, so no path has to be slugged to ask it.
+    /// The <c>claude rc</c> host serving a project's transcript folder, if one is. The whole
+    /// question of "is this folder already on standby", because a host is the only thing that
+    /// answers it — the session registry cannot, in either direction: a host publishes no
+    /// session of its own, and a session that is bridged is not a host. Asked of the transcript
+    /// folder rather than the repo because that is where the pointer is written, and it comes
+    /// from the scan itself, so no path has to be slugged to ask it.
     /// </param>
     public static StandbyPlan Decide(
         IEnumerable<SessionInfo> sessions,
-        IEnumerable<LiveSession> live,
         DateTime now,
         TimeSpan? window = null,
         int max = int.MaxValue,
@@ -90,8 +100,6 @@ public static class Standby
         var exists = folderExists ?? Directory.Exists;
         var repo = isRepo ?? HasGit;
         var host = hostFor ?? (dir => RemoteControlHosts.ServingFrom(dir));
-
-        var running = live as IReadOnlyCollection<LiveSession> ?? live.ToList();
 
         var newest = new Dictionary<string, (string Folder, string ProjectDir, DateTime LastActive)>(
             StringComparer.OrdinalIgnoreCase);
@@ -117,9 +125,10 @@ public static class Standby
         {
             var project = ProjectOf(folder.Folder);
 
-            // A host first: it is the thing standby itself puts there, so launching a second
-            // one is the mistake this verb is most likely to make. It publishes no session of
-            // its own, so nothing in the registry would have caught it.
+            // The only thing that counts as already on standby, because it is the only thing
+            // that does what standby is for. Launching a second host is the mistake this verb
+            // is most likely to make — it publishes no session of its own, so nothing in the
+            // registry would have caught it — and a bridged terminal here is not that mistake.
             if (host(folder.ProjectDir) is { } serving)
             {
                 skipped.Add(new StandbySkip
@@ -127,17 +136,6 @@ public static class Standby
                     Folder = folder.Folder,
                     Project = project,
                     Reason = AlreadyReason(serving),
-                });
-                continue;
-            }
-
-            if (ReachableIn(running, folder.Folder) is { } already)
-            {
-                skipped.Add(new StandbySkip
-                {
-                    Folder = folder.Folder,
-                    Project = project,
-                    Reason = AlreadyReason(already),
                 });
                 continue;
             }
@@ -191,22 +189,6 @@ public static class Standby
     }
 
     /// <summary>
-    /// The session already answering the phone in <paramref name="folder"/>, or null.
-    ///
-    /// A folder is reachable when something is running there with Remote Control connected —
-    /// a busy session at the desk does not count, because it is the bridge, not the terminal,
-    /// that a phone can see.
-    /// </summary>
-    public static LiveSession? ReachableIn(IEnumerable<LiveSession> live, string folder)
-    {
-        var key = Key(folder);
-        return live.FirstOrDefault(l =>
-            l.RemoteControl
-            && !string.IsNullOrEmpty(l.Cwd)
-            && Key(l.Cwd!).Equals(key, StringComparison.OrdinalIgnoreCase));
-    }
-
-    /// <summary>
     /// Whether a folder is a project, which here means whether it is a git repo.
     ///
     /// Sessions get started in places that are not projects: a home folder, the folder every
@@ -223,10 +205,6 @@ public static class Standby
         var git = Path.Combine(folder, ".git");
         return Directory.Exists(git) || File.Exists(git);
     }
-
-    /// <summary>How a folder that is already reachable is reported.</summary>
-    public static string AlreadyReason(LiveSession already) =>
-        $"already on standby — \"{already.Name ?? already.SessionId}\" has Remote Control connected";
 
     /// <summary>How a folder a host is already serving is reported.</summary>
     public static string AlreadyReason(BridgePointer serving) =>

@@ -1185,6 +1185,10 @@ internal static class Commands
     /// that a host has no terminal you can type into at the desk, and that what it spawns is
     /// <c>sdk-cli</c> — the kind <see cref="ClosePolicy"/> refuses to sweep, on purpose.
     ///
+    /// The same distinction decides what it passes over: only a live host means a folder is
+    /// already on standby. A bridged terminal there is reachable from a phone but cannot be
+    /// asked for a second conversation, which is the whole thing standby is there to provide.
+    ///
     /// Like the other sweeps it drives real terminals, so it states its plan and waits to be
     /// told twice. Unlike them, nothing it does can lose work — everything it touches is
     /// something it just made — so the second telling is about the terminals about to appear on
@@ -1199,7 +1203,6 @@ internal static class Commands
                 $"'standby' finds its own projects, so it takes no bare arguments (got '{args.Positional[0]}'). "
                 + "Use --in <path> for one folder, or --since <span> for how far back to look.");
 
-        var live = LiveSessions.Scan().Values.SelectMany(sessions => sessions).ToList();
         var now = DateTime.Now;
         var window = args.Span("since", SessionCore.Standby.DefaultWindow);
         StandbyPlan plan;
@@ -1238,29 +1241,18 @@ internal static class Commands
                     }],
                 });
 
-            plan = SessionCore.Standby.ReachableIn(live, folder) is { } already
-                ? new StandbyPlan
-                {
-                    Open = [],
-                    Skipped = [new StandbySkip
-                    {
-                        Folder = folder,
-                        Project = project,
-                        Reason = SessionCore.Standby.AlreadyReason(already),
-                    }],
-                }
-                : new StandbyPlan
-                {
-                    Open = [new StandbyTarget { Folder = folder, Project = project, LastActive = now }],
-                    Skipped = [],
-                };
+            plan = new StandbyPlan
+            {
+                Open = [new StandbyTarget { Folder = folder, Project = project, LastActive = now }],
+                Skipped = [],
+            };
         }
         else
         {
             var scanner = RequireScanner();
             plan = SessionCore.Standby.Decide(
                 scanner.Scan(new ScanOptions { All = true, Top = int.MaxValue }),
-                live, now, window, args.Int("recent", int.MaxValue));
+                now, window, args.Int("recent", int.MaxValue));
 
             // Standby is where a folder Claude Code has never been trusted with shows up, and
             // `claude rc` will not ask: it says to run `claude` there first and stops. Nothing
