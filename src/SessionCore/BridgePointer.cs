@@ -93,6 +93,13 @@ public sealed record RemoteControlHost
     /// <summary>What it was started with, so a restart can put back the same host.</summary>
     public string? CommandLine { get; init; }
 
+    /// <summary>
+    /// When the process started — a host's only answer to "how long has this been up", and
+    /// the thing that explains its staleness: builds have landed since. Null when the process
+    /// would not say.
+    /// </summary>
+    public DateTime? Started { get; init; }
+
     public int Pid => Pointer.Pid;
 
     /// <summary>The bridge session the phone addresses — the closest thing a host has to an id.</summary>
@@ -142,6 +149,17 @@ public static class RemoteControlHosts
         {
             using var p = Process.GetProcessById(pid);
             return p.ProcessName;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>When a process started, or null when it is gone or will not say.</summary>
+    public static DateTime? StartedAt(int pid)
+    {
+        try
+        {
+            using var p = Process.GetProcessById(pid);
+            return p.StartTime;
         }
         catch { return null; }
     }
@@ -264,6 +282,7 @@ public static class RemoteControlHosts
                 ProjectDir = projectDir,
                 ProcessName = image!,
                 CommandLine = command(pointer.Pid),
+                Started = StartedAt(pointer.Pid),
             };
         }
     }

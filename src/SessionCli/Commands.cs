@@ -38,7 +38,9 @@ internal static class Commands
         var live = LiveSessions.Scan();
         var installed = ClaudeInstall.InstalledVersion;
 
-        var rows = scanner.Scan(options)
+        var scanned = scanner.Scan(options).ToList();
+
+        var rows = scanned
             .Select(info => SessionDto.From(
                 info,
                 store.Get(info.SessionId),
@@ -48,18 +50,69 @@ internal static class Commands
 
         if (args.Int("limit", 0) is > 0 and var limit) rows = rows.Take(limit).ToList();
 
+        // "What is behind?" is a question about harnesses, and a host is one — the one that
+        // cannot answer it for itself, since it publishes no version to compare. So --stale
+        // is where hosts appear, and only --stale: every other listing is about sessions, and
+        // the twice-daily dump the morning brief reads must keep meaning exactly what it did.
+        var hosts = args.Has("stale") ? StaleHosts(scanned, live, args) : null;
+
         var path = args.Has("json") ? args.Require("json") : null;
         Cli.Emit(new ExportDto
         {
             GeneratedAt = DateTimeOffset.Now.ToString("o"),
             Count = rows.Count,
             Sessions = rows,
+            Hosts = hosts,
             Warning = store.LoadWarning,
         }, path);
 
         if (path is not null)
-            Console.Error.WriteLine($"Wrote {rows.Count} session(s) to {path}");
+            Console.Error.WriteLine($"Wrote {rows.Count} session(s)"
+                + (hosts is { Count: > 0 } ? $" and {hosts.Count} host(s)" : "") + $" to {path}");
         return 0;
+    }
+
+    /// <summary>
+    /// The stale hosts, judged the same way the sweep judges them, so a listing and a
+    /// <c>restart --stale</c> can never disagree about what would be taken.
+    ///
+    /// <c>--project</c> and <c>--search</c> narrow these too — both are questions about what
+    /// a thing is called, and a host has a project name like anything else. The session-only
+    /// filters do not apply: a host has no status to match and no disposition to carry.
+    /// </summary>
+    private static List<HostDto> StaleHosts(
+        List<SessionInfo> scanned, Dictionary<string, List<LiveSession>> live, Args args)
+    {
+        var tree = ProcessTree.Snapshot();
+        var running = live.Values.SelectMany(v => v).ToList();
+        // Nullable on purpose: a missing id has to read as "not scanned", never as whatever
+        // the first value of the enum happens to be.
+        var tails = scanned.ToDictionary(
+            i => i.SessionId, i => (SessionStatus?)i.Status, StringComparer.OrdinalIgnoreCase);
+        var found = new List<HostDto>();
+
+        foreach (var host in RemoteControlHosts.FromScan(scanned))
+        {
+            if (!host.Stale) continue;
+
+            if (args.Value("project") is { } project
+                && !host.Project.Contains(project, StringComparison.OrdinalIgnoreCase)) continue;
+
+            if (args.Value("search") is { } search
+                && !host.Project.Contains(search, StringComparison.OrdinalIgnoreCase)
+                && !host.Folder.Contains(search, StringComparison.OrdinalIgnoreCase)) continue;
+
+            var serving = RemoteControlHosts.Serving(host, running, tree.Parents)
+                .Select(s => new HostRestartPolicy.Served(s, tails.GetValueOrDefault(s.SessionId)))
+                .ToList();
+
+            var verdict = HostRestartPolicy.Judge(
+                host, serving, RemoteControlHosts.ConversationsUnder(host.Pid, tree.Children), DateTime.Now);
+
+            found.Add(HostDto.From(host, verdict, serving.Count));
+        }
+
+        return found;
     }
 
     private static bool Matches(SessionDto row, Args args)

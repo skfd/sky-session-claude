@@ -127,9 +127,11 @@ Two things that follow, both easy to get backwards:
   so instead is the rename: an updater moves the running binary to
   `claude.exe.old.<timestamp>` so the new build can take the name, so a harness
   reporting that image has been overtaken at least once
-  (`ClaudeInstall.IsSuperseded`). `list --stale` still only knows about
-  sessions; `restart --stale` sweeps hosts too, judging each by the
-  conversations it is serving (`HostRestartPolicy`).
+  (`ClaudeInstall.IsSuperseded`). Both verbs know this: `list --stale` reports
+  the stale hosts in their own `Hosts` array — their own, because a host has no
+  status, no context and no session id to put in a session's — and
+  `restart --stale` sweeps them, judging each by the conversations it is
+  serving (`HostRestartPolicy`).
 - **A stale host still makes current sessions.** A spawned session takes
   whatever build is on disk at spawn time rather than inheriting its host's, and
   then ages on its own clock from there. So staleness never propagates

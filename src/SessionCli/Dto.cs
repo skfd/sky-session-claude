@@ -13,8 +13,67 @@ internal sealed class ExportDto
     public required int Count { get; init; }
     public required List<SessionDto> Sessions { get; init; }
 
+    /// <summary>
+    /// The Remote Control hosts, when <c>--stale</c> asked about them. Their own array
+    /// rather than rows among the sessions, because a host has none of a session's fields —
+    /// no status, no context, no id — and filling those in with blanks is exactly the
+    /// conflation the glossary's Runtime section exists to stop. <c>Count</c> and
+    /// <c>Sessions</c> therefore keep meaning what they always did.
+    /// </summary>
+    public List<HostDto>? Hosts { get; init; }
+
     /// <summary>Only present when something went wrong that the caller should hear about.</summary>
     public string? Warning { get; init; }
+}
+
+/// <summary>
+/// A <c>claude rc</c> host as a row: what is running, how far behind it is, and whether the
+/// sweep would take it.
+/// </summary>
+internal sealed class HostDto
+{
+    public required string Project { get; init; }
+    public required string Folder { get; init; }
+    public required int Pid { get; init; }
+
+    /// <summary>The bridge session the phone addresses. Not a Claude session id — no verb takes it.</summary>
+    public required string BridgeSessionId { get; init; }
+
+    /// <summary>Running since. A host publishes no version, so this is the age you get.</summary>
+    public required DateTime? Started { get; init; }
+
+    /// <summary>An update has renamed its binary out from under it — see ClaudeInstall.IsSuperseded.</summary>
+    public required bool Stale { get; init; }
+
+    /// <summary>How many conversations it is answering for, which is what decides the verdict.</summary>
+    public required int Serving { get; init; }
+
+    /// <summary>"safe", "ask" or "unsafe" — see HostRestartPolicy.</summary>
+    public required string Restart { get; init; }
+
+    public required string RestartReason { get; init; }
+
+    /// <summary>The line that puts it back, ready to paste — the same one a restart types.</summary>
+    public required string Command { get; init; }
+
+    public static HostDto From(RemoteControlHost host, SweepVerdict verdict, int serving) => new()
+    {
+        Project = host.Project,
+        Folder = host.Folder,
+        Pid = host.Pid,
+        BridgeSessionId = host.BridgeSessionId,
+        Started = host.Started,
+        Stale = host.Stale,
+        Serving = serving,
+        Restart = verdict.Safety switch
+        {
+            SweepSafety.Safe => "safe",
+            SweepSafety.Ask => "ask",
+            _ => "unsafe",
+        },
+        RestartReason = verdict.Reason,
+        Command = LaunchLine.HostAgain(host.Folder, host.CommandLine),
+    };
 }
 
 /// <summary>What a live session adds to a card: the process, and whether we may restart it.</summary>

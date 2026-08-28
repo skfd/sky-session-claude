@@ -196,7 +196,8 @@ internal static class Cli
           --unfinished          only what is still on the hook: drops complete, done
                                 and abandoned (--disposition abandoned brings those back)
           --live                only sessions open in a terminal right now
-          --stale               only live sessions behind the installed build
+          --stale               only live sessions behind the installed build, and the
+                                Remote Control hosts that are, in their own `Hosts` array
           --top <n>             cap how many session files are scanned (default: all)
           --limit <n>           cap how many rows come back after filtering
           --newest-per-project  one session per project
