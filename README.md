@@ -123,6 +123,7 @@ SessionCli fork <id> --at-prompt 3  # writes the branch; no terminal, original u
 SessionCli fork <id> --tip          # the official --fork-session, in a new terminal
 SessionCli restart <id>...          # restart in the terminal it already sits in
 SessionCli restart --stale          # prints the plan; add --yes to actually do it
+SessionCli restart --host <project> # one Remote Control host, by folder or name
 SessionCli close <id>...            # quit it, and close the terminal it sat in
 SessionCli close --finished         # end of day; prints the plan, add --yes to do it
 SessionCli resume <id>              # open a terminal and resume
@@ -171,6 +172,8 @@ Two things these verbs will not do without being told twice, because they drive 
 - **Nothing touches the session the command is running inside** without `--force`. An agent restarting its own session kills itself mid-sentence — and for a host that reaches one level further, since quitting a host takes down the conversation the command is running in with it.
 
 `restart --stale` sweeps the `claude rc` hosts too, which is the only way they ever get updated: a host is started once and left for days, and it publishes no registry entry, so there is no version on it to compare — the signal is that an update has renamed its binary out from under it. A host has nothing of its own to lose, so what decides it is every conversation it spawned. Busy, or publishing no state at all, and the host is left alone; waiting on you or only just idle, and it is offered but never swept; serving nothing — which most hosts are, most of the time — and it is the safest thing in the sweep. It comes back on the command line it was already running, so a bare `claude rc` you started by hand does not return wearing standby's flags.
+
+`restart --host <project>` is the same thing for one host you point at, named by its folder or its project — a host has no session id to give. Pointing is you deciding, so it acts on the spot rather than printing a plan, does not care whether that host is behind, and proceeds on anything the policy merely wanted to ask about. It still refuses what it cannot do safely, and it still will not quit the host serving the session it is running in without `--force`.
 
 Ctx% switches to a 1M budget for sessions detected on the extended context window: either a turn exceeded 200k tokens, or the session ran on the model configured with the `[1m]` suffix in `~/.claude/settings.json` (transcripts don't record the window themselves).
 

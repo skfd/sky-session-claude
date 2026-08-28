@@ -168,6 +168,7 @@ internal static class Cli
           SessionCli rename <id> --ask           pay a small model to read it and name it
           SessionCli restart <id>...             restart in the terminal it already sits in
           SessionCli restart --stale             restart every stale session and host that is idle
+          SessionCli restart --host <project>    restart one Remote Control host, by folder or name
           SessionCli close <id>...               quit it, and close its terminal
           SessionCli close --finished            end of day: close every session that is over
           SessionCli resume <id>                 open a terminal and resume it
@@ -211,6 +212,8 @@ internal static class Cli
                        written 7d / 12h / 90m (default: 7d)
           --recent <n>  on `standby`: cap how many projects come up (default: all)
           --name <n>   what a new session answers to (default: the CLI derives one)
+          --host <p>   on `restart`: the one Remote Control host to restart, named by
+                       its folder or its project (a host has no session id)
           --trust      on `new`: wait for the trust prompt in that folder and accept it
           --yes        actually do it; the sweeps only report their plan without it
           --force      act on the session this command is running inside (refused otherwise)

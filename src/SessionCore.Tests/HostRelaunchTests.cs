@@ -120,4 +120,103 @@ public class HostRelaunchTests
     [Fact]
     public void AHostWithNoChildrenServesNothing() =>
         Assert.Equal(0, RemoteControlHosts.ConversationsUnder(4242, new Dictionary<int, List<ProcRef>>()));
+
+    // --- which conversations are a host's -----------------------------------
+
+    private static RemoteControlHost At(string folder, int pid = 4242) => new()
+    {
+        Pointer = new BridgePointer { SessionId = "session_abc123", Pid = pid },
+        Folder = folder,
+        ProjectDir = @"C:\Users\kk\.claude\projects\slug",
+        ProcessName = "claude.exe.old.1787697313311",
+    };
+
+    private static LiveSession Spawned(int pid, string entrypoint = "sdk-cli", string? cwd = null) => new()
+    {
+        Pid = pid,
+        SessionId = $"session-{pid}",
+        Cwd = cwd,
+        Status = "idle",
+        Kind = "interactive",
+        Entrypoint = entrypoint,
+    };
+
+    [Fact]
+    public void AChildInTheProcessTreeIsServed()
+    {
+        var parents = new Dictionary<int, int> { [5150] = 4242 };
+        var served = RemoteControlHosts.Serving(At(@"C:\Code\demo"), [Spawned(5150)], parents);
+
+        Assert.Equal(5150, Assert.Single(served).Pid);
+    }
+
+    /// <summary>
+    /// The belt to the tree's braces: a conversation spawned through anything in between is
+    /// still the host's, and reading it as "serving nothing" is how a busy host gets swept.
+    /// </summary>
+    [Fact]
+    public void AnSdkConversationInTheFolderIsServedEvenWithoutAParentMatch()
+    {
+        var served = RemoteControlHosts.Serving(
+            At(@"C:\Code\demo"), [Spawned(5150, cwd: @"C:\Code\demo\")], new Dictionary<int, int>());
+
+        Assert.Single(served);
+    }
+
+    /// <summary>A bridged terminal in the same folder is a session, not a host's conversation.</summary>
+    [Fact]
+    public void ABridgedTerminalInTheSameFolderIsNotServed()
+    {
+        var served = RemoteControlHosts.Serving(
+            At(@"C:\Code\demo"), [Spawned(5150, entrypoint: "cli", cwd: @"C:\Code\demo")],
+            new Dictionary<int, int>());
+
+        Assert.Empty(served);
+    }
+
+    [Fact]
+    public void AConversationInAnotherFolderIsNotServed()
+    {
+        var served = RemoteControlHosts.Serving(
+            At(@"C:\Code\demo"), [Spawned(5150, cwd: @"C:\Code\other")], new Dictionary<int, int>());
+
+        Assert.Empty(served);
+    }
+
+    /// <summary>Both routes finding the same conversation must not count it twice.</summary>
+    [Fact]
+    public void AConversationFoundBothWaysIsCountedOnce()
+    {
+        var parents = new Dictionary<int, int> { [5150] = 4242 };
+        var served = RemoteControlHosts.Serving(
+            At(@"C:\Code\demo"), [Spawned(5150, cwd: @"C:\Code\demo")], parents);
+
+        Assert.Single(served);
+    }
+
+    // --- naming one host ----------------------------------------------------
+
+    private static readonly RemoteControlHost[] Hosts =
+    [
+        At(@"C:\Code\xrm-ribbon"),
+        At(@"C:\Code\xrm-document-x-ray"),
+        At(@"C:\Code\canimap"),
+    ];
+
+    [Fact]
+    public void AFolderNamesItsHost() =>
+        Assert.Equal("canimap", Assert.Single(RemoteControlHosts.Matching(Hosts, @"C:\Code\canimap\")).Project);
+
+    /// <summary>An exact project name wins before it is treated as a substring of others.</summary>
+    [Fact]
+    public void AnExactProjectNameIsNotShadowedBySubstrings() =>
+        Assert.Equal("xrm-ribbon", Assert.Single(RemoteControlHosts.Matching(Hosts, "xrm-ribbon")).Project);
+
+    [Fact]
+    public void AnAmbiguousSubstringComesBackAmbiguous() =>
+        Assert.Equal(2, RemoteControlHosts.Matching(Hosts, "xrm").Count);
+
+    [Fact]
+    public void NothingMatchingIsEmpty() =>
+        Assert.Empty(RemoteControlHosts.Matching(Hosts, "nope"));
 }

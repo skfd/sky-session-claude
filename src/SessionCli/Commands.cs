@@ -294,7 +294,7 @@ internal static class Commands
 
     public static int Restart(Args args)
     {
-        args.RejectUnknown("stale", "yes", "force", "dry-run");
+        args.RejectUnknown("stale", "host", "yes", "force", "dry-run");
 
         var scanner = RequireScanner();
         var installed = ClaudeInstall.InstalledVersion;
@@ -313,7 +313,43 @@ internal static class Commands
         var names = new NameStore();
         var liveNames = SessionNaming.LiveNamesOf(live);
 
-        if (args.Has("stale"))
+        if (args.Has("host"))
+        {
+            // You pointing at one host, which is the same shape as `restart <id>`: it acts on
+            // the spot rather than stating a plan, it does not care whether the host is behind
+            // — pointing at it says you want it back up — and it proceeds on anything the
+            // policy merely wants to ask about. Only what cannot be done safely is refused.
+            if (args.Positional.Count > 0)
+                throw new UsageException(
+                    $"'restart --host' names the folder itself, so it takes no session ids (got '{args.Positional[0]}').");
+
+            var wanted = args.Require("host");
+            var infos = scanner.Scan(new ScanOptions { All = true, Top = int.MaxValue })
+                .ToDictionary(i => i.SessionId, StringComparer.OrdinalIgnoreCase);
+
+            var hosts = RemoteControlHosts.FromScan(infos.Values).ToList();
+            var host = OneHost(hosts, wanted);
+
+            var tree = ProcessTree.Snapshot();
+            var serving = RemoteControlHosts.Serving(host, live.Values.SelectMany(v => v), tree.Parents)
+                .Select(s => new HostRestartPolicy.Served(s, infos.GetValueOrDefault(s.SessionId)?.Status))
+                .ToList();
+
+            targets = new List<(LiveSession, SessionStatus?, string, NameInputs)>();
+
+            if (!args.Has("force") && serving.Any(s => IsSelf(s.Live.SessionId)))
+                skipped.Add(HostSkip(host,
+                    "it is serving the session this command is running in — pass --force if you mean it"));
+            else
+            {
+                var verdict = HostRestartPolicy.Judge(
+                    host, serving, RemoteControlHosts.ConversationsUnder(host.Pid, tree.Children), DateTime.Now);
+
+                if (verdict.Safety == SweepSafety.Unsafe) skipped.Add(HostSkip(host, verdict.Reason));
+                else hostTargets.Add(host);
+            }
+        }
+        else if (args.Has("stale"))
         {
             if (args.Positional.Count > 0)
                 throw new UsageException("'restart --stale' takes no session ids.");
@@ -361,8 +397,7 @@ internal static class Commands
 
                 // What a host is serving, one level down: the sessions it spawned are its
                 // children in the process tree, and they are where all the state lives.
-                var serving = running
-                    .Where(s => tree.Parents.TryGetValue(s.Pid, out var parent) && parent == host.Pid)
+                var serving = RemoteControlHosts.Serving(host, running, tree.Parents)
                     .Select(s => new HostRestartPolicy.Served(s, infos.GetValueOrDefault(s.SessionId)?.Status))
                     .ToList();
 
@@ -388,7 +423,7 @@ internal static class Commands
         else
         {
             if (args.Positional.Count == 0)
-                throw new UsageException("'restart' needs a session id, or --stale.");
+                throw new UsageException("'restart' needs a session id, or --stale, or --host <project>.");
 
             targets = new List<(LiveSession, SessionStatus?, string, NameInputs)>();
             foreach (var id in args.Positional)
@@ -470,9 +505,14 @@ internal static class Commands
         items.AddRange(skipped);
 
         int attempted = targets.Count + hostTargets.Count;
-        var what = hostTargets.Count > 0
-            ? $"{targets.Count} session(s) and {hostTargets.Count} Remote Control host(s)"
-            : $"{targets.Count} session(s)";
+        var what = (targets.Count, hostTargets.Count) switch
+        {
+            // Naming a host and having it refused is still a sentence about hosts.
+            (0, 0) when args.Has("host") => "0 Remote Control host(s)",
+            (0, > 0) => $"{hostTargets.Count} Remote Control host(s)",
+            (_, 0) => $"{targets.Count} session(s)",
+            _ => $"{targets.Count} session(s) and {hostTargets.Count} Remote Control host(s)",
+        };
 
         var message = dry
             ? $"Would restart {what}"
@@ -666,6 +706,32 @@ internal static class Commands
         Ok = false,
         Message = $"skipped — {why}",
     };
+
+    /// <summary>
+    /// The one host <c>--host</c> names, by folder or by project.
+    ///
+    /// A folder is matched whole and a project name exactly before either falls back to a
+    /// substring, so a repo whose name contains another's cannot be shadowed by it. Nothing
+    /// found and more than one found are both usage errors: this verb quits a server, and
+    /// quitting the wrong one is not a mistake to make on a guess.
+    /// </summary>
+    private static RemoteControlHost OneHost(IReadOnlyList<RemoteControlHost> hosts, string wanted)
+    {
+        var found = RemoteControlHosts.Matching(hosts, wanted);
+
+        if (found.Count == 0)
+            throw new UsageException(hosts.Count == 0
+                ? "No folder has a Remote Control host running. `standby` is what starts them."
+                : $"No Remote Control host matches '{wanted}'. Running now: "
+                    + string.Join(", ", hosts.Select(h => h.Project).Order()) + ".");
+
+        if (found.Count > 1)
+            throw new UsageException($"'{wanted}' matches {found.Count} hosts: "
+                + string.Join(", ", found.Select(h => h.Project).Order())
+                + ". Name one of them, or give the folder.");
+
+        return found[0];
+    }
 
     /// <summary>
     /// A host's row. No id, the same way <c>standby</c>'s rows have none — a host is not a

@@ -169,6 +169,62 @@ public static class RemoteControlHosts
             || ClaudeInstall.IsSuperseded(name));
 
     /// <summary>
+    /// The hosts a folder or a project name picks out.
+    ///
+    /// Narrowest first: a whole folder, then a project name in full, and only then a
+    /// substring. A repo whose name contains another's would otherwise shadow it —
+    /// <c>xrm-ribbon</c> is exactly <c>xrm-ribbon</c> before it is one of the <c>xrm</c>
+    /// ones — and the caller quits a server with this, so an ambiguous answer has to come
+    /// back ambiguous rather than resolved by luck.
+    /// </summary>
+    public static IReadOnlyList<RemoteControlHost> Matching(
+        IEnumerable<RemoteControlHost> hosts, string wanted)
+    {
+        var all = hosts.ToList();
+        var folder = wanted.Replace('/', '\\').TrimEnd('\\');
+
+        return Narrow(h => SameFolder(h.Folder, folder))
+            ?? Narrow(h => string.Equals(h.Project, wanted, StringComparison.OrdinalIgnoreCase))
+            ?? Narrow(h => h.Project.Contains(wanted, StringComparison.OrdinalIgnoreCase))
+            ?? [];
+
+        List<RemoteControlHost>? Narrow(Func<RemoteControlHost, bool> match)
+        {
+            var hit = all.Where(match).ToList();
+            return hit.Count > 0 ? hit : null;
+        }
+    }
+
+    /// <summary>
+    /// The live conversations a host is answering for.
+    ///
+    /// Two ways in, because either alone has a hole. The process tree is the precise answer —
+    /// a host spawns its conversations, so they are its children — but it only holds while
+    /// they are spawned directly; put anything in between and a host serving a busy
+    /// conversation would read as serving nothing. So an <c>sdk-cli</c> session sitting in the
+    /// host's own folder counts too, whoever launched it: that is what a host's conversations
+    /// are, and a bridged terminal in the same folder is <c>cli</c> and stays out of it.
+    ///
+    /// Erring towards counting one that is not a host's costs a skipped restart. Erring the
+    /// other way costs someone's turn, mid-flight, on a phone we cannot see.
+    /// </summary>
+    public static IEnumerable<LiveSession> Serving(
+        RemoteControlHost host,
+        IEnumerable<LiveSession> live,
+        IReadOnlyDictionary<int, int> parents) =>
+        live.Where(session =>
+            (parents.TryGetValue(session.Pid, out var parent) && parent == host.Pid)
+            || (string.Equals(session.Entrypoint, "sdk-cli", StringComparison.OrdinalIgnoreCase)
+                && SameFolder(session.Cwd, host.Folder)));
+
+    private static bool SameFolder(string? one, string? other) =>
+        one is { Length: > 0 } && other is { Length: > 0 }
+        && string.Equals(
+            one.Replace('/', '\\').TrimEnd('\\'),
+            other.Replace('/', '\\').TrimEnd('\\'),
+            StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Every live host behind a scan, one per folder.
     ///
     /// The folder is the reason this takes sessions rather than walking
