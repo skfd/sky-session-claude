@@ -307,8 +307,10 @@ internal static class Commands
         List<ActionItem> skipped = new();
 
         // Hosts join the sweep but not the list above: a host is not a session, has no id and
-        // no name to come back under, and what puts it back is its own command line.
-        List<RemoteControlHost> hostTargets = new();
+        // no name to come back under, and what puts it back is its own command line. The
+        // caveat is what the policy would have stopped a sweep for and a pointed restart goes
+        // ahead with anyway — carried this far so the row can say it rather than swallow it.
+        List<(RemoteControlHost Host, string? Caveat)> hostTargets = new();
 
         var names = new NameStore();
         var liveNames = SessionNaming.LiveNamesOf(live);
@@ -345,8 +347,11 @@ internal static class Commands
                 var verdict = HostRestartPolicy.Judge(
                     host, serving, RemoteControlHosts.ConversationsUnder(host.Pid, tree.Children), DateTime.Now);
 
+                // Ask proceeds, because you pointed at this one — but never quietly. A host
+                // serving a conversation that is waiting on you loses the question when it
+                // goes, and the row is the only place that can be said.
                 if (verdict.Safety == SweepSafety.Unsafe) skipped.Add(HostSkip(host, verdict.Reason));
-                else hostTargets.Add(host);
+                else hostTargets.Add((host, verdict.Safety == SweepSafety.Ask ? verdict.Reason : null));
             }
         }
         else if (args.Has("stale"))
@@ -413,7 +418,7 @@ internal static class Commands
                     host, serving, RemoteControlHosts.ConversationsUnder(host.Pid, tree.Children), DateTime.Now);
 
                 if (!hostVerdict.CanSweep) skipped.Add(HostSkip(host, hostVerdict.Reason));
-                else hostTargets.Add(host);
+                else hostTargets.Add((host, null));   // a sweep takes only what needs no caveat
             }
 
             // The sweep drives terminals nobody is looking at, so it states its plan and
@@ -488,18 +493,20 @@ internal static class Commands
             });
         }
 
-        foreach (var host in hostTargets)
+        foreach (var (host, caveat) in hostTargets)
         {
+            var note = caveat is null ? "" : $" — even though {caveat}";
+
             if (dry)
             {
                 items.Add(HostItem(host, true,
-                    $"would restart its host: {LaunchLine.HostAgain(host.Folder, host.CommandLine)}"));
+                    $"would restart its host{note}: {LaunchLine.HostAgain(host.Folder, host.CommandLine)}"));
                 continue;
             }
 
             var result = HostRestarter.RestartAsync(host).GetAwaiter().GetResult();
             if (result.Ok) done++;
-            items.Add(HostItem(host, result.Ok, $"its host: {result.Message}"));
+            items.Add(HostItem(host, result.Ok, $"its host{note}: {result.Message}"));
         }
 
         items.AddRange(skipped);
