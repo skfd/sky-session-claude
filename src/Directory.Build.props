@@ -6,7 +6,7 @@
          "-dev" suffix on the next patch (1.7.1-dev after v1.7.0 shipped) so a dev build
          is never mistaken for the release it followed; the release itself drops the
          suffix or bumps further. See .claude/skills/gh-release/SKILL.md. -->
-    <Version>1.10.3-dev</Version>
+    <Version>1.10.3</Version>
   </PropertyGroup>
 
 </Project>
