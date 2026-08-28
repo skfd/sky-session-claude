@@ -24,7 +24,7 @@ internal sealed class Args
     /// </summary>
     private static readonly HashSet<string> Switches = new(StringComparer.OrdinalIgnoreCase)
     {
-        "newest-per-project", "unfinished", "live", "stale",
+        "newest-per-project", "unfinished", "live", "stale", "hosts",
         "tip", "resume", "yes", "force", "dry-run", "self", "ask",
         "finished", "keep-terminal", "remote-control", "rc", "done",
     };
@@ -198,6 +198,8 @@ internal static class Cli
           --live                only sessions open in a terminal right now
           --stale               only live sessions behind the installed build, and the
                                 Remote Control hosts that are, in their own `Hosts` array
+          --hosts               include the Remote Control hosts, current ones too
+                                (--stale still narrows them to the ones behind)
           --top <n>             cap how many session files are scanned (default: all)
           --limit <n>           cap how many rows come back after filtering
           --newest-per-project  one session per project

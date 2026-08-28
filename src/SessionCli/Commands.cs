@@ -22,7 +22,7 @@ internal static class Commands
     public static int List(Args args)
     {
         args.RejectUnknown("json", "top", "newest-per-project", "context-window",
-            "status", "project", "search", "disposition", "unfinished", "live", "stale", "limit");
+            "status", "project", "search", "disposition", "unfinished", "live", "stale", "hosts", "limit");
 
         var scanner = RequireScanner();
         var options = new ScanOptions
@@ -52,9 +52,15 @@ internal static class Commands
 
         // "What is behind?" is a question about harnesses, and a host is one — the one that
         // cannot answer it for itself, since it publishes no version to compare. So --stale
-        // is where hosts appear, and only --stale: every other listing is about sessions, and
-        // the twice-daily dump the morning brief reads must keep meaning exactly what it did.
-        var hosts = args.Has("stale") ? StaleHosts(scanned, live, args) : null;
+        // brings the hosts with it, and --hosts asks for them on their own, current ones
+        // included. Neither flag, no Hosts array: every other listing is about sessions, and
+        // the twice-daily dump the morning brief reads must keep meaning what it always did.
+        //
+        // The two compose the way the words do. --hosts says to include them; --stale is a
+        // filter and goes on applying, so asking for both is asking for the stale ones.
+        var hosts = args.Has("stale") || args.Has("hosts")
+            ? HostRows(scanned, live, args, staleOnly: args.Has("stale"))
+            : null;
 
         var path = args.Has("json") ? args.Require("json") : null;
         Cli.Emit(new ExportDto
@@ -73,15 +79,15 @@ internal static class Commands
     }
 
     /// <summary>
-    /// The stale hosts, judged the same way the sweep judges them, so a listing and a
+    /// The live hosts, judged the same way the sweep judges them, so a listing and a
     /// <c>restart --stale</c> can never disagree about what would be taken.
     ///
     /// <c>--project</c> and <c>--search</c> narrow these too — both are questions about what
     /// a thing is called, and a host has a project name like anything else. The session-only
     /// filters do not apply: a host has no status to match and no disposition to carry.
     /// </summary>
-    private static List<HostDto> StaleHosts(
-        List<SessionInfo> scanned, Dictionary<string, List<LiveSession>> live, Args args)
+    private static List<HostDto> HostRows(
+        List<SessionInfo> scanned, Dictionary<string, List<LiveSession>> live, Args args, bool staleOnly)
     {
         var tree = ProcessTree.Snapshot();
         var running = live.Values.SelectMany(v => v).ToList();
@@ -93,7 +99,7 @@ internal static class Commands
 
         foreach (var host in RemoteControlHosts.FromScan(scanned))
         {
-            if (!host.Stale) continue;
+            if (staleOnly && !host.Stale) continue;
 
             if (args.Value("project") is { } project
                 && !host.Project.Contains(project, StringComparison.OrdinalIgnoreCase)) continue;
