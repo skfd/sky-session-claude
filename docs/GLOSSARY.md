@@ -107,7 +107,7 @@ unrelated things.
 
 | Term | Meaning | Not to be confused with |
 |---|---|---|
-| **Harness** | The Claude Code process a session runs in — what has a build, a pid and a terminal. | The **harness turn** above, which is a *record* that process injects. Same tooling, different noun. |
+| **Harness** | A running Claude Code process: a build and a pid, usually a session and a terminal too. Not always — a host runs sessions rather than being one, and an SDK harness has no terminal to drive. | The **harness turn** above, which is a *record* that process injects. Same tooling, different noun. |
 | **Build** | The CLI version a harness runs, like `2.1.250`. Fixed when it launches: Claude Code updates in place and a running harness keeps the build it started with until it restarts, which is why a dozen terminals start nagging at once. |
 | **Installed build** | The newest version present under `~/.local/share/claude/versions` — what every staleness question compares against (`ClaudeInstall`). |
 | **Stale** | A live harness whose build is behind the installed one. The opposite is **current**. | Anything about the session file. A stale harness's conversation is not old, unfinished or damaged; only its code is behind. |
