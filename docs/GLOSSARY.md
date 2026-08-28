@@ -99,6 +99,41 @@ parse is set aside as `dispositions.json.corrupt` and reported — never answere
 with the legacy `abandoned.json`, which would silently revert every Done mark to
 the pre-1.9 abandon list.
 
+## Runtime
+
+Everything above is about a session file. This is about the process that writes
+one — a separate axis, and the one where a single word was quietly covering two
+unrelated things.
+
+| Term | Meaning | Not to be confused with |
+|---|---|---|
+| **Harness** | The Claude Code process a session runs in — what has a build, a pid and a terminal. | The **harness turn** above, which is a *record* that process injects. Same tooling, different noun. |
+| **Build** | The CLI version a harness runs, like `2.1.250`. Fixed when it launches: Claude Code updates in place and a running harness keeps the build it started with until it restarts, which is why a dozen terminals start nagging at once. |
+| **Installed build** | The newest version present under `~/.local/share/claude/versions` — what every staleness question compares against (`ClaudeInstall`). |
+| **Stale** | A live harness whose build is behind the installed one. The opposite is **current**. | Anything about the session file. A stale harness's conversation is not old, unfinished or damaged; only its code is behind. |
+
+Stale is a fact about a process, not about a session — which is what lets it
+apply where there is no session at all. Remote Control comes in two shapes and
+both are harnesses: a **host** (`claude rc`) is a server that spawns sessions on
+demand and has none of its own, while a **bridged session**
+(`claude --remote-control`) is one interactive session with the phone attached.
+A host ages exactly like a terminal does, and "stale host" is the right way to
+say so.
+
+Two things that follow, both easy to get backwards:
+
+- **A stale harness is invisible unless it is in the registry.** `--stale` reads
+  live sessions, and a host publishes no session of its own (see
+  `BridgePointer`), so hosts go stale unseen. The signature is on the process
+  itself: an updater renames the running binary to `claude.exe.old.<timestamp>`
+  so the new build can take the name, so any harness reporting that image has
+  been overtaken at least once (`ClaudeInstall.IsClaudeProcess`).
+- **A stale host still makes current sessions.** A spawned session takes
+  whatever build is on disk at spawn time rather than inheriting its host's, and
+  then ages on its own clock from there. So staleness never propagates
+  downwards, and a host being behind says nothing about the conversations under
+  it.
+
 ## Note on close-outs vs Status
 
 A **close-out** does not currently change Status. In practice the agent almost
