@@ -168,7 +168,9 @@ A session id can be shortened to any unique prefix, like a short commit sha — 
 Two things these verbs will not do without being told twice, because they drive real terminals:
 
 - **`restart --stale` and `close --finished` state their plan and stop.** They only act on `--yes`. Each sweep takes only the sessions where nothing can be lost — provably idle, and either stale or over — and reports each one it left with the reason, exactly as the button does.
-- **Nothing touches the session the command is running inside** without `--force`. An agent restarting its own session kills itself mid-sentence.
+- **Nothing touches the session the command is running inside** without `--force`. An agent restarting its own session kills itself mid-sentence — and for a host that reaches one level further, since quitting a host takes down the conversation the command is running in with it.
+
+`restart --stale` sweeps the `claude rc` hosts too, which is the only way they ever get updated: a host is started once and left for days, and it publishes no registry entry, so there is no version on it to compare — the signal is that an update has renamed its binary out from under it. A host has nothing of its own to lose, so what decides it is every conversation it spawned. Busy, or publishing no state at all, and the host is left alone; waiting on you or only just idle, and it is offered but never swept; serving nothing — which most hosts are, most of the time — and it is the safest thing in the sweep. It comes back on the command line it was already running, so a bare `claude rc` you started by hand does not return wearing standby's flags.
 
 Ctx% switches to a 1M budget for sessions detected on the extended context window: either a turn exceeded 200k tokens, or the session ran on the model configured with the `[1m]` suffix in `~/.claude/settings.json` (transcripts don't record the window themselves).
 

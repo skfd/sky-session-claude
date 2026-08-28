@@ -122,12 +122,14 @@ say so.
 
 Two things that follow, both easy to get backwards:
 
-- **A stale harness is invisible unless it is in the registry.** `--stale` reads
-  live sessions, and a host publishes no session of its own (see
-  `BridgePointer`), so hosts go stale unseen. The signature is on the process
-  itself: an updater renames the running binary to `claude.exe.old.<timestamp>`
-  so the new build can take the name, so any harness reporting that image has
-  been overtaken at least once (`ClaudeInstall.IsClaudeProcess`).
+- **A host is stale by its image, not by its version.** It publishes no registry
+  entry (see `BridgePointer`), so there is no build on it to compare. What says
+  so instead is the rename: an updater moves the running binary to
+  `claude.exe.old.<timestamp>` so the new build can take the name, so a harness
+  reporting that image has been overtaken at least once
+  (`ClaudeInstall.IsSuperseded`). `list --stale` still only knows about
+  sessions; `restart --stale` sweeps hosts too, judging each by the
+  conversations it is serving (`HostRestartPolicy`).
 - **A stale host still makes current sessions.** A spawned session takes
   whatever build is on disk at spawn time rather than inheriting its host's, and
   then ages on its own clock from there. So staleness never propagates

@@ -167,7 +167,7 @@ internal static class Cli
           SessionCli rename --self [name]        rename the session this is running in
           SessionCli rename <id> --ask           pay a small model to read it and name it
           SessionCli restart <id>...             restart in the terminal it already sits in
-          SessionCli restart --stale             restart every stale session that is idle
+          SessionCli restart --stale             restart every stale session and host that is idle
           SessionCli close <id>...               quit it, and close its terminal
           SessionCli close --finished            end of day: close every session that is over
           SessionCli resume <id>                 open a terminal and resume it
