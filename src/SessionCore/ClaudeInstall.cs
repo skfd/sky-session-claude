@@ -74,7 +74,25 @@ public static class ClaudeInstall
     public static bool IsClaudeProcess(string? processName) =>
         processName is not null
         && (processName.Equals("claude", StringComparison.OrdinalIgnoreCase)
-            || processName.StartsWith("claude.exe.old.", StringComparison.OrdinalIgnoreCase));
+            || IsSuperseded(processName));
+
+    /// <summary>
+    /// True when an update has renamed this process's image out from under it — the only
+    /// staleness signal there is for a harness that publishes no version, which is what a
+    /// <c>claude rc</c> host is.
+    ///
+    /// The rename can only have happened because a newer build arrived after the process
+    /// started, so superseded means behind. The converse does not hold — a build installed
+    /// some other way leaves the name alone — so this under-reports rather than guesses,
+    /// the same way <see cref="IsStale"/> treats a version it cannot parse.
+    ///
+    /// Read it from <see cref="System.Diagnostics.Process.ProcessName"/>, which reports the
+    /// image as it now stands on disk. WMI answers <c>claude.exe</c> for these same processes
+    /// and would call every host current.
+    /// </summary>
+    public static bool IsSuperseded(string? processName) =>
+        processName is not null
+        && processName.StartsWith("claude.exe.old.", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Dotted digits only; anything else is not a version we can reason about.</summary>
     private static int[]? Parse(string? text)

@@ -306,6 +306,10 @@ internal static class Commands
         List<(LiveSession Live, SessionStatus? Tail, string Name, NameInputs Inputs)> targets;
         List<ActionItem> skipped = new();
 
+        // Hosts join the sweep but not the list above: a host is not a session, has no id and
+        // no name to come back under, and what puts it back is its own command line.
+        List<RemoteControlHost> hostTargets = new();
+
         var names = new NameStore();
         var liveNames = SessionNaming.LiveNamesOf(live);
 
@@ -340,6 +344,41 @@ internal static class Commands
                     info is not null
                         ? SessionNaming.InputsFor(info, session, liveNames)
                         : SessionNaming.InputsFor(session, liveNames)));
+            }
+
+            // Now the hosts. They go stale the same way and are the ones most likely to be
+            // far behind — a host is started once and then sits there for days — but they can
+            // never say so themselves: no registry entry means no build to compare, so the
+            // process image is the signal (ClaudeInstall.IsSuperseded). They come out of the
+            // same scan the sessions did, because that is what knows the real folder each one
+            // is serving.
+            var tree = ProcessTree.Snapshot();
+            var running = live.Values.SelectMany(v => v).ToList();
+
+            foreach (var host in RemoteControlHosts.FromScan(infos.Values))
+            {
+                if (!host.Stale) continue;
+
+                // What a host is serving, one level down: the sessions it spawned are its
+                // children in the process tree, and they are where all the state lives.
+                var serving = running
+                    .Where(s => tree.Parents.TryGetValue(s.Pid, out var parent) && parent == host.Pid)
+                    .Select(s => new HostRestartPolicy.Served(s, infos.GetValueOrDefault(s.SessionId)?.Status))
+                    .ToList();
+
+                // The self-guard reaches one level further than it does for sessions: quitting
+                // a host takes down the conversation this command is running in with it.
+                if (!args.Has("force") && serving.Any(s => IsSelf(s.Live.SessionId)))
+                {
+                    skipped.Add(HostSkip(host, "it is serving the session this command is running in"));
+                    continue;
+                }
+
+                var hostVerdict = HostRestartPolicy.Judge(
+                    host, serving, RemoteControlHosts.ConversationsUnder(host.Pid, tree.Children), DateTime.Now);
+
+                if (!hostVerdict.CanSweep) skipped.Add(HostSkip(host, hostVerdict.Reason));
+                else hostTargets.Add(host);
             }
 
             // The sweep drives terminals nobody is looking at, so it states its plan and
@@ -414,20 +453,39 @@ internal static class Commands
             });
         }
 
+        foreach (var host in hostTargets)
+        {
+            if (dry)
+            {
+                items.Add(HostItem(host, true,
+                    $"would restart its host: {LaunchLine.HostAgain(host.Folder, host.CommandLine)}"));
+                continue;
+            }
+
+            var result = HostRestarter.RestartAsync(host).GetAwaiter().GetResult();
+            if (result.Ok) done++;
+            items.Add(HostItem(host, result.Ok, $"its host: {result.Message}"));
+        }
+
         items.AddRange(skipped);
 
+        int attempted = targets.Count + hostTargets.Count;
+        var what = hostTargets.Count > 0
+            ? $"{targets.Count} session(s) and {hostTargets.Count} Remote Control host(s)"
+            : $"{targets.Count} session(s)";
+
         var message = dry
-            ? $"Would restart {targets.Count} session(s)"
+            ? $"Would restart {what}"
                 + (skipped.Count > 0 ? $"; skipping {skipped.Count}" : "")
                 + (args.Has("stale") && !args.Has("yes") ? ". Re-run with --yes to do it." : ".")
-            : $"Restarted {done} of {targets.Count}"
+            : $"Restarted {done} of {attempted}"
                 + (skipped.Count > 0 ? $"; skipped {skipped.Count}" : "") + ".";
 
         // Naming a session and getting nothing is a failure the caller should see in the
         // exit code. A sweep skipping some is not — reporting what it left is the job.
         bool ok = dry
-            || (args.Has("stale") ? done == targets.Count
-                                  : done == targets.Count && skipped.Count == 0);
+            || (args.Has("stale") ? done == attempted
+                                  : done == attempted && skipped.Count == 0);
 
         return Cli.EmitResult(new ActionResult
         {
@@ -608,6 +666,22 @@ internal static class Commands
         Ok = false,
         Message = $"skipped — {why}",
     };
+
+    /// <summary>
+    /// A host's row. No id, the same way <c>standby</c>'s rows have none — a host is not a
+    /// session — so the folder is what identifies it.
+    /// </summary>
+    private static ActionItem HostItem(RemoteControlHost host, bool ok, string message) => new()
+    {
+        SessionId = "",
+        Name = host.Project,
+        Folder = host.Folder,
+        Ok = ok,
+        Message = message,
+    };
+
+    private static ActionItem HostSkip(RemoteControlHost host, string why) =>
+        HostItem(host, false, $"skipped its host — {why}");
 
     // --- resuming -----------------------------------------------------------
 

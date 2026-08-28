@@ -68,6 +68,43 @@ public sealed record BridgePointer
 }
 
 /// <summary>
+/// A live host, with the facts a sweep needs on top of the pointer that found it.
+///
+/// A host publishes no registry entry, so none of what a session hands over for free — its
+/// build, its folder, whether it is mid-turn — is there to read. This is the substitute:
+/// the folder comes from the scan that led here, and the rest is read off the process.
+/// </summary>
+public sealed record RemoteControlHost
+{
+    public required BridgePointer Pointer { get; init; }
+
+    /// <summary>The repo it was started in — from the scan, never slugged back out of the path.</summary>
+    public required string Folder { get; init; }
+
+    /// <summary>The transcript folder its pointer sits in.</summary>
+    public required string ProjectDir { get; init; }
+
+    /// <summary>
+    /// The process image as it now stands, which is the whole staleness signal: an update
+    /// renames it (see <see cref="ClaudeInstall.IsSuperseded"/>).
+    /// </summary>
+    public required string ProcessName { get; init; }
+
+    /// <summary>What it was started with, so a restart can put back the same host.</summary>
+    public string? CommandLine { get; init; }
+
+    public int Pid => Pointer.Pid;
+
+    /// <summary>The bridge session the phone addresses — the closest thing a host has to an id.</summary>
+    public string BridgeSessionId => Pointer.SessionId;
+
+    public string Project => Standby.ProjectOf(Folder);
+
+    /// <summary>Running a build that has since been replaced.</summary>
+    public bool Stale => ClaudeInstall.IsSuperseded(ProcessName);
+}
+
+/// <summary>
 /// Which folders have a <c>claude rc</c> host answering for them right now.
 /// </summary>
 public static class RemoteControlHosts
@@ -92,13 +129,86 @@ public static class RemoteControlHosts
         return (isLiveHost ?? IsLiveClaude)(pointer.Pid) ? pointer : null;
     }
 
-    private static bool IsLiveClaude(int pid)
+    private static bool IsLiveClaude(int pid) => ClaudeInstall.IsClaudeProcess(NameOf(pid));
+
+    /// <summary>
+    /// The image name of a running process, or null when it is gone or not ours to look at.
+    /// <see cref="Process.ProcessName"/> rather than WMI on purpose — see
+    /// <see cref="ClaudeInstall.IsSuperseded"/>.
+    /// </summary>
+    public static string? NameOf(int pid)
     {
         try
         {
             using var p = Process.GetProcessById(pid);
-            return ClaudeInstall.IsClaudeProcess(p.ProcessName);
+            return p.ProcessName;
         }
-        catch { return false; }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// How many claude processes sit directly under a host — its conversations, as the
+    /// process tree sees them.
+    ///
+    /// Counted here rather than from the registry because the difference between the two
+    /// counts is the whole point: a conversation that has spawned but not yet published a
+    /// registry entry shows up in one and not the other, and that gap is what
+    /// <see cref="HostRestartPolicy"/> refuses to sweep through.
+    ///
+    /// Image names in a tree snapshot are the file on disk (<c>claude.exe</c>), not
+    /// <see cref="Process.ProcessName"/>'s rename-aware form, so the test is its own.
+    /// </summary>
+    public static int ConversationsUnder(int pid, IReadOnlyDictionary<int, List<ProcRef>> children) =>
+        children.TryGetValue(pid, out var kids)
+            ? kids.Count(kid => IsClaudeImage(kid.Name))
+            : 0;
+
+    private static bool IsClaudeImage(string? name) =>
+        name is not null
+        && (name.Equals("claude.exe", StringComparison.OrdinalIgnoreCase)
+            || ClaudeInstall.IsSuperseded(name));
+
+    /// <summary>
+    /// Every live host behind a scan, one per folder.
+    ///
+    /// The folder is the reason this takes sessions rather than walking
+    /// <c>~/.claude/projects</c>: a transcript folder's name is a slug, and
+    /// <c>skyfallsdown-com</c> cannot be turned back into <c>skyfallsdown.com</c>. The scan
+    /// already carries both halves — where the session ran, and which folder its file sits
+    /// in — so a host found this way always knows the real path to relaunch in.
+    ///
+    /// A folder whose host is not running is not here at all; the pointer outlives the
+    /// process that wrote it, and <see cref="ServingFrom"/> is the check that separates them.
+    /// </summary>
+    public static IEnumerable<RemoteControlHost> FromScan(
+        IEnumerable<SessionInfo> sessions,
+        Func<int, string?>? processName = null,
+        Func<int, string?>? commandLine = null)
+    {
+        var name = processName ?? NameOf;
+        var command = commandLine ?? ProcessCommandLine.Of;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var session in sessions)
+        {
+            if (session.RealCwd is not { Length: > 0 } folder) continue;
+            if (string.IsNullOrEmpty(session.FilePath)) continue;
+            if (!seen.Add(folder.Replace('/', '\\').TrimEnd('\\'))) continue;
+
+            var projectDir = Path.GetDirectoryName(session.FilePath) ?? "";
+            if (BridgePointer.Read(projectDir) is not { } pointer) continue;
+
+            var image = name(pointer.Pid);
+            if (!ClaudeInstall.IsClaudeProcess(image)) continue;   // the pointer outlived its host
+
+            yield return new RemoteControlHost
+            {
+                Pointer = pointer,
+                Folder = folder,
+                ProjectDir = projectDir,
+                ProcessName = image!,
+                CommandLine = command(pointer.Pid),
+            };
+        }
     }
 }

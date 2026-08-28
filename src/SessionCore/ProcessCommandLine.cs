@@ -69,6 +69,31 @@ public static class ProcessCommandLine
     private static bool IsIdChar(char c) => char.IsLetterOrDigit(c) || c == '-';
 
     /// <summary>
+    /// Everything after the executable on a command line — the flags a process was started
+    /// with, ready to be typed after a bare <c>claude</c>.
+    ///
+    /// Windows puts the image path first, quoted when it contains spaces and bare when it
+    /// does not, so the only thing this has to get right is where that first token ends.
+    /// Null when there is nothing to read; empty when the process was started with no
+    /// arguments at all, which is a different answer and one a caller acts on differently.
+    /// </summary>
+    public static string? ArgumentsOf(string? commandLine)
+    {
+        if (string.IsNullOrWhiteSpace(commandLine)) return null;
+
+        var text = commandLine.TrimStart();
+
+        if (text[0] == '"')
+        {
+            int close = text.IndexOf('"', 1);
+            return close < 0 ? null : text[(close + 1)..].Trim();
+        }
+
+        int space = text.IndexOf(' ');
+        return space < 0 ? "" : text[(space + 1)..].Trim();
+    }
+
+    /// <summary>
     /// Every running claude process whose command line resumes <paramref name="sessionId"/>,
     /// oldest first — so when more than one is holding the session, the one that has held it
     /// longest is dealt with first.
