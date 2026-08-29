@@ -108,6 +108,14 @@ not hold them.
 ### 4. The convention, and measuring it — half done
 
 The line is in `~/.claude/CLAUDE.md`, under *What happens next here*, carrying the full path.
+
+**It points at `dist/SessionCli.exe`, not the installed CLI, and that is deliberate.** The
+verb ships in no release yet, so the installed binary under `%LOCALAPPDATA%` answers
+`Unknown command: state` and every agent that follows the line fails. `dist` is refreshed by
+`publish.ps1 -SkipInstall` (or a `dotnet publish` of the CLI project alone), which never
+touches the installed app or a running Sky window — so the convention can be iterated on
+without a release. **Move the line to the installed path at the next release**; the CLAUDE.md
+entry says so itself, which is the copy that will actually be in front of whoever does it.
 **The measurement is the next thing to do, and nothing else should start before it.**
 Measure: what fraction of sessions in a week actually carry a live declaration. If it is low, the `Stop` hook is next — it cannot know the *state*, but it can
 write `undeclared` with the turn uuid, which distinguishes "this agent never reports" from
