@@ -8,11 +8,12 @@
     cannot enumerate Claude Code sessions on its own.
 
     Outbound (kk-sessions-dump, daily) runs SessionCli.exe --json on the host and drops the result
-    next to this script, where the brief CAN read it. It writes two files,
-    because the brief asks two different questions:
+    next to this script, where the brief CAN read it. It writes three files,
+    because the brief asks three different questions:
 
       sessions.json             a recency window, for "what happened yesterday".
       sessions-unfinished.json  every session still on the hook, however old.
+      projects.json             every project folder, rolled up to one state each.
 
     The second file exists because a recency cap silently loses work. A single
     --top 60 dump reached back only 1.2 days at current volume, so a session
@@ -20,6 +21,15 @@
     tell "nothing happened" from "I cannot see it". --unfinished is unbounded in
     time and still small (17 sessions / 28 KB over 52 days), so nothing you have
     left open can age out of view.
+
+    The third answers the question a level up: not "what is this conversation
+    doing" but "what is this whole project waiting on" (see docs/PROJECT-STATE.md).
+    Every project, not only the ones with something outstanding, because "quiet"
+    is an answer and a project going quiet is worth seeing. It is a separate file
+    rather than a fourth array in sessions.json for the reason the whole dump is
+    two files already: --projects answers instead of the sessions, so folding it
+    into the recency dump would take the sessions away from the sections that
+    read them.
 
     Inbound (kk-sessions-inbox, every few minutes): runs SessionCli.exe inbox on
     commands.json in the same folder, so what you decided in the brief — resume that
@@ -61,6 +71,7 @@ $here  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $exe   = Join-Path $here 'dist\SessionCli.exe'
 $out   = Join-Path $here 'sessions.json'
 $open  = Join-Path $here 'sessions-unfinished.json'
+$proj  = Join-Path $here 'projects.json'
 $queue = Join-Path $here 'commands.json'
 
 if (-not (Test-Path $exe)) { throw "Cannot find $exe - run .\publish.ps1 first" }
@@ -79,9 +90,15 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnB
 $argsRecent     = '--json "{0}" --top 150' -f $out
 $argsUnfinished = '--json "{0}" --unfinished' -f $open
 
+# No --top here, and the verb refuses one: a roll-up folded over part of a project
+# reports an answer as the project's while being wrong about it. Every project, every
+# session in it -- which costs about 40 KB against the recency dump's 250 KB.
+$argsProjects   = '--json "{0}" --projects' -f $proj
+
 $action    = @(
     New-ScheduledTaskAction -Execute $exe -Argument $argsRecent
     New-ScheduledTaskAction -Execute $exe -Argument $argsUnfinished
+    New-ScheduledTaskAction -Execute $exe -Argument $argsProjects
 )
 $trigger   = New-ScheduledTaskTrigger -Daily -At $Time
 $settings  = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries `
@@ -89,12 +106,13 @@ $settings  = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOn
 
 Register-ScheduledTask -TaskName $TaskName `
                        -Action $action -Trigger $trigger -Settings $settings `
-                       -Description 'Exports Claude Code session state to sessions.json and sessions-unfinished.json so the morning brief can read it.' `
+                       -Description 'Exports Claude Code session state to sessions.json, sessions-unfinished.json and projects.json so the morning brief can read it.' `
                        -Force | Out-Null
 
 Write-Host "Registered '$TaskName' — daily at $Time" -ForegroundColor Green
 Write-Host "Output: $out" -ForegroundColor DarkGray
 Write-Host "        $open" -ForegroundColor DarkGray
+Write-Host "        $proj" -ForegroundColor DarkGray
 
 # --- inbound: what the brief decided -----------------------------------------
 
