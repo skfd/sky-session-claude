@@ -80,31 +80,52 @@ Which compose into the states:
 | agent | — | — | **runnable** | wake it and walk away |
 | operator | yes | — | **blocked** | answer, and it keeps going |
 | operator / nobody | no | yes | **needs-read** | read it; then it is over |
-| nobody | no | no | **exhausted** | nothing here |
+| nobody | no | no | **exhausted** | nothing here — and an agent said so |
 | — | — | — | **broken** | revive; no decision to make |
+| — | — | — | **quiet** | nothing here — nothing was pending to begin with |
 | — | — | — | **abandoned** | the operator said no |
-| — | — | — | **undeclared** | nobody said, and the fold cannot tell |
+| — | — | — | **undeclared** | something is unfinished and nobody said what it needs |
 
-`broken` and `abandoned` are purely derived — the first from `error`/`limit`/`cut-off`, the
-second from the existing disposition. They are in the same list because they are what the
-operator sees, not because they arrive the same way.
+`broken`, `quiet` and `abandoned` are purely derived — from `error`/`limit`/`cut-off`, from
+every session being Settled, and from the existing disposition. They are in the same list
+because they are what the operator sees, not because they arrive the same way.
 
-**`undeclared` is a state, not a missing value.** This is the decision most likely to be
-argued away later and it should not be. A project where no agent ever reported and a project
-reported as `exhausted` are different situations, and collapsing them means silence reads as
-"nothing to do here" — the exact direction in which a mistake costs you work you forgot
-about. Show it as its own thing.
+**The cell that looks missing is the important one.** Ball=`operator`, Continues=`no`,
+Unread=`no` — "want me to push?" with nothing following and nothing worth reading — does not
+appear because a declaration of `exhausted` is precisely the assertion that the ball is
+`nobody`, whatever the file's last turn says. Law 1 below keeps this honest: the session's
+Status stays `waiting-you` and its card still says so; only the project's state moves. That
+one transition is most of what this whole document is for.
+
+**`quiet` and `exhausted` are not the same answer.** `quiet` is derived — every session in
+the folder is Settled, so nothing is pending and nothing was ever declared. `exhausted` is
+declared — an agent looked at unfinished-looking work and said it is over. They land the
+operator in the same place and arrive by opposite routes, and the day one of them is wrong
+you will want to know which one you were reading.
+
+**`undeclared` is a state, not a missing value.** It is the project with something unfinished
+by Status and no declaration to explain it — the fold knows the ball is not `nobody` and
+cannot say more. A project nobody ever reported on and a project reported as `exhausted` are
+different situations, and collapsing them means silence reads as "nothing to do here" — the
+exact direction in which a mistake costs you work you forgot about. Show it as its own thing.
 
 ### Fold order
 
 A project is as urgent as its most urgent session:
 
-`broken` > `blocked` > `needs-read` > `runnable` > `undeclared` > `exhausted`
+`broken` > `blocked` > `needs-read` > `runnable` > `undeclared` > `exhausted` / `quiet`
+
+The last two are equally not-urgent and are distinguished only for honesty, per above.
 
 `blocked` under `broken` is arguable — only one of the two needs a human, which is a fair
 reason to put `blocked` on top instead. It is ranked this way because a broken session is
 cheap to fix and blocks everything behind it, while a question can wait for the operator to
 be at the desk. Revisit it once there is something to look at.
+
+Dispositions enter the fold the way they already enter the title's open count: an **Abandoned**
+session is skipped entirely — it is unfinished and not coming back, so it must never be what
+makes a project read `undeclared` — and a **Done** session folds as Settled, because Settled,
+not `complete`, is what "nothing left to do" means here.
 
 ## How an agent declares it
 
@@ -199,7 +220,7 @@ elsewhere:
 ## Build order (sketch)
 
 1. The derived fold and `list --projects`, declarations absent — every project reads
-   `runnable` / `blocked` / `broken` / `undeclared` / quiet. Pure, like `RestartPolicy` and
+   `runnable` / `blocked` / `broken` / `undeclared` / `quiet`. Pure, like `RestartPolicy` and
    `ClosePolicy`: caller supplies the scan, gets back the roll-up.
 2. `SessionCli state` and the sidecar, with both laws and the expiry uuid.
 3. The CLAUDE.md convention; measure how many sessions actually report.
