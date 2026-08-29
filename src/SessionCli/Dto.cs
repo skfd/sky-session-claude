@@ -22,8 +22,87 @@ internal sealed class ExportDto
     /// </summary>
     public List<HostDto>? Hosts { get; init; }
 
+    /// <summary>
+    /// One row per project folder, when <c>--projects</c> asked the question a level up.
+    /// It answers <i>instead of</i> the sessions rather than alongside them — the roll-up is
+    /// the whole point of asking, and a phone brief that wants it does not want two hundred
+    /// session rows underneath. <see cref="ProjectDto.SessionIds"/> is the way back down.
+    /// </summary>
+    public List<ProjectDto>? Projects { get; init; }
+
     /// <summary>Only present when something went wrong that the caller should hear about.</summary>
     public string? Warning { get; init; }
+}
+
+/// <summary>
+/// A project as a row: what the whole folder is waiting on, who said so, and what is running
+/// there. The derived part comes from <see cref="ProjectFold"/> and is pure; the runtime facts
+/// are attached here, where there is a registry to ask.
+/// </summary>
+internal sealed class ProjectDto
+{
+    public required string Project { get; init; }
+    public required string Folder { get; init; }
+
+    /// <summary>
+    /// "broken", "blocked", "needs-read", "runnable", "undeclared", "exhausted", "quiet" or
+    /// "abandoned" — see ProjectFold. Ordered most urgent first in this array.
+    /// </summary>
+    public required string State { get; init; }
+
+    /// <summary>The note behind the state, when a declaration decided it rather than the fold.</summary>
+    public required string? Note { get; init; }
+
+    /// <summary>The session the state came from, so a caller can go and look at it.</summary>
+    public required string? StateFrom { get; init; }
+
+    /// <summary>Sessions that counted. Crossed-out ones are not among them.</summary>
+    public required int Sessions { get; init; }
+
+    /// <summary>How many of those are not settled.</summary>
+    public required int Unfinished { get; init; }
+
+    /// <summary>How many were crossed out and skipped.</summary>
+    public required int Abandoned { get; init; }
+
+    /// <summary>
+    /// How many carry a declaration that still stands. Zero on a project full of unfinished
+    /// work is the measurement this feature exists to take: nobody there is reporting.
+    /// </summary>
+    public required int Declared { get; init; }
+
+    /// <summary>How many of its sessions are open in a terminal right now.</summary>
+    public required int Live { get; init; }
+
+    /// <summary>How many of those are behind the installed build.</summary>
+    public required int Stale { get; init; }
+
+    /// <summary>Whether a <c>claude rc</c> host is serving this folder — is it reachable by phone.</summary>
+    public required bool Host { get; init; }
+
+    /// <summary>
+    /// Every session here, newest first — the key back to the rows this listing replaced.
+    /// Crossed-out sessions are included: they are part of what is here, they just did not
+    /// decide anything.
+    /// </summary>
+    public required IReadOnlyList<string> SessionIds { get; init; }
+
+    public static ProjectDto From(ProjectRoll roll, int live, int stale, bool host) => new()
+    {
+        Project = roll.Project,
+        Folder = roll.Folder,
+        State = ProjectFold.ToWire(roll.State),
+        Note = roll.Note,
+        StateFrom = roll.StateFrom,
+        Sessions = roll.Sessions,
+        Unfinished = roll.Unfinished,
+        Abandoned = roll.Abandoned,
+        Declared = roll.Declared,
+        Live = live,
+        Stale = stale,
+        Host = host,
+        SessionIds = roll.SessionIds,
+    };
 }
 
 /// <summary>
@@ -215,6 +294,13 @@ internal sealed class ActionResult
 
     /// <summary>What `peek` read off a terminal; null for every other verb.</summary>
     public string? Screen { get; init; }
+
+    /// <summary>
+    /// Something the caller should hear about that is not the verb failing — a sidecar that
+    /// could not be read, say. Ok stays true: the action was taken, and this is the news that
+    /// it may not have been saved.
+    /// </summary>
+    public string? Warning { get; init; }
 }
 
 internal sealed class ActionItem

@@ -22,7 +22,8 @@ internal static class Commands
     public static int List(Args args)
     {
         args.RejectUnknown("json", "top", "newest-per-project", "context-window",
-            "status", "project", "search", "disposition", "unfinished", "live", "stale", "hosts", "limit");
+            "status", "project", "search", "disposition", "unfinished", "live", "stale", "hosts",
+            "limit", "projects");
 
         var scanner = RequireScanner();
         var options = new ScanOptions
@@ -40,7 +41,13 @@ internal static class Commands
 
         var scanned = scanner.Scan(options).ToList();
 
-        var rows = scanned
+        // Asked instead of the sessions, not alongside them: the roll-up is the whole point
+        // of asking a question a level up, and the way back down is each row's SessionIds.
+        // The fold runs over the whole scan whatever else was typed — a project state folded
+        // over a filtered subset is not a smaller answer, it is a wrong one.
+        var projects = args.Has("projects") ? ProjectRows(scanned, live, installed, args) : null;
+
+        var rows = projects is not null ? new List<SessionDto>() : scanned
             .Select(info => SessionDto.From(
                 info,
                 store.Get(info.SessionId),
@@ -69,14 +76,78 @@ internal static class Commands
             Count = rows.Count,
             Sessions = rows,
             Hosts = hosts,
+            Projects = projects,
             Warning = store.LoadWarning,
         }, path);
 
         if (path is not null)
-            Console.Error.WriteLine($"Wrote {rows.Count} session(s)"
+            Console.Error.WriteLine(
+                (projects is not null ? $"Wrote {projects.Count} project(s)" : $"Wrote {rows.Count} session(s)")
                 + (hosts is { Count: > 0 } ? $" and {hosts.Count} host(s)" : "") + $" to {path}");
         return 0;
     }
+
+    /// <summary>
+    /// The projects, rolled up — what each whole folder is waiting on rather than what each
+    /// conversation in it is doing.
+    ///
+    /// The fold itself is pure and lives in <see cref="ProjectFold"/>; what happens here is
+    /// everything it deliberately cannot do — read the operator's marks, read what agents
+    /// have declared, and ask the registry what is running.
+    ///
+    /// Only the filters that are questions about a name narrow these, as with the hosts:
+    /// <c>--project</c> and <c>--search</c>. The session filters do not, and must not — a
+    /// project folded over the sessions that survived <c>--status waiting-you</c> would report
+    /// on a folder that does not exist. <c>--unfinished</c> is the exception, because it means
+    /// the same thing one level up: drop the projects with nothing outstanding.
+    /// </summary>
+    private static List<ProjectDto> ProjectRows(
+        List<SessionInfo> scanned, Dictionary<string, List<LiveSession>> live, string? installed, Args args)
+    {
+        var marks = new DispositionStore();
+        var claims = new DeclarationStore();
+
+        var hosted = new HashSet<string>(
+            RemoteControlHosts.FromScan(scanned).Select(h => FolderKey(h.Folder)),
+            StringComparer.OrdinalIgnoreCase);
+
+        // Mid-turn right now, which no session file can say: a turn in flight and a session
+        // that died mid-tool write the same last record.
+        bool Working(string id) =>
+            live.TryGetValue(id, out var running)
+            && running.Any(r => string.Equals(r.Status, "busy", StringComparison.OrdinalIgnoreCase));
+
+        var rows = new List<ProjectDto>();
+        foreach (var roll in ProjectFold.Roll(scanned, marks.Get, claims.Get, Working))
+        {
+            if (args.Value("project") is { } project
+                && !roll.Project.Contains(project, StringComparison.OrdinalIgnoreCase)) continue;
+
+            if (args.Value("search") is { } search
+                && !roll.Project.Contains(search, StringComparison.OrdinalIgnoreCase)
+                && !roll.Folder.Contains(search, StringComparison.OrdinalIgnoreCase)) continue;
+
+            // "Still on the hook", one level up. A project of nothing but crosses is off it
+            // for the same reason an abandoned session is: the operator already said no.
+            if (args.Has("unfinished")
+                && roll.State is ProjectState.Quiet or ProjectState.Abandoned) continue;
+
+            var running = roll.SessionIds
+                .SelectMany(id => live.TryGetValue(id, out var l) ? l : [])
+                .ToList();
+
+            rows.Add(ProjectDto.From(
+                roll,
+                live: running.Count,
+                stale: running.Count(r => ClaudeInstall.IsStale(r.Version, installed)),
+                host: hosted.Contains(FolderKey(roll.Folder))));
+        }
+
+        return rows;
+    }
+
+    /// <summary>How two spellings of the same folder are told to be the same folder.</summary>
+    private static string FolderKey(string folder) => folder.Replace('/', '\\').TrimEnd('\\');
 
     /// <summary>
     /// The live hosts, judged the same way the sweep judges them, so a listing and a
@@ -897,6 +968,147 @@ internal static class Commands
             Action = "resume",
             Message = result.Ok ? result.Message : $"Could not force-resume \"{label}\": {result.Message}.",
         });
+    }
+
+
+    // --- declaring ----------------------------------------------------------
+
+    /// <summary>
+    /// Say what happens next here — the one thing the session file cannot be read for.
+    ///
+    /// The classifier answers "what did this conversation end on". It cannot answer "is there
+    /// work left", "does anything follow once you reply" or "is the last message worth
+    /// reading", because all three are claims about the future and the last turn only
+    /// describes the past. The failure is easy to name: an agent lands the change and asks
+    /// "want me to push?", so the file ends on a question and reads waiting-you on a session
+    /// whose work is done. No sharpening of the classifier fixes that. Someone has to say so,
+    /// and here the someone who knows is the agent.
+    ///
+    /// Out of band rather than as a trailer on the final message, for the reason `done`
+    /// already is: prose is fragile to parse, a trailer lives in the transcript forever and
+    /// is copied into every fork of it, and it would be written by exactly the actor whose
+    /// closing prose already misleads the classifier.
+    ///
+    /// Two laws hold, and both are elsewhere: a declaration never changes Status — that is
+    /// <see cref="ProjectFold"/>, which moves the project and leaves the card alone — and a
+    /// declaration expires when the operator says something new, which is why this records
+    /// the session's last operator prompt and why the session file has to be read to write
+    /// one at all.
+    ///
+    /// Like `rename`, this acts on the session it is running inside without being argued
+    /// with. A declaration is a session reporting on itself; `--self` is the ordinary case
+    /// and there is nothing here to lose.
+    /// </summary>
+    public static int Declare(Args args)
+    {
+        args.RejectUnknown("self", "note", "dry-run");
+
+        var (word, target) = DeclareTarget(args);
+        bool clearing = word is "none" or "clear";
+        var state = ProjectFold.FromWire(word);
+
+        if (!clearing && state == Declared.None)
+            throw new UsageException(
+                $"'{word}' is not a state a session can declare. "
+                + $"Try one of: {string.Join(", ", ProjectFold.Declarable)} — or 'none' to take it back. "
+                + "broken, quiet, undeclared and abandoned are worked out rather than claimed.");
+
+        var note = args.Value("note");
+        if (!clearing && state == Declared.Blocked && string.IsNullOrWhiteSpace(note))
+            throw new UsageException(
+                "'state blocked' needs --note naming what it is blocked on. "
+                + "A blocked state without a named blocker rots, and the note is the one line "
+                + "the operator reads on the card.");
+
+        // The file has to be read even to write a claim about it: the anchor a declaration
+        // expires against is the session's last operator prompt, and only the transcript
+        // knows it. Reading it also resolves a prefix into a whole id, so the store is never
+        // keyed by something that could match two sessions later.
+        var scanner = RequireScanner();
+        var file = Resolve(scanner, target);
+        var info = scanner.BuildRow(file, SessionFileParser.DefaultContextWindow);
+
+        var store = new DeclarationStore();
+        var claim = new Declaration
+        {
+            State = state,
+            Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
+            AtTurn = info.LastPromptUuid,
+            At = DateTimeOffset.Now,
+        };
+
+        var name = info.Title ?? info.SessionId;
+        if (args.Has("dry-run"))
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = true,
+                Action = "state",
+                Message = clearing
+                    ? $"would take back what was declared about \"{name}\"."
+                    : $"would declare \"{name}\" {ProjectFold.ToWire(state)}{Because(claim)}.",
+            });
+
+        if (clearing) store.Clear(info.SessionId);
+        else store.Set(info.SessionId, claim);
+
+        return Cli.EmitResult(new ActionResult
+        {
+            Ok = true,
+            Action = "state",
+            Message = clearing
+                ? $"took back what was declared about \"{name}\"."
+                : $"declared \"{name}\" {ProjectFold.ToWire(state)}{Because(claim)}."
+                  + (claim.AtTurn is null
+                      ? " Nothing has prompted this session, so the claim stands until one does."
+                      : " It expires the next time you say something here."),
+            Items =
+            [
+                new ActionItem
+                {
+                    SessionId = info.SessionId,
+                    Ok = true,
+                    Name = name,
+                    Message = clearing ? "none" : ProjectFold.ToWire(state),
+                    Folder = info.RealCwd,
+                },
+            ],
+            Warning = store.LoadWarning,
+        });
+    }
+
+    private static string Because(Declaration claim) =>
+        claim.Note is { Length: > 0 } note ? $" — {note}" : "";
+
+    /// <summary>
+    /// Which state, about which session. `--self` supplies the session, as it does for
+    /// `rename`, and for the same reason: this is a session speaking about itself.
+    /// </summary>
+    private static (string Word, string Target) DeclareTarget(Args args)
+    {
+        if (args.Has("self"))
+        {
+            var self = Environment.GetEnvironmentVariable("CLAUDE_CODE_SESSION_ID");
+            if (string.IsNullOrEmpty(self))
+                throw new UsageException(
+                    "--self needs CLAUDE_CODE_SESSION_ID, which Claude Code exports to every process "
+                    + "it launches. This does not look like one of them.");
+
+            return args.Positional.Count == 1
+                ? (args.Positional[0], self)
+                : throw new UsageException(
+                    $"'state --self' takes one state: {string.Join(", ", ProjectFold.Declarable)}.");
+        }
+
+        return args.Positional.Count switch
+        {
+            2 => (args.Positional[0], args.Positional[1]),
+            1 => throw new UsageException(
+                "'state' needs a session id, or --self to mean the one this is running in."),
+            0 => throw new UsageException(
+                $"'state' needs a state: {string.Join(", ", ProjectFold.Declarable)}."),
+            _ => throw new UsageException(
+                "'state' takes a state and one session id. Quote a note with spaces after --note."),
+        };
     }
 
 

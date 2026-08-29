@@ -24,7 +24,7 @@ internal sealed class Args
     /// </summary>
     private static readonly HashSet<string> Switches = new(StringComparer.OrdinalIgnoreCase)
     {
-        "newest-per-project", "unfinished", "live", "stale", "hosts",
+        "newest-per-project", "unfinished", "live", "stale", "hosts", "projects",
         "tip", "resume", "yes", "force", "dry-run", "self", "ask",
         "finished", "keep-terminal", "remote-control", "rc", "done",
     };
@@ -160,6 +160,17 @@ internal static class Cli
           SessionCli abandon <id>...          cross it out; stays honestly unfinished
           SessionCli restore <id>...          clear that cross
 
+        Declaring          (the session's own claim about what happens next, not the file's)
+          SessionCli state <s> --self         say it from inside the session it is about
+          SessionCli state <s> <id>           say it about another session
+            runnable    work is queued and needs no decision -- wake it, walk away
+            blocked     held by you, and work follows once you answer (--note required)
+            needs-read  over, but there is a report here worth your eyes
+            exhausted   over, and there is nothing here -- however the file ends
+            none        take back what was declared
+          Never changes the session's Status; it moves what the project reads as. Expires
+          the next time you prompt that session, so re-declare before you stop.
+
         Acting
           SessionCli fork <id> --at-prompt <n>   branch from before prompt n (no terminal)
           SessionCli fork <id> --tip             branch at the tip, in a new terminal
@@ -203,6 +214,10 @@ internal static class Cli
           --top <n>             cap how many session files are scanned (default: all)
           --limit <n>           cap how many rows come back after filtering
           --newest-per-project  one session per project
+          --projects            one row per project folder -- what each whole folder is
+                                waiting on -- instead of the session rows; each carries
+                                its session ids. --project, --search and --unfinished
+                                narrow these too; the session-only filters do not
           --context-window <n>  token budget for Ctx% (default 200000)
           --json <path>         write to a file instead of stdout
 
@@ -220,7 +235,9 @@ internal static class Cli
           --trust      on `new`: wait for the trust prompt in that folder and accept it
           --yes        actually do it; the sweeps only report their plan without it
           --force      act on the session this command is running inside (refused otherwise)
-          --self       on `rename`: the session this command is running in
+          --self       on `rename` and `state`: the session this command is running in
+          --note <t>   on `state`: the one line shown on the card -- what is queued, or
+                       who the blocker is. Required for `blocked`, which rots without it
           --ask        on `rename`: read the session with `claude -p` when nothing free
                        can name it (~10s and some rate limit; refused when a free
                        source would do)
@@ -263,6 +280,7 @@ internal static class Cli
                 "restore" => Commands.Mark(rest, SessionCore.Disposition.None),
                 "fork" => Commands.Fork(rest),
                 "rename" => Commands.Rename(rest),
+                "state" => Commands.Declare(rest),
                 "restart" => Commands.Restart(rest),
                 "close" => Commands.Close(rest),
                 "resume" => Commands.Resume(rest),

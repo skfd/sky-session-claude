@@ -77,7 +77,7 @@ public enum ProjectState
     /// <summary>An agent said it is over and left something worth reading.</summary>
     NeedsRead,
 
-    /// <summary>Work is queued — wake it and walk away.</summary>
+    /// <summary>Work is queued, or already in flight — either way, walk away.</summary>
     Runnable,
 
     /// <summary>Something is unfinished and nobody said what it needs.</summary>
@@ -172,13 +172,23 @@ public static class ProjectFold
     /// What an agent declared about a session id, if anything. Expiry is checked here rather
     /// than by the caller, so a store that hands back everything it holds is still safe.
     /// </param>
+    /// <param name="isWorking">
+    /// Whether a session is open in a terminal and mid-turn right now. The one runtime fact
+    /// the fold cannot do without, because without it the most active project on the machine
+    /// reads <see cref="ProjectState.Broken"/>: a session taking a turn ends its file on a
+    /// <c>tool_use</c>, which is exactly what a session that died mid-tool looks like, and the
+    /// classifier is right to call both <c>cut-off</c>. What tells them apart is not in the
+    /// file at all — it is whether the process is still there.
+    /// </param>
     public static IReadOnlyList<ProjectRoll> Roll(
         IEnumerable<SessionInfo> sessions,
         Func<string, Disposition>? dispositionOf = null,
-        Func<string, Declaration?>? declarationOf = null)
+        Func<string, Declaration?>? declarationOf = null,
+        Func<string, bool>? isWorking = null)
     {
         var mark = dispositionOf ?? (_ => Disposition.None);
         var claim = declarationOf ?? (_ => null);
+        var working = isWorking ?? (_ => false);
 
         var groups = new Dictionary<string, List<SessionInfo>>(StringComparer.OrdinalIgnoreCase);
         var folders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -201,7 +211,7 @@ public static class ProjectFold
         }
 
         return groups
-            .Select(g => One(folders[g.Key], g.Value, mark, claim))
+            .Select(g => One(folders[g.Key], g.Value, mark, claim, working))
             .OrderBy(r => r.State)
             .ThenBy(r => r.Project, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -211,7 +221,8 @@ public static class ProjectFold
         string folder,
         List<SessionInfo> sessions,
         Func<string, Disposition> mark,
-        Func<string, Declaration?> claim)
+        Func<string, Declaration?> claim,
+        Func<string, bool> working)
     {
         var newestFirst = sessions.OrderByDescending(s => s.LastActive).ToList();
 
@@ -236,7 +247,7 @@ public static class ProjectFold
             var live = Live(session, claim);
             if (live is not null) declared++;
 
-            var one = Of(session, disposition, live);
+            var one = Of(session, disposition, live, working(session.SessionId));
             if (one != ProjectState.Quiet) unfinished++;
 
             if (one < state)
@@ -272,7 +283,8 @@ public static class ProjectFold
     /// What one session contributes. Public because it is the rule, and a card that wants to
     /// say why its project reads the way it does should ask the same question the fold asked.
     /// </summary>
-    public static ProjectState Of(SessionInfo session, Disposition mark, Declaration? live)
+    public static ProjectState Of(
+        SessionInfo session, Disposition mark, Declaration? live, bool working = false)
     {
         // The operator's word comes first, above the agent's and above the classifier's.
         // Abandoned never reaches here — Roll skips it before asking.
@@ -290,6 +302,12 @@ public static class ProjectFold
                 SessionCore.Declared.Exhausted => ProjectState.Exhausted,
                 _ => Derived(session.Status),
             };
+
+        // A turn in flight is not a state anyone has to act on, and it is not a corpse. The
+        // file cannot say which — a session mid-tool and a session that died mid-tool write
+        // the same last record — so the process gets the last word over the classifier here,
+        // and only here.
+        if (working) return ProjectState.Runnable;
 
         return Derived(session.Status);
     }

@@ -37,11 +37,13 @@ public class ProjectFoldTests
     private static ProjectRoll Roll(
         IEnumerable<SessionInfo> sessions,
         Dictionary<string, Disposition>? marks = null,
-        Dictionary<string, Declaration>? claims = null) =>
+        Dictionary<string, Declaration>? claims = null,
+        params string[] working) =>
         ProjectFold.Roll(
             sessions,
             id => marks is not null && marks.TryGetValue(id, out var m) ? m : Disposition.None,
-            id => claims is not null && claims.TryGetValue(id, out var c) ? c : null)
+            id => claims is not null && claims.TryGetValue(id, out var c) ? c : null,
+            working.Contains)
             .Single();
 
     // --- what the classifier alone says -------------------------------------
@@ -88,6 +90,40 @@ public class ProjectFoldTests
 
         Assert.Equal(ProjectState.Broken, roll.State);
         Assert.Equal("dead", roll.StateFrom);
+    }
+
+    // --- what is happening right now ----------------------------------------
+
+    // A session taking a turn ends its file on a tool_use, which is the same last record a
+    // session that died mid-tool leaves. The classifier is right to call both cut-off; the
+    // process is the only thing that tells them apart, so it gets the last word here.
+    [Fact]
+    public void ASessionMidTurnIsNotBroken()
+    {
+        var roll = Roll([S("a", SessionStatus.CutOff)], working: "a");
+
+        Assert.Equal(ProjectState.Runnable, roll.State);
+    }
+
+    [Fact]
+    public void ADeadSessionInTheSameProjectStillShows()
+    {
+        var roll = Roll([S("a", SessionStatus.CutOff), S("b", SessionStatus.Error)], working: "a");
+
+        Assert.Equal(ProjectState.Broken, roll.State);
+        Assert.Equal("b", roll.StateFrom);
+    }
+
+    // Working is a fact about the process, and the operator's word still outranks it.
+    [Fact]
+    public void WorkingDoesNotUndoADeclaration()
+    {
+        var roll = Roll(
+            [S("a", SessionStatus.CutOff)],
+            claims: new() { ["a"] = D(Declared.Blocked, note: "waiting on the API key") },
+            working: "a");
+
+        Assert.Equal(ProjectState.Blocked, roll.State);
     }
 
     // --- the operator's word ------------------------------------------------
