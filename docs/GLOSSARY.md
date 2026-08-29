@@ -99,6 +99,123 @@ parse is set aside as `dispositions.json.corrupt` and reported — never answere
 with the legacy `abandoned.json`, which would silently revert every Done mark to
 the pre-1.9 abandon list.
 
+## Declaration (what the session said)
+
+A third axis, and the last one. Status is **derived** — the scanner reads the file
+and decides. A disposition is **declared by the operator**. A **declaration** is
+declared by the *session*: an agent saying what happens next here, which is the one
+question the file cannot be read for.
+
+The gap is real and no sharpening of the classifier closes it. "Has work left" versus
+"genuinely finished", "answer, and three more things happen" versus "that was the last
+question", "there is a report here worth reading" versus "nothing to see" — all three
+are claims about the *future*, and the last real turn only describes the past. Both
+sides of each pair end on an agent turn with a `?`. Someone has to say so, and here the
+someone who knows is the agent, not the operator.
+
+| Term | Meaning |
+|---|---|
+| **Declaration** | What a session said about what happens next. Written by `SessionCli state`, never by the scanner and never by the operator. A session carries at most one. |
+| **runnable** | Work is queued and needs no decision — wake it and walk away. |
+| **blocked** | Held by the operator, and work follows once they answer. Refused without a `--note` naming the blocker: a blocked state without one rots. |
+| **needs-read** | Over, but there is a report here worth the operator's eyes. |
+| **exhausted** | Over, and there is nothing here — whatever the last turn looks like. |
+
+The two laws, in the same shape as the disposition law above:
+
+1. **A declaration never changes Status.** A session declared `exhausted` that ends on
+   a question stays `waiting-you`, and its card still says so. The classifier's verdict
+   about the *file* was correct; the agent is only reporting what happens next. Only the
+   project's state moves.
+2. **A declaration expires when the operator says something new.** It records the uuid
+   of the last operator prompt at the moment it was written, and the claim is dead once
+   the session has moved past it. Agents forget to re-declare, and a confident wrong
+   `exhausted` is worse than no claim at all.
+
+The anchor is the last **operator prompt**, not the last turn, and the difference is
+the whole thing working. An agent declares mid-turn — the tool call, its result and the
+closing message are all records written after it — so anchored to the last turn every
+declaration would be stale before the session ended. Tool results and harness-injected
+records are user records and real turns, so they move `LastActive`; they are not the
+operator speaking, so they leave the anchor alone. An interrupt does move it: reaching
+over and stopping the agent is exactly the kind of event a claim about what happens
+next should not survive.
+
+Out of band rather than as a trailer on the final message, for the reason `SessionCli
+done` already is: prose is fragile to parse and this parser would be load-bearing, a
+trailer lives in the transcript forever and is copied into every fork of it, and it
+would be written by exactly the actor whose closing prose already misleads the
+classifier. A session that ends badly — cut off, out of tokens, killed — never writes
+its trailer, and those are the sessions whose state you most want.
+
+Declarations live in `declarations.json` beside `dispositions.json`, keyed by
+`SessionId`: `{"<id>": {"state": ..., "note": ..., "atTurn": ..., "at": ...}}`. Same
+write discipline, and one rule of its own — a state word the store does not understand
+is dropped rather than kept as nothing, because an entry that decides nothing reads as
+a session that reported when nothing was reported.
+
+## Project state
+
+Everything above answers "what is this conversation doing". This answers the question
+a level up: **what is this whole project waiting on**. It is a **fold** — one row per
+project folder, rolled up from every session that ran there, and a project is as urgent
+as its most urgent session:
+
+`broken` > `blocked` > `needs-read` > `runnable` > `undeclared` > `exhausted` / `quiet`
+> `abandoned`
+
+| Term | Meaning |
+|---|---|
+| **Fold** | The roll-up itself: sessions in, one project row out (`ProjectFold`). Pure — the caller supplies the scan, the marks and the declarations. |
+| **broken** | Something died mid-work. Revive it; there is no decision to make. |
+| **undeclared** | Something is unfinished and nobody said what it needs. Not a missing value — its own answer, and the common one until agents declare. |
+| **quiet** | Nothing was pending to begin with: every session here is Settled. |
+| **exhausted** | An agent looked at unfinished-looking work and said it is over. |
+| **abandoned** | Every session here is crossed out. The operator said no. |
+
+`blocked`, `needs-read`, `runnable` and `exhausted` carry the meanings the declaration
+table gives them.
+
+Three sources answer, in a fixed order, and the order is the design: the **operator's**
+disposition, then the **agent's** declaration while it still stands, then the
+**classifier's** Status. An Abandoned session is skipped outright — it is unfinished and
+not coming back, so it must never be what makes a project read `undeclared` — and a Done
+session folds as Settled. A declaration is consulted *before* the settled check, or
+`needs-read`, which is a claim about a session that already looks finished, would be
+unreachable.
+
+**`quiet` and `exhausted` are not the same answer.** `quiet` is derived: nothing was
+ever pending. `exhausted` is declared: an agent looked at unfinished work and said it
+is over. They land the operator in the same place by opposite routes, and the day one
+of them is wrong you will want to know which one you were reading.
+
+**The classifier may not call a project `blocked`.** A session waiting on the agent is
+`runnable`, because waking it is right whatever follows. A session waiting on the
+operator is `undeclared`: "answer, and three more things happen" and "that was the last
+question" are the same file, and guessing between them is the mistake this whole axis
+exists to prevent. `blocked` is reachable only through a declaration. Collapsing
+`undeclared` into anything quieter would make silence read as "nothing to do here",
+which is the exact direction in which a mistake costs you work you forgot about.
+
+One runtime fact enters the fold, and only one: whether a session is **mid-turn right
+now**. A session taking a turn ends its file on a `tool_use`, which is the same last
+record a session that died mid-tool leaves — the classifier is right to call both
+`cut-off`, and nothing in the file separates them. So a live busy session reads
+`runnable` rather than `broken`, and the most active project on the machine stops
+reporting itself as a corpse.
+
+Sessions with no recorded cwd join no project. `Cwd` is never empty — it holds
+`SessionInfo.UnknownCwd` — so folding on it would invent a project named after the
+sentence, which is how a session once ended up called
+`unknown-cwd-not-found-in-session-file-b9`. `RealCwd` is the field that answers whether
+the folder is known.
+
+`SessionCli list --projects` emits these rows *instead of* the session rows, each
+carrying its `sessionIds` as the way back down. The fold always runs over the whole
+scan: a project state folded over the sessions that survived `--status waiting-you` is
+not a smaller answer, it is a wrong one.
+
+
 ## Runtime
 
 Everything above is about a session file. This is about the process that writes
