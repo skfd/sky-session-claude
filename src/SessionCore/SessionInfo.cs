@@ -74,6 +74,14 @@ public sealed class SessionInfo
     /// </summary>
     public DateTime? PreviousActive { get; init; }
 
+    /// <summary>
+    /// The uuid of the last genuine operator prompt in the file, or null when there is none.
+    /// What a declaration about this session is measured against — see
+    /// <see cref="SessionFileFields.LastPromptUuid"/> for why it is the prompt and not the
+    /// last turn.
+    /// </summary>
+    public string? LastPromptUuid { get; init; }
+
     public double AgeDays { get; init; }
     public double SizeKB { get; init; }
 

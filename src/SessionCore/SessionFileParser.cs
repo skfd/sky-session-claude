@@ -46,6 +46,21 @@ public sealed record SessionFileFields
     /// whole session is one stretch of work.
     /// </summary>
     public DateTime? PreviousSittingUtc { get; init; }
+
+    /// <summary>
+    /// The <c>uuid</c> of the last genuine operator prompt, or null when the file carries
+    /// none. This is the anchor a declaration expires against (see docs/PROJECT-STATE.md):
+    /// an agent that declares its state does so mid-turn and then goes on writing — the tool
+    /// call, its result and the closing message are all records after the declaration — so
+    /// anchoring to the last <i>turn</i> would expire every declaration the instant it was
+    /// made. What falsifies a claim about what happens next is the operator saying something
+    /// next, and nothing else.
+    ///
+    /// Tool results and harness-injected records are not prompts. They are user records and
+    /// they are real turns, so they still move <see cref="LastTurnUtc"/>; they are not the
+    /// operator speaking, so they leave this alone.
+    /// </summary>
+    public string? LastPromptUuid { get; init; }
 }
 
 /// <summary>
@@ -71,6 +86,7 @@ public static class SessionFileParser
         int ctxTokens = 0, maxCtxTokens = 0;
         bool sawLargeModel = false;
         DateTime? lastTurnUtc = null, previousSittingUtc = null;
+        string? lastPromptUuid = null;
 
         foreach (var line in lines)
         {
@@ -109,8 +125,14 @@ public static class SessionFileParser
                         summary = content;
                     break;
                 case "user":
-                    if (HandleUser(o, ref userText, ref lastRole, ref lastToolResult, ref lastInterrupt))
-                        Advance(ref lastTurnUtc, ref previousSittingUtc, recordUtc);
+                    var turn = HandleUser(o, ref userText, ref lastRole, ref lastToolResult, ref lastInterrupt);
+                    if (turn == UserTurn.Noise) break;
+                    Advance(ref lastTurnUtc, ref previousSittingUtc, recordUtc);
+                    // Taken in file order rather than by timestamp: the file is append-only,
+                    // and what a declaration is measured against is what the transcript ends
+                    // with, not which record claims the latest clock reading.
+                    if (turn == UserTurn.Prompt && TryGetString(o, "uuid", out var uid) && uid.Length > 0)
+                        lastPromptUuid = uid;
                     break;
                 case "assistant":
                     HandleAssistant(o, largeModelId, ref lastText, ref errText, ref lastRole, ref lastStop,
@@ -153,11 +175,25 @@ public static class SessionFileParser
             IsLargeContext = isLarge,
             LastTurnUtc = lastTurnUtc,
             PreviousSittingUtc = previousSittingUtc,
+            LastPromptUuid = lastPromptUuid,
         };
     }
 
-    /// <summary>Applies one user record; returns false when it was harness noise, not a real turn.</summary>
-    private static bool HandleUser(JsonElement o, ref string? userText, ref string? lastRole,
+    /// <summary>What a user record turned out to be.</summary>
+    private enum UserTurn
+    {
+        /// <summary>Tooling-injected; not a turn at all.</summary>
+        Noise,
+
+        /// <summary>A real turn, but the harness handing back what a tool returned.</summary>
+        ToolResult,
+
+        /// <summary>The operator speaking — the only kind a declaration expires against.</summary>
+        Prompt,
+    }
+
+    /// <summary>Applies one user record, and says whether it was noise, a tool result or the operator.</summary>
+    private static UserTurn HandleUser(JsonElement o, ref string? userText, ref string? lastRole,
         ref bool lastToolResult, ref bool lastInterrupt)
     {
         string? utext = null;
@@ -191,13 +227,16 @@ public static class SessionFileParser
         // agent exchange, instead of misreading an injected record as waiting-agent.
         // These are always plain-string records; a real prompt carrying a trailing
         // reminder comes through as an array, so it is never caught here.
-        if (contentIsString && IsHarnessText(utext)) return false;
+        if (contentIsString && IsHarnessText(utext)) return UserTurn.Noise;
 
         if (!string.IsNullOrEmpty(utext)) userText = utext;
         lastRole = "user";
         lastToolResult = hasToolResult;
         lastInterrupt = utext is not null && utext.Contains("[Request interrupted by user");
-        return true;
+
+        // An interrupt counts as the operator: they reached over and stopped it, which is
+        // exactly the kind of thing a claim about what happens next does not survive.
+        return hasToolResult ? UserTurn.ToolResult : UserTurn.Prompt;
     }
 
     private static void HandleAssistant(JsonElement o, string? largeModelId, ref string? lastText,

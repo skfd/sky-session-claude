@@ -177,6 +177,7 @@ public sealed class SessionScanner
             LastActive = lastActive,
             LastTouched = file.LastWriteTime,
             PreviousActive = PreviousActiveOf(fields, lastActive),
+            LastPromptUuid = fields.LastPromptUuid,
             AgeDays = Math.Round((DateTime.Now - lastActive).TotalDays, 1),
             SizeKB = Math.Round(file.Length / 1024.0, 1),
             Project = LeafOf(cwd),
