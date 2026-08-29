@@ -38,12 +38,12 @@ public class ProjectFoldTests
         IEnumerable<SessionInfo> sessions,
         Dictionary<string, Disposition>? marks = null,
         Dictionary<string, Declaration>? claims = null,
-        params string[] working) =>
+        Dictionary<string, Liveness>? running = null) =>
         ProjectFold.Roll(
             sessions,
             id => marks is not null && marks.TryGetValue(id, out var m) ? m : Disposition.None,
             id => claims is not null && claims.TryGetValue(id, out var c) ? c : null,
-            working.Contains)
+            id => running is not null && running.TryGetValue(id, out var l) ? l : Liveness.Gone)
             .Single();
 
     // --- what the classifier alone says -------------------------------------
@@ -98,30 +98,55 @@ public class ProjectFoldTests
     // session that died mid-tool leaves. The classifier is right to call both cut-off; the
     // process is the only thing that tells them apart, so it gets the last word here.
     [Fact]
-    public void ASessionMidTurnIsNotBroken()
+    public void ASessionMidTurnIsRunnable()
     {
-        var roll = Roll([S("a", SessionStatus.CutOff)], working: "a");
+        var roll = Roll([S("a", SessionStatus.CutOff)], running: new() { ["a"] = Liveness.Working });
 
         Assert.Equal(ProjectState.Runnable, roll.State);
+    }
+
+    // Not every harness says whether it is mid-turn — one under the SDK or answering a phone
+    // publishes no busy or idle — so being there has to carry it alone. Broken means "the
+    // process is gone, put it back", and there is nothing here to put back.
+    [Theory]
+    [InlineData(SessionStatus.CutOff)]
+    [InlineData(SessionStatus.Error)]
+    [InlineData(SessionStatus.Limit)]
+    public void ALiveSessionIsNeverBroken(SessionStatus status)
+    {
+        var roll = Roll([S("a", status)], running: new() { ["a"] = Liveness.Live });
+
+        Assert.Equal(ProjectState.Undeclared, roll.State);
+    }
+
+    [Fact]
+    public void BeingLiveOnlyEverTakesAwayBroken()
+    {
+        Assert.Equal(ProjectState.Quiet,
+            Roll([S("a")], running: new() { ["a"] = Liveness.Live }).State);
+        Assert.Equal(ProjectState.Runnable,
+            Roll([S("a", SessionStatus.WaitingAgent)], running: new() { ["a"] = Liveness.Live }).State);
     }
 
     [Fact]
     public void ADeadSessionInTheSameProjectStillShows()
     {
-        var roll = Roll([S("a", SessionStatus.CutOff), S("b", SessionStatus.Error)], working: "a");
+        var roll = Roll(
+            [S("a", SessionStatus.CutOff), S("b", SessionStatus.Error)],
+            running: new() { ["a"] = Liveness.Working });
 
         Assert.Equal(ProjectState.Broken, roll.State);
         Assert.Equal("b", roll.StateFrom);
     }
 
-    // Working is a fact about the process, and the operator's word still outranks it.
+    // Liveness is a fact about the process, and the agent's word still outranks it.
     [Fact]
-    public void WorkingDoesNotUndoADeclaration()
+    public void RunningDoesNotUndoADeclaration()
     {
         var roll = Roll(
             [S("a", SessionStatus.CutOff)],
             claims: new() { ["a"] = D(Declared.Blocked, note: "waiting on the API key") },
-            working: "a");
+            running: new() { ["a"] = Liveness.Working });
 
         Assert.Equal(ProjectState.Blocked, roll.State);
     }

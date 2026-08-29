@@ -63,6 +63,27 @@ public sealed record Declaration
 }
 
 /// <summary>
+/// Whether the process behind a session is still there, and whether it is mid-turn.
+///
+/// The one runtime fact the fold cannot do without. A session taking a turn ends its file on
+/// a <c>tool_use</c>, which is exactly the last record a session that died mid-tool leaves —
+/// the classifier is right to call both <c>cut-off</c>, and nothing in the file separates
+/// them. Without this the most active project on the machine reads
+/// <see cref="ProjectState.Broken"/>, off the session doing the reading.
+/// </summary>
+public enum Liveness
+{
+    /// <summary>No process. The file is all there is.</summary>
+    Gone,
+
+    /// <summary>Open in a terminal, and not known to be mid-turn.</summary>
+    Live,
+
+    /// <summary>Open and taking a turn right now.</summary>
+    Working,
+}
+
+/// <summary>
 /// What a whole project is waiting on. Declared in fold order, most urgent first, so the
 /// roll-up is a minimum — a project is as urgent as its most urgent session.
 /// </summary>
@@ -172,23 +193,16 @@ public static class ProjectFold
     /// What an agent declared about a session id, if anything. Expiry is checked here rather
     /// than by the caller, so a store that hands back everything it holds is still safe.
     /// </param>
-    /// <param name="isWorking">
-    /// Whether a session is open in a terminal and mid-turn right now. The one runtime fact
-    /// the fold cannot do without, because without it the most active project on the machine
-    /// reads <see cref="ProjectState.Broken"/>: a session taking a turn ends its file on a
-    /// <c>tool_use</c>, which is exactly what a session that died mid-tool looks like, and the
-    /// classifier is right to call both <c>cut-off</c>. What tells them apart is not in the
-    /// file at all — it is whether the process is still there.
-    /// </param>
+    /// <param name="livenessOf">Whether the process behind a session is there — see <see cref="Liveness"/>.</param>
     public static IReadOnlyList<ProjectRoll> Roll(
         IEnumerable<SessionInfo> sessions,
         Func<string, Disposition>? dispositionOf = null,
         Func<string, Declaration?>? declarationOf = null,
-        Func<string, bool>? isWorking = null)
+        Func<string, Liveness>? livenessOf = null)
     {
         var mark = dispositionOf ?? (_ => Disposition.None);
         var claim = declarationOf ?? (_ => null);
-        var working = isWorking ?? (_ => false);
+        var liveness = livenessOf ?? (_ => Liveness.Gone);
 
         var groups = new Dictionary<string, List<SessionInfo>>(StringComparer.OrdinalIgnoreCase);
         var folders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -211,7 +225,7 @@ public static class ProjectFold
         }
 
         return groups
-            .Select(g => One(folders[g.Key], g.Value, mark, claim, working))
+            .Select(g => One(folders[g.Key], g.Value, mark, claim, liveness))
             .OrderBy(r => r.State)
             .ThenBy(r => r.Project, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -222,7 +236,7 @@ public static class ProjectFold
         List<SessionInfo> sessions,
         Func<string, Disposition> mark,
         Func<string, Declaration?> claim,
-        Func<string, bool> working)
+        Func<string, Liveness> liveness)
     {
         var newestFirst = sessions.OrderByDescending(s => s.LastActive).ToList();
 
@@ -247,7 +261,7 @@ public static class ProjectFold
             var live = Live(session, claim);
             if (live is not null) declared++;
 
-            var one = Of(session, disposition, live, working(session.SessionId));
+            var one = Of(session, disposition, live, liveness(session.SessionId));
             if (one != ProjectState.Quiet) unfinished++;
 
             if (one < state)
@@ -284,7 +298,7 @@ public static class ProjectFold
     /// say why its project reads the way it does should ask the same question the fold asked.
     /// </summary>
     public static ProjectState Of(
-        SessionInfo session, Disposition mark, Declaration? live, bool working = false)
+        SessionInfo session, Disposition mark, Declaration? live, Liveness liveness = Liveness.Gone)
     {
         // The operator's word comes first, above the agent's and above the classifier's.
         // Abandoned never reaches here — Roll skips it before asking.
@@ -303,13 +317,23 @@ public static class ProjectFold
                 _ => Derived(session.Status),
             };
 
-        // A turn in flight is not a state anyone has to act on, and it is not a corpse. The
-        // file cannot say which — a session mid-tool and a session that died mid-tool write
-        // the same last record — so the process gets the last word over the classifier here,
-        // and only here.
-        if (working) return ProjectState.Runnable;
+        // A turn in flight is not a state anyone has to act on. The file cannot say — a
+        // session mid-tool and a session that died mid-tool write the same last record — so
+        // the process gets the last word over the classifier here, and only here.
+        if (liveness == Liveness.Working) return ProjectState.Runnable;
 
-        return Derived(session.Status);
+        var derived = Derived(session.Status);
+
+        // A live session is never broken, whatever its file ends on, because broken means
+        // "the process is gone, put it back" and there is nothing to put back. Not every
+        // harness says whether it is mid-turn — one running under the SDK or answering a
+        // phone publishes no busy or idle at all — so being there has to carry this on its
+        // own. What is left is honest: something here is unfinished and nobody said what it
+        // needs.
+        if (liveness == Liveness.Live && derived == ProjectState.Broken)
+            return ProjectState.Undeclared;
+
+        return derived;
     }
 
     /// <summary>What the classifier alone is willing to say. Deliberately short.</summary>

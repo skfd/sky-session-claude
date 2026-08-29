@@ -197,12 +197,16 @@ exists to prevent. `blocked` is reachable only through a declaration. Collapsing
 `undeclared` into anything quieter would make silence read as "nothing to do here",
 which is the exact direction in which a mistake costs you work you forgot about.
 
-One runtime fact enters the fold, and only one: whether a session is **mid-turn right
-now**. A session taking a turn ends its file on a `tool_use`, which is the same last
-record a session that died mid-tool leaves — the classifier is right to call both
-`cut-off`, and nothing in the file separates them. So a live busy session reads
-`runnable` rather than `broken`, and the most active project on the machine stops
-reporting itself as a corpse.
+One runtime fact enters the fold, and only one: **whether the process is still there**.
+A session taking a turn ends its file on a `tool_use`, which is the same last record a
+session that died mid-tool leaves — the classifier is right to call both `cut-off`, and
+nothing in the file separates them. A session known to be mid-turn reads `runnable`;
+and a live session is never `broken` at all, whatever its file ends on, because broken
+means "the process is gone, put it back" and there is nothing to put back. That second
+rule has to stand on its own because not every harness says whether it is mid-turn — one
+running under the SDK or answering a phone publishes no busy or idle — so being there is
+all there is to go on. What such a session reads as instead is `undeclared`, which is
+exactly true: something here is unfinished and nobody said what it needs.
 
 Sessions with no recorded cwd join no project. `Cwd` is never empty — it holds
 `SessionInfo.UnknownCwd` — so folding on it would invent a project named after the

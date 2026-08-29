@@ -25,6 +25,17 @@ internal static class Commands
             "status", "project", "search", "disposition", "unfinished", "live", "stale", "hosts",
             "limit", "projects");
 
+        // A fold is only worth reading over a whole scan. --top hides the old broken session
+        // just past the cut — the one the app shows everything to find — and
+        // --newest-per-project would fold a project from one of its sessions and call the
+        // answer the project's. Both would report success while saying something false, so
+        // they are refused rather than quietly honoured.
+        if (args.Has("projects") && (args.Has("top") || args.Has("newest-per-project")))
+            throw new UsageException(
+                "'list --projects' folds over every session in a project, so it takes neither "
+                + "--top nor --newest-per-project. A roll-up of some of the sessions is not a "
+                + "smaller answer, it is a wrong one.");
+
         var scanner = RequireScanner();
         var options = new ScanOptions
         {
@@ -47,6 +58,7 @@ internal static class Commands
         // over a filtered subset is not a smaller answer, it is a wrong one.
         var projects = args.Has("projects") ? ProjectRows(scanned, live, installed, args) : null;
 
+
         var rows = projects is not null ? new List<SessionDto>() : scanned
             .Select(info => SessionDto.From(
                 info,
@@ -55,7 +67,14 @@ internal static class Commands
             .Where(row => Matches(row, args))
             .ToList();
 
-        if (args.Int("limit", 0) is > 0 and var limit) rows = rows.Take(limit).ToList();
+        // --limit caps rows after everything has been decided, so it caps whichever rows came
+        // back. On projects that is honest in a way --top would not be: the fold has already
+        // run over every session, and what is dropped is the least urgent projects, in order.
+        if (args.Int("limit", 0) is > 0 and var limit)
+        {
+            rows = rows.Take(limit).ToList();
+            projects = projects?.Take(limit).ToList();
+        }
 
         // "What is behind?" is a question about harnesses, and a host is one — the one that
         // cannot answer it for itself, since it publishes no version to compare. So --stale
@@ -111,14 +130,18 @@ internal static class Commands
             RemoteControlHosts.FromScan(scanned).Select(h => FolderKey(h.Folder)),
             StringComparer.OrdinalIgnoreCase);
 
-        // Mid-turn right now, which no session file can say: a turn in flight and a session
-        // that died mid-tool write the same last record.
-        bool Working(string id) =>
-            live.TryGetValue(id, out var running)
-            && running.Any(r => string.Equals(r.Status, "busy", StringComparison.OrdinalIgnoreCase));
+        // Whether the process is there, and whether it is mid-turn — neither of which any
+        // session file can say. A harness under the SDK or answering a phone publishes no
+        // busy or idle, so it comes back Live rather than Working, and the fold treats being
+        // there as enough on its own.
+        Liveness Of(string id) =>
+            !live.TryGetValue(id, out var running) || running.Count == 0 ? Liveness.Gone
+            : running.Any(r => string.Equals(r.Status, "busy", StringComparison.OrdinalIgnoreCase))
+                ? Liveness.Working
+                : Liveness.Live;
 
         var rows = new List<ProjectDto>();
-        foreach (var roll in ProjectFold.Roll(scanned, marks.Get, claims.Get, Working))
+        foreach (var roll in ProjectFold.Roll(scanned, marks.Get, claims.Get, Of))
         {
             if (args.Value("project") is { } project
                 && !roll.Project.Contains(project, StringComparison.OrdinalIgnoreCase)) continue;
