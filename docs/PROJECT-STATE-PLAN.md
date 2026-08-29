@@ -1,7 +1,9 @@
 # Implementing project state
 
 [`docs/PROJECT-STATE.md`](PROJECT-STATE.md) is the design and the *why*. This is the build
-order and the traps. Nothing here is built yet.
+order and the traps. **Steps 1 to 4 are built** — what each turned out to cost, and where it
+came out different, is recorded under each one. Steps 5 and 6 are not, and the plan's reason
+for holding them still holds.
 
 Read the design first. This file does not restate the vocabulary; it says what to touch, in
 what order, and what will bite.
@@ -12,11 +14,9 @@ what order, and what will bite.
   under `~/.claude/projects` carries a `TodoWrite` record — the tool is not in this harness's
   toolset. Checked, not assumed. If it ever appears, it is a free source for "work remaining"
   and step 2 gets much smaller.
-- **`SessionInfo` has no turn uuid.** It carries `LastActive`, `LastTouched`,
-  `PreviousActive`, `Status`, `Recap` — no identifier for the last real turn. Law 2 (a
-  declaration expires at the next real turn) has nothing to compare against today. See the
-  prerequisite under step 2; this is the one thing that will stop the build mid-flight if it
-  is discovered late.
+- ~~**`SessionInfo` has no turn uuid.**~~ It does now: `LastPromptUuid`, the uuid of the last
+  genuine operator prompt. This was called the one thing that would stop the build mid-flight,
+  and it nearly was — for a reason a step further in than the one written here. See step 2.
 - **`RealCwd` is the fold key.** `Cwd` is never empty — a file with no recorded cwd gets
   `SessionInfo.UnknownCwd`, which slugs into a folder name if read as a path (there was once a
   session called `unknown-cwd-not-found-in-session-file-b9`). `RealCwd` is the field that
@@ -30,16 +30,16 @@ what order, and what will bite.
 
 ## Build order
 
-### 1. The derived fold, and `list --projects`
+### 1. The derived fold, and `list --projects` — done
 
 Pure policy, like `RestartPolicy`, `ClosePolicy` and `StandbyPlan`: the caller supplies the
 scan and the dispositions, and gets back a roll-up. `ProjectState.cs` in `SessionCore`, no
 filesystem access of its own, unit-testable without a session file.
 
-With no declarations in existence yet, every project comes out `broken`, `blocked`,
-`runnable`, `undeclared` or `quiet`. That is the point — the fold is worth having on its own,
-and shipping it first shows which of the declared states are actually needed before any
-protocol is written.
+With no declarations in existence yet, every project comes out `broken`, `runnable`,
+`undeclared`, `quiet` or `abandoned` — not `blocked`, see below. That is the point: the fold
+is worth having on its own, and shipping it first shows which of the declared states are
+actually needed before any protocol is written. It did exactly that, twice.
 
 Traps:
 
@@ -56,16 +56,31 @@ Traps:
   it actually has to be written. An abandoned session must never be what makes a project read
   `undeclared`.
 
-Open decision: does `--projects` emit project rows *alongside* the sessions, or *instead of*
-them? Alongside matches `--hosts` and keeps one scan answering both questions; instead-of is a
-smaller payload for a phone brief that only wants the roll-up. Not decided.
+Settled: **instead of** them, each project row carrying its `sessionIds` as the way back
+down. `--project`, `--search` and `--unfinished` narrow the rows; `--limit` caps them. `--top`
+and `--newest-per-project` are **refused**, and this was nearly the trap the parser one is —
+they narrow the scan rather than the rows, so the fold would run over part of a project and
+report the answer as the project's, successfully and wrongly.
 
-### 2. `SessionCli state`, and the sidecar
+Two things came out different from what is above:
 
-**Prerequisite:** `SessionFileParser` must surface the uuid of the last real turn, and
-`SessionInfo` must carry it. Without it law 2 cannot be implemented and the declaration store
-is a set of claims with no expiry — which the design says is worse than no claims at all. Do
-this first, not after the store.
+- **The fold may not derive `blocked`.** This file expected `blocked` from `waiting-you` with
+  no declaration; the design argues at length that the continuation half of that claim is not
+  in the file, so it reads `undeclared`. See the note under *Fold order* in the design.
+- **A live session is never `broken`.** Not in either document, and the first run of
+  `list --projects` found it: a session mid-turn ends its file on a `tool_use`, which is what
+  a session that died mid-tool also leaves, so this repo reported itself as a corpse off the
+  session doing the reading. The fold takes one runtime fact now — `Liveness` — and being
+  there is enough to rule broken out, because not every harness publishes busy or idle.
+
+### 2. `SessionCli state`, and the sidecar — done
+
+**Prerequisite, and it was worse than this said.** The parser had to surface the uuid — but
+of the last **operator prompt**, not the last real turn. An agent declares mid-turn: the tool
+call, its result and the closing message are all records written after the declaration, so
+anchored to the last turn every declaration the convention produces is stale before its
+session ends. `SessionFileFields.LastPromptUuid` is that anchor; tool results and harness
+records are real turns and do not move it, an interrupt does.
 
 Then the store itself is a copy, not an invention: `JsonSidecar<...>` beside
 `DispositionStore`, its own mutex prefix, the same three rules (never write cached state,
@@ -75,12 +90,14 @@ report it). `DispositionStore` is the worked example; follow it line for line.
 New verb wiring is three places, not one: the dispatch switch in `Cli.cs`, the `HelpText`, and
 `Args.RejectUnknown` in the new command.
 
-Open decision: should `state` join `InboxFile.Allowed`, so the phone brief can queue it? The
-list is deliberately short and its comment is a warning — "guessing an action wrong costs
-someone's terminal". A declaration is a claim about a session the brief is not inside, which
-is a different thing from the operator marking one done. Wants thought, not a default.
+Settled for now: **no**, `state` is not in `InboxFile.Allowed`. A declaration is a claim
+about a session the brief is not inside, which is a different thing from the operator marking
+one done, and adding it later is purely additive.
 
-### 3. `docs/GLOSSARY.md` owes entries
+`state blocked` refuses without `--note`. A blocked state without a named blocker rots, and
+the moment of declaring is the only moment anyone knows who the blocker is.
+
+### 3. `docs/GLOSSARY.md` owes entries — done
 
 The design introduces vocabulary the term authority does not have: **declaration** (the third
 axis, next to derived Status and declared disposition), and the states `quiet`, `exhausted`,
@@ -88,11 +105,11 @@ axis, next to derived Status and declared disposition), and the states `quiet`, 
 disposition law is. The glossary is what stops these words drifting; a design doc alone will
 not hold them.
 
-### 4. The convention, and measuring it
+### 4. The convention, and measuring it — half done
 
-A line in `~/.claude/CLAUDE.md` asking agents to declare before they stop, carrying the full
-path to `SessionCli`. Then measure: what fraction of sessions in a week actually carry a live
-declaration. If it is low, the `Stop` hook is next — it cannot know the *state*, but it can
+The line is in `~/.claude/CLAUDE.md`, under *What happens next here*, carrying the full path.
+**The measurement is the next thing to do, and nothing else should start before it.**
+Measure: what fraction of sessions in a week actually carry a live declaration. If it is low, the `Stop` hook is next — it cannot know the *state*, but it can
 write `undeclared` with the turn uuid, which distinguishes "this agent never reports" from
 "this agent reported and things moved on".
 
@@ -118,10 +135,14 @@ Last, deliberately. The tray icon is a single glyph that already gives up at `99
 split looks like there is a design decision that should be made while looking at real numbers
 from steps 1–4, not guessed now.
 
-## What to check before starting
+## What is left to look at
 
-Nothing blocking. The design has three arguable calls, all recorded in
-[`docs/PROJECT-STATE.md`](PROJECT-STATE.md) rather than settled: the fold order putting
-`broken` above `blocked`, whether `--projects` replaces or accompanies the session rows, and
-whether the inbox may queue a declaration. Any of them can be decided when the code makes the
-consequence visible.
+Two of the three arguable calls are settled above. The third is still open, and now there is
+something to look at:
+
+- **The fold order puts `broken` above `blocked`, and `undeclared` below `runnable`.** The
+  second half is the one to revisit. `undeclared` was ranked as an oddity; with `blocked`
+  declared-only it is the common case for a project holding a question, which now sorts below
+  a project that merely needs waking. On this machine that is two projects under one, and it
+  reads wrong. Leave it until the convention has been running long enough to say how often a
+  question is actually declared.

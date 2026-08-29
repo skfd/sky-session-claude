@@ -9,8 +9,11 @@ standing in front of the list actually wants to tell apart.
 - It is over, but there is something here I should read.
 - It is over, and there is nothing here.
 
-Design only. Nothing below is built. The vocabulary, the two laws and the storage shape are
-the decisions; the build order is a sketch at the end.
+Steps 1 to 4 of the build order at the end are done: the fold, `list --projects`,
+`SessionCli state` and its sidecar, and the CLAUDE.md convention. The app group headers and
+the tray split are not. Where the code departed from what is written here, the departure is
+recorded in place — see the fold table and the note on `blocked` under *Fold order*.
+`docs/GLOSSARY.md` now owns the vocabulary; this stays the argument for it.
 
 ## The line the glossary already draws
 
@@ -117,6 +120,25 @@ A project is as urgent as its most urgent session:
 
 The last two are equally not-urgent and are distinguished only for honesty, per above.
 
+**What was built differs here, deliberately.** The derived table above reads `waiting-you`
+as "held by the operator", and the sketch below expected that to surface as `blocked`. It
+does not. `blocked` means *and work follows once you answer*, which is the half of the claim
+the file cannot carry — the same argument this document makes two sections up. So a
+`waiting-you` session with nothing declared reads `undeclared`, and `blocked` is reachable
+only through a declaration. That also gives `undeclared` the source it would otherwise
+lack once `interrupted` folds in beside `waiting-you`, and it makes the protocol visibly
+necessary rather than optional: on this machine, with nothing declared anywhere, the two
+projects with an open question both read `undeclared`.
+
+One thing this document does not have at all, found by running the fold: **a live session is
+never `broken`.** A session taking a turn ends its file on a `tool_use`, which is the last
+record a session that died mid-tool also leaves, so the classifier calls both `cut-off` and
+nothing in the file separates them — the first run of `list --projects` reported this repo as
+a corpse, off the session doing the reading. Broken means "the process is gone, put it back",
+so being there is enough to rule it out. A session known to be mid-turn reads `runnable`; one
+merely present reads `undeclared`, because not every harness publishes busy or idle — an SDK
+or phone-answering one publishes neither.
+
 `blocked` under `broken` is arguable — only one of the two needs a human, which is a fair
 reason to put `blocked` on top instead. It is ranked this way because a broken session is
 cheap to fix and blocks everything behind it, while a question can wait for the operator to
@@ -219,10 +241,14 @@ elsewhere:
 
 ## Build order (sketch)
 
-1. The derived fold and `list --projects`, declarations absent — every project reads
-   `runnable` / `blocked` / `broken` / `undeclared` / `quiet`. Pure, like `RestartPolicy` and
-   `ClosePolicy`: caller supplies the scan, gets back the roll-up.
-2. `SessionCli state` and the sidecar, with both laws and the expiry uuid.
-3. The CLAUDE.md convention; measure how many sessions actually report.
+1. ~~The derived fold and `list --projects`~~ — `ProjectFold` and `--projects`. With nothing
+   declared, projects read `runnable` / `broken` / `undeclared` / `quiet` / `abandoned`; not
+   `blocked`, per the note above.
+2. ~~`SessionCli state` and the sidecar, with both laws and the expiry uuid.~~ The anchor is
+   the last **operator prompt**, not the last real turn — an agent declares mid-turn, so the
+   literal reading expired every declaration before its session ended.
+3. ~~The CLAUDE.md convention~~; **measuring is the next thing to do.** What fraction of
+   sessions in a week carry a live declaration decides whether the `Stop` hook is worth
+   building. Do not build the hook before the measurement.
 4. App group headers, once the CLI has shown which states carry their weight.
 5. The tray split, last — it is one glyph and the least reversible.
