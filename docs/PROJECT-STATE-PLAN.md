@@ -116,13 +116,31 @@ verb ships in no release yet, so the installed binary under `%LOCALAPPDATA%` ans
 touches the installed app or a running Sky window — so the convention can be iterated on
 without a release. **Move the line to the installed path at the next release**; the CLAUDE.md
 entry says so itself, which is the copy that will actually be in front of whoever does it.
-**The measurement is the next thing to do, and nothing else should start before it.**
-Measure: what fraction of sessions in a week actually carry a live declaration. If it is low, the `Stop` hook is next — it cannot know the *state*, but it can
+**The measurement now exists, and has a first reading.** The instrument is
+`measure-declarations.ps1` at the repo root, over two additive fields the session rows grew
+for it: `Declared`, the claim while it still stands, and `DeclaredStale`, a claim the
+operator has prompted past. Stale and silent stay separate buckets because they are the two
+different failures the hook paragraph below distinguishes. Sessions mid-turn are excluded
+from the denominator — they have not reached their declare point — but a harness under the
+SDK publishes no busy or idle, so some of those land in silent anyway, including whichever
+session runs the script.
+
+First reading, 2026-08-31, 2.5 days in: **13 sessions in the window, 5 declared, 2 stale,
+6 silent — 38.5% live.** Read the silent six before trusting the number: one was the
+measuring session itself (SDK, mid-turn, uncountable), one ended in `error` and could never
+have declared, one had no recorded cwd and belongs to no project, and one predates most
+agents having seen the convention line at all. The honest silent count among sessions that
+*could* have declared is closer to three. Small denominator; one row moves the number by
+eight points.
+
+**The reading that decides is the one taken on or after 2026-09-05** — a full week of the
+convention. If it is low, the `Stop` hook is next — it cannot know the *state*, but it can
 write `undeclared` with the turn uuid, which distinguishes "this agent never reports" from
 "this agent reported and things moved on".
 
-Do not build the hook before the measurement. The convention may be enough, and a hook that
-fires on every session is not free.
+Do not build the hook before that reading. The convention may be enough, and a hook that
+fires on every session is not free. A 2.5-day number, whatever it says, does not authorize
+starting it.
 
 ### 5. App group headers
 
