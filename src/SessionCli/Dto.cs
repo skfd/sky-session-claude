@@ -229,10 +229,25 @@ internal sealed class SessionDto
     /// </summary>
     public required bool Settled { get; init; }
 
+    /// <summary>
+    /// The session's own claim about what happens next — "runnable", "blocked", "needs-read",
+    /// "exhausted" — while it still stands, else "none". The third axis, next to
+    /// <see cref="Status"/> and <see cref="Disposition"/>; it never changes either.
+    /// </summary>
+    public required string Declared { get; init; }
+
+    /// <summary>
+    /// A declaration exists but the operator has prompted since, so it no longer stands.
+    /// Distinct from never-declared on purpose: "this agent reported and things moved on"
+    /// and "this agent never reports" are different failures of the convention.
+    /// </summary>
+    public required bool DeclaredStale { get; init; }
+
     /// <summary>Null unless the session is open in a terminal right now.</summary>
     public LiveDto? Live { get; init; }
 
-    public static SessionDto From(SessionInfo s, Disposition disposition, LiveDto? live) => new()
+    public static SessionDto From(
+        SessionInfo s, Disposition disposition, Declaration? claim, LiveDto? live) => new()
     {
         LastActive = s.LastActive,
         LastTouched = s.LastTouched,
@@ -254,6 +269,10 @@ internal sealed class SessionDto
         Command = s.Command,
         Disposition = DispositionStore.ToWire(disposition),
         Settled = s.Complete || disposition == SessionCore.Disposition.Done,
+        Declared = claim is not null && claim.StillStands(s)
+            ? ProjectFold.ToWire(claim.State)
+            : "none",
+        DeclaredStale = claim is not null && !claim.StillStands(s),
         Live = live,
     };
 }

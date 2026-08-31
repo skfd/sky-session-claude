@@ -47,6 +47,7 @@ internal static class Commands
         };
 
         var store = new DispositionStore();
+        var claims = new DeclarationStore();
         var live = LiveSessions.Scan();
         var installed = ClaudeInstall.InstalledVersion;
 
@@ -63,6 +64,7 @@ internal static class Commands
             .Select(info => SessionDto.From(
                 info,
                 store.Get(info.SessionId),
+                claims.Get(info.SessionId),
                 LiveFor(live, info.SessionId, info.Status, installed)))
             .Where(row => Matches(row, args))
             .ToList();
@@ -96,7 +98,9 @@ internal static class Commands
             Sessions = rows,
             Hosts = hosts,
             Projects = projects,
-            Warning = store.LoadWarning,
+            Warning = store.LoadWarning is { } dw
+                ? claims.LoadWarning is { } cw ? $"{dw}; {cw}" : dw
+                : claims.LoadWarning,
         }, path);
 
         if (path is not null)
@@ -272,6 +276,7 @@ internal static class Commands
             Session = SessionDto.From(
                 info,
                 new DispositionStore().Get(info.SessionId),
+                new DeclarationStore().Get(info.SessionId),
                 LiveFor(live, info.SessionId, info.Status, ClaudeInstall.InstalledVersion)),
             FilePath = file.FullName,
             ForkPoints = forkPoints,
