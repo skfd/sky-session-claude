@@ -105,7 +105,7 @@ axis, next to derived Status and declared disposition), and the states `quiet`, 
 disposition law is. The glossary is what stops these words drifting; a design doc alone will
 not hold them.
 
-### 4. The convention, and measuring it — half done
+### 4. The convention, and measuring it — built; deciding reading due 2026-09-05
 
 The line is in `~/.claude/CLAUDE.md`, under *What happens next here*, carrying the full path.
 
@@ -130,7 +130,7 @@ First reading, 2026-08-31, 2.5 days in: **13 sessions in the window, 5 declared,
 measuring session itself (SDK, mid-turn, uncountable), one ended in `error` and could never
 have declared, one had no recorded cwd and belongs to no project, and one predates most
 agents having seen the convention line at all. The honest silent count among sessions that
-*could* have declared is closer to three. Small denominator; one row moves the number by
+*could* have declared is closer to two. Small denominator; one row moves the number by
 eight points.
 
 **The reading that decides is the one taken on or after 2026-09-05** — a full week of the
