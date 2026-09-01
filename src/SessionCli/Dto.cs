@@ -72,8 +72,9 @@ internal sealed class ProjectDto
     public required int Declared { get; init; }
 
     /// <summary>
-    /// When anything here last moved — the newest session's <c>LastActive</c>, abandoned ones
-    /// included. Serialized the same way the session rows' timestamp is.
+    /// When anything here last moved — the newest counted session's <c>LastActive</c>.
+    /// Crossed-out sessions do not set it, except on a project of nothing but crosses.
+    /// Serialized the same way the session rows' timestamp is.
     /// </summary>
     public required DateTime LastActive { get; init; }
 

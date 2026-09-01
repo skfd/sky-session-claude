@@ -147,9 +147,10 @@ public sealed record ProjectRoll
     public required int Declared { get; init; }
 
     /// <summary>
-    /// When anything here last moved — the newest session's last activity. Abandoned sessions
-    /// count: a cross says the work is not coming back, not that nobody was ever there, and a
-    /// recency lens asking "when was this project last touched" wants the touch either way.
+    /// When anything here last moved — the newest counted session's last activity. Crossed-out
+    /// sessions do not set it: the operator already said that work is over, so its touches are
+    /// not recency. Only on a project of nothing but crosses does the newest cross answer,
+    /// because a crossed-out touch is still more honest than no date at all.
     /// </summary>
     public required DateTime LastActive { get; init; }
 
@@ -252,6 +253,7 @@ public static class ProjectFold
         var state = ProjectState.Abandoned;
         string? note = null;
         string? from = null;
+        DateTime? lastActive = null;
         int counted = 0, unfinished = 0, abandoned = 0, declared = 0;
 
         foreach (var session in newestFirst)
@@ -264,6 +266,7 @@ public static class ProjectFold
             }
 
             counted++;
+            lastActive ??= session.LastActive;
 
             var live = Live(session, claim);
             if (live is not null) declared++;
@@ -290,7 +293,7 @@ public static class ProjectFold
             Unfinished = unfinished,
             Abandoned = abandoned,
             Declared = declared,
-            LastActive = newestFirst[0].LastActive,
+            LastActive = lastActive ?? newestFirst[0].LastActive,
             SessionIds = newestFirst.Select(s => s.SessionId).ToList(),
         };
     }

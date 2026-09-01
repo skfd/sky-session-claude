@@ -327,16 +327,28 @@ public class ProjectFoldTests
         Assert.Equal(Now.AddMinutes(-1), roll.LastActive);
     }
 
-    // A cross says the work is not coming back, not that nobody was ever there — the newest
-    // touch counts for recency even when it is an abandoned session's.
+    // The operator already said that work is over, so a crossed-out session's touches are
+    // not recency — the newest session that counts answers instead.
     [Fact]
-    public void ACrossedOutSessionStillSetsLastActive()
+    public void ACrossedOutSessionDoesNotSetLastActive()
     {
         var roll = Roll(
             [S("old", minutesAgo: 90), S("x", minutesAgo: 1)],
             marks: new() { ["x"] = Disposition.Abandoned });
 
-        Assert.Equal(Now.AddMinutes(-1), roll.LastActive);
+        Assert.Equal(Now.AddMinutes(-90), roll.LastActive);
+    }
+
+    // Except on a project of nothing but crosses, where a crossed-out touch is still more
+    // honest than no date at all.
+    [Fact]
+    public void AProjectOfOnlyCrossesFallsBackToTheNewestCross()
+    {
+        var roll = Roll(
+            [S("x1", minutesAgo: 90), S("x2", minutesAgo: 5)],
+            marks: new() { ["x1"] = Disposition.Abandoned, ["x2"] = Disposition.Abandoned });
+
+        Assert.Equal(Now.AddMinutes(-5), roll.LastActive);
     }
 
     [Fact]
