@@ -320,6 +320,26 @@ public class ProjectFoldTests
     }
 
     [Fact]
+    public void LastActiveIsTheNewestSessions()
+    {
+        var roll = Roll([S("old", minutesAgo: 90), S("new", minutesAgo: 1)]);
+
+        Assert.Equal(Now.AddMinutes(-1), roll.LastActive);
+    }
+
+    // A cross says the work is not coming back, not that nobody was ever there — the newest
+    // touch counts for recency even when it is an abandoned session's.
+    [Fact]
+    public void ACrossedOutSessionStillSetsLastActive()
+    {
+        var roll = Roll(
+            [S("old", minutesAgo: 90), S("x", minutesAgo: 1)],
+            marks: new() { ["x"] = Disposition.Abandoned });
+
+        Assert.Equal(Now.AddMinutes(-1), roll.LastActive);
+    }
+
+    [Fact]
     public void RollsAreOrderedByUrgency()
     {
         var rolls = ProjectFold.Roll([

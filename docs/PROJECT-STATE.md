@@ -210,7 +210,8 @@ as leaky as it looks.
 Three places, all three wanted:
 
 - **`SessionCli list --projects`** — one row per project folder: the rolled-up state, the
-  note behind it, the counts underneath, and the runtime facts (live, stale, host). This is
+  note behind it, the counts underneath, when anything there last moved (`LastActive`, the
+  newest session's, abandoned ones included), and the runtime facts (live, stale, host). This is
   the machine-readable one and the one the phone brief and `inbox --run` would read. Build it
   first; it is where the model gets proved.
 - **Project group headers in the app** — group the card list by project with the rolled-up

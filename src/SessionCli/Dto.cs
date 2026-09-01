@@ -71,6 +71,12 @@ internal sealed class ProjectDto
     /// </summary>
     public required int Declared { get; init; }
 
+    /// <summary>
+    /// When anything here last moved — the newest session's <c>LastActive</c>, abandoned ones
+    /// included. Serialized the same way the session rows' timestamp is.
+    /// </summary>
+    public required DateTime LastActive { get; init; }
+
     /// <summary>How many of its sessions are open in a terminal right now.</summary>
     public required int Live { get; init; }
 
@@ -98,6 +104,7 @@ internal sealed class ProjectDto
         Unfinished = roll.Unfinished,
         Abandoned = roll.Abandoned,
         Declared = roll.Declared,
+        LastActive = roll.LastActive,
         Live = live,
         Stale = stale,
         Host = host,

@@ -147,6 +147,13 @@ public sealed record ProjectRoll
     public required int Declared { get; init; }
 
     /// <summary>
+    /// When anything here last moved — the newest session's last activity. Abandoned sessions
+    /// count: a cross says the work is not coming back, not that nobody was ever there, and a
+    /// recency lens asking "when was this project last touched" wants the touch either way.
+    /// </summary>
+    public required DateTime LastActive { get; init; }
+
+    /// <summary>
     /// Every session folded in, newest first — the key back to the session rows, since
     /// <c>list --projects</c> answers with projects instead of them. Abandoned sessions are
     /// included: they are part of what is here, they just do not decide anything.
@@ -283,6 +290,7 @@ public static class ProjectFold
             Unfinished = unfinished,
             Abandoned = abandoned,
             Declared = declared,
+            LastActive = newestFirst[0].LastActive,
             SessionIds = newestFirst.Select(s => s.SessionId).ToList(),
         };
     }
