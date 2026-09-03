@@ -352,10 +352,11 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _isRestarting;
 
     /// <summary>
-    /// Whether a sweep may start. A restart types into someone's terminal by borrowing its
-    /// console, and standby opens terminals that take the foreground as they appear — so the
-    /// two must not run at once, and neither may run twice. One gate rather than one each,
-    /// because the collision is between them, not within either.
+    /// Whether a sweep may start: one at a time, and neither twice. Not because they would
+    /// corrupt each other — a restart borrows a console and types into it (see ConsoleInput),
+    /// which a terminal opening elsewhere cannot disturb — but because they share the one
+    /// status line and the desk. Two running at once means a progress line that names one of
+    /// them while the other is what is actually happening.
     /// </summary>
     public bool NotSweeping => !IsRestarting && !IsStandingBy;
 
