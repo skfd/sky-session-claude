@@ -284,6 +284,53 @@ public partial class MainWindow : Window
     private void RestartStaleBtn_Click(object sender, RoutedEventArgs e) =>
         _ = _vm.RestartStaleAsync();
 
+    // Standby: a claude rc host per recently worked-in project, the same sweep as
+    // `SessionCli standby --yes`. The plan comes back first and the dialog is the --yes —
+    // nothing here is at risk, but a terminal per project is a thing to be told about before
+    // it lands on the desktop rather than after.
+    private async void StandbyBtn_Click(object sender, RoutedEventArgs e)
+    {
+        StandbyPlan plan;
+        _vm.StatusLine = "Looking for projects to put on standby…";
+        try
+        {
+            plan = await _vm.PlanStandbyAsync();
+        }
+        catch (Exception ex)
+        {
+            _vm.StatusLine = $"Could not work out what to put on standby: {ex.Message}";
+            return;
+        }
+
+        if (plan.Open.Count == 0)
+        {
+            // Most of the time every skip says the same thing — already on standby — so the
+            // reasons are counted rather than listed.
+            var why = string.Join(", ", plan.Skipped
+                .GroupBy(s => s.Reason)
+                .OrderByDescending(g => g.Count())
+                .Select(g => $"{g.Count()} {g.Key}"));
+
+            _vm.StatusLine = plan.Skipped.Count > 0
+                ? $"Nothing to put on standby — all {plan.Skipped.Count} project(s) found were passed over: {why}."
+                : "No project has been worked in within the last 7 days.";
+            return;
+        }
+
+        _vm.StatusLine = $"{plan.Open.Count} project(s) to put on standby"
+            + (plan.Skipped.Count > 0 ? $", {plan.Skipped.Count} passed over" : "")
+            + " — the plan is up, waiting on your say-so.";
+
+        var dlg = new StandbyDialog(plan, MainViewModel.StandbyPreamble(plan)) { Owner = this };
+        if (dlg.ShowDialog() != true)
+        {
+            _vm.StatusLine = "Standby cancelled — nothing was opened.";
+            return;
+        }
+
+        await _vm.StandbyAsync(plan);
+    }
+
     private void CopyBtn_Click(object sender, RoutedEventArgs e)
     {
         var commands = Grid.SelectedItems.OfType<SessionRow>()

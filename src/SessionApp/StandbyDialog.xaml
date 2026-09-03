@@ -1,0 +1,62 @@
+<Window x:Class="SessionApp.StandbyDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Standby"
+        Width="680" Height="460" MinWidth="480" MinHeight="260"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        FontSize="14" Foreground="{DynamicResource Brush.Text.Primary}"
+        Background="{DynamicResource Brush.List.Background}"
+        TextOptions.TextFormattingMode="Display">
+
+    <DockPanel Margin="12">
+        <TextBlock DockPanel.Dock="Top" Margin="0,0,0,10" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Brush.Text.Secondary}"
+                   Text="{Binding Preamble, RelativeSource={RelativeSource AncestorType=Window}}"/>
+
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button x:Name="OpenBtn" Padding="14,5" Margin="0,0,8,0" IsDefault="True"
+                    Click="Open_Click"/>
+            <Button Content="Cancel" Padding="14,5" IsCancel="True"/>
+        </StackPanel>
+
+        <!--
+            The plan, as the CLI prints it: what will open, then what was passed over with
+            the reason. No per-row picking — `standby` has none either — so an ItemsControl
+            rather than a ListBox: a row that highlights under the pointer invites a click
+            that does nothing. It still scrolls, which at thirty projects it has to.
+        -->
+        <Border BorderThickness="1"
+                BorderBrush="{DynamicResource Brush.Bar.Border}"
+                Background="{DynamicResource Brush.List.Background}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl x:Name="List">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <!-- Passed-over rows read as set aside, the way abandoned cards do. -->
+                            <StackPanel Margin="6,5">
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Skipped}" Value="True">
+                                                <Setter Property="Opacity" Value="0.65"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.Text.Title}"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding Detail}" Margin="0,1,0,0" FontStyle="Italic"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding Detail}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+    </DockPanel>
+</Window>

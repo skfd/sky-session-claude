@@ -107,9 +107,13 @@
                 Background="{DynamicResource Brush.Bar.Background}">
             <DockPanel Margin="8,7">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="12,0,0,0">
+                    <Button Content="{Binding StandbyLabel}" Padding="12,5" Margin="0,0,6,0"
+                            Click="StandbyBtn_Click"
+                            IsEnabled="{Binding NotSweeping}"
+                            ToolTip="Before you walk away: leave a claude rc host running in every project you have worked in this week, so your phone shows your repos instead of an empty list. It states the plan before it opens anything."/>
                     <Button Content="{Binding RestartStaleLabel}" Padding="12,5" Margin="0,0,6,0"
                             Click="RestartStaleBtn_Click"
-                            IsEnabled="{Binding NotRestarting}"
+                            IsEnabled="{Binding NotSweeping}"
                             ToolTip="Restart every running session that is behind the installed build and provably idle. Remote Control comes back with them."/>
                     <Button Content="Refresh (R)" Padding="12,5" Margin="0,0,6,0"
                             Command="{Binding RefreshCommand}"/>

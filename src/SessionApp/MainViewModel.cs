@@ -224,6 +224,7 @@ public partial class MainViewModel : ObservableObject
         _names.ReloadIfChanged();
 
         UpdateStaleCount();
+        await UpdateStandbyCountAsync();
         await RenamePassAsync(live);
 
         // The dispositions file has another writer — `SessionCli done <id>` on an agent's
@@ -350,8 +351,13 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty] private bool _isRestarting;
 
-    /// <summary>A restart drives someone's terminal; two at once would fight over it.</summary>
-    public bool NotRestarting => !IsRestarting;
+    /// <summary>
+    /// Whether a sweep may start. A restart types into someone's terminal by borrowing its
+    /// console, and standby opens terminals that take the foreground as they appear — so the
+    /// two must not run at once, and neither may run twice. One gate rather than one each,
+    /// because the collision is between them, not within either.
+    /// </summary>
+    public bool NotSweeping => !IsRestarting && !IsStandingBy;
 
     public string RestartStaleLabel =>
         StaleCount > 0 ? $"Restart stale ({StaleCount})" : "Restart stale";
@@ -360,7 +366,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(RestartStaleLabel));
 
     partial void OnIsRestartingChanged(bool value) =>
-        OnPropertyChanged(nameof(NotRestarting));
+        OnPropertyChanged(nameof(NotSweeping));
 
     private void UpdateStaleCount() => StaleCount = Sweepable().Count;
 
@@ -445,6 +451,104 @@ public partial class MainViewModel : ObservableObject
         finally
         {
             IsRestarting = false;
+        }
+    }
+
+    // --- standby ------------------------------------------------------------
+
+    /// <summary>
+    /// How many projects worked in lately have no <c>claude rc</c> host answering for them —
+    /// what the toolbar button would open. Read off the rows already on screen rather than a
+    /// scan of its own, so it inherits whatever the filter bar is scoped to; the plan the
+    /// button states is decided on a full scan when it is clicked, which is why this number
+    /// is allowed to be an estimate and the plan never is.
+    /// </summary>
+    [ObservableProperty] private int _standbyCount;
+
+    [ObservableProperty] private bool _isStandingBy;
+
+    public string StandbyLabel => StandbyCount > 0 ? $"Standby ({StandbyCount})" : "Standby";
+
+    partial void OnStandbyCountChanged(int value) =>
+        OnPropertyChanged(nameof(StandbyLabel));
+
+    partial void OnIsStandingByChanged(bool value) =>
+        OnPropertyChanged(nameof(NotSweeping));
+
+    /// <summary>
+    /// Recount on the live tick, not on the scan: what changes the answer is a host coming up
+    /// or going away, and neither writes a session file for the watcher to notice.
+    /// </summary>
+    private async Task UpdateStandbyCountAsync()
+    {
+        var infos = Rows.Select(r => r.Info).ToList();
+        var now = DateTime.Now;
+        try
+        {
+            StandbyCount = await Task.Run(() => Standby.Decide(infos, now).Open.Count);
+        }
+        catch
+        {
+            // A folder that went away mid-stat, or a pointer being rewritten. The next tick
+            // counts again; a wrong number on a button is not worth a dialog.
+        }
+    }
+
+    /// <summary>
+    /// What standby would do, decided the way the CLI decides it: over every project, not the
+    /// ones the filter bar happens to be showing. The scanner's cache makes the second scan of
+    /// a session cheap, so this costs about what a refresh does.
+    /// </summary>
+    public async Task<StandbyPlan> PlanStandbyAsync()
+    {
+        var now = DateTime.Now;
+        return await Task.Run(() => Standby.Decide(
+            _scanner.Scan(new ScanOptions { All = true, Top = int.MaxValue }), now));
+    }
+
+    /// <summary>
+    /// What to say above the plan. The trust caveat is stated rather than detected: nothing
+    /// outside that terminal can see the prompt, and <c>claude rc</c> will not answer it — it
+    /// says to run <c>claude</c> in the folder once, and stops.
+    /// </summary>
+    public static string StandbyPreamble(StandbyPlan plan) =>
+        $"A claude rc host in each of these {plan.Open.Count} project(s): one session ready on"
+        + " your phone straight away, more when you start them there. Each opens a terminal of"
+        + " its own."
+        + " A folder Claude Code has not been trusted with will not start a host — run `claude`"
+        + " there once to answer the trust prompt.";
+
+    /// <summary>
+    /// Open a host per project. Nothing here can lose work — every terminal it opens is one it
+    /// just made — so the only thing to account for afterwards is what it passed over.
+    /// </summary>
+    public async Task StandbyAsync(StandbyPlan plan)
+    {
+        if (IsStandingBy || plan.Open.Count == 0) return;
+        IsStandingBy = true;
+        try
+        {
+            for (int i = 0; i < plan.Open.Count; i++)
+            {
+                var target = plan.Open[i];
+                StatusLine = $"Opening a host in \"{target.Project}\" ({i + 1} of {plan.Open.Count})…";
+
+                // The project is a name prefix for the sessions the host goes on to create,
+                // not a session name — see LaunchLine.HostIn. Left off, every row on the phone
+                // would be named after this machine instead.
+                TerminalLauncher.Start(LaunchLine.HostIn(target.Folder, target.Project));
+            }
+
+            var named = string.Join(", ", plan.Open.Select(t => t.Project));
+            var also = plan.Skipped.Count > 0 ? $"; skipping {plan.Skipped.Count}" : "";
+            StatusLine = $"{plan.Open.Count} project(s) on standby: {named}{also}."
+                + " Give them a moment to connect.";
+
+            await RefreshLiveAsync();
+        }
+        finally
+        {
+            IsStandingBy = false;
         }
     }
 
