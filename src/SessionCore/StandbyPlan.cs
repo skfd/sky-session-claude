@@ -10,6 +10,15 @@ public sealed record StandbyTarget
 
     /// <summary>The most recent real turn in any session that ran there.</summary>
     public required DateTime LastActive { get; init; }
+
+    /// <summary>
+    /// Whether Claude Code has never been trusted with this folder, and standby will have to
+    /// grant it on the way past. Not a skip: these are the operator's own repos — made by them
+    /// or by an agent working for them, and never opened interactively, which is exactly how
+    /// the folder you worked in yesterday ends up untrusted — and a host that stops at the gate
+    /// is the one failure standby cannot see happen. See <see cref="ClaudeTrust"/>.
+    /// </summary>
+    public bool NeedsTrust { get; init; }
 }
 
 /// <summary>A folder standby considered and passed over, with the reason it did.</summary>
@@ -87,6 +96,11 @@ public static class Standby
     /// folder rather than the repo because that is where the pointer is written, and it comes
     /// from the scan itself, so no path has to be slugged to ask it.
     /// </param>
+    /// <param name="isTrusted">
+    /// Whether Claude Code has been trusted with a folder — true, false, or null when the
+    /// config cannot say. Only a definite no is reported, because "unreadable" and "never
+    /// opened there" are not the same claim and neither is worth stopping for.
+    /// </param>
     public static StandbyPlan Decide(
         IEnumerable<SessionInfo> sessions,
         DateTime now,
@@ -94,12 +108,14 @@ public static class Standby
         int max = int.MaxValue,
         Func<string, bool>? folderExists = null,
         Func<string, bool>? isRepo = null,
-        Func<string, BridgePointer?>? hostFor = null)
+        Func<string, BridgePointer?>? hostFor = null,
+        Func<string, bool?>? isTrusted = null)
     {
         var since = now - (window ?? DefaultWindow);
         var exists = folderExists ?? Directory.Exists;
         var repo = isRepo ?? HasGit;
         var host = hostFor ?? (dir => RemoteControlHosts.ServingFrom(dir));
+        var trusted = isTrusted ?? (dir => ClaudeTrust.IsTrusted(dir));
 
         var newest = new Dictionary<string, (string Folder, string ProjectDir, DateTime LastActive)>(
             StringComparer.OrdinalIgnoreCase);
@@ -170,6 +186,7 @@ public static class Standby
                 Folder = folder.Folder,
                 Project = project,
                 LastActive = folder.LastActive,
+                NeedsTrust = trusted(folder.Folder) is false,
             });
         }
 

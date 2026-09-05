@@ -30,7 +30,8 @@ public partial class StandbyDialog : Window
         foreach (var target in plan.Open)
             lines.Add(new StandbyLine(
                 target.Project,
-                $"{target.Folder}  ·  {TextUtil.RelativeAge(target.LastActive)}",
+                $"{target.Folder}  ·  {TextUtil.RelativeAge(target.LastActive)}"
+                + (target.NeedsTrust ? "  ·  never trusted — opening will record it" : ""),
                 false));
         foreach (var skip in plan.Skipped)
             lines.Add(new StandbyLine(skip.Project, $"skipped — {skip.Reason}", true));

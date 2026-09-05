@@ -1642,7 +1642,7 @@ internal static class Commands
     /// </summary>
     public static int Standby(Args args)
     {
-        args.RejectUnknown("in", "since", "recent", "yes", "dry-run");
+        args.RejectUnknown("in", "since", "recent", "yes", "dry-run", "no-trust");
 
         if (args.Positional.Count > 0)
             throw new UsageException(
@@ -1689,7 +1689,13 @@ internal static class Commands
 
             plan = new StandbyPlan
             {
-                Open = [new StandbyTarget { Folder = folder, Project = project, LastActive = now }],
+                Open = [new StandbyTarget
+                {
+                    Folder = folder,
+                    Project = project,
+                    LastActive = now,
+                    NeedsTrust = ClaudeTrust.IsTrusted(folder) is false,
+                }],
                 Skipped = [],
             };
         }
@@ -1700,16 +1706,40 @@ internal static class Commands
                 scanner.Scan(new ScanOptions { All = true, Top = int.MaxValue }),
                 now, window, args.Int("recent", int.MaxValue));
 
-            // Standby is where a folder Claude Code has never been trusted with shows up, and
-            // `claude rc` will not ask: it says to run `claude` there first and stops. Nothing
-            // outside that terminal can see it happen, so this is said rather than detected.
-            if (plan.Open.Count > 0) untrustedNote =
-                " A folder Claude Code has not been trusted with will not start a host — run"
-                + " `claude` there once to answer the trust prompt.";
+        }
+
+        // The gate is now read rather than warned about: a folder Claude Code has never been
+        // trusted with does not start a host, and `claude rc` will not ask — it says to run
+        // `claude` there first and stops, where nothing outside that terminal can see it. These
+        // are the operator's own repos, so standby grants the trust it needs and says which
+        // ones it granted; --no-trust leaves the gate closed and reports what will hit it.
+        var untrusted = plan.Open.Where(t => t.NeedsTrust).ToList();
+        var trustDeclined = args.Has("no-trust");
+        if (untrusted.Count > 0)
+        {
+            var they = untrusted.Count == 1 ? "one has" : $"{untrusted.Count} have";
+            untrustedNote = trustDeclined
+                ? $" Of these, {they} never been trusted and will not start a host — run"
+                    + " `claude` there once, or drop --no-trust and let standby record it."
+                : $" Of these, {they} never been trusted; standby records the trust as it opens,"
+                    + " backing up ~/.claude.json first.";
         }
 
         // No --yes is a plan, the same as the other sweeps; --dry-run says so outright.
         bool dry = args.Has("dry-run") || !args.Has("yes");
+
+        // The project is the name prefix, not a session name: what this starts is a host, and
+        // everything it goes on to create is named after the prefix. Left off, they would all
+        // be named after this machine instead — see ClaudeLaunch.Host. It names the tab too,
+        // which is what tells one PowerShell from the next fifteen.
+        // Trust before terminals, and one folder at a time: a grant that fails is a host that
+        // will not start, and the row should say so rather than the sweep stopping.
+        var granted = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!dry && !trustDeclined)
+            foreach (var target in untrusted)
+                granted[target.Folder] = ClaudeTrust.Grant(target.Folder) is { Ok: true } ok
+                    ? ok.Message
+                    : $"could not be trusted — the host will stop at the gate";
 
         // The project is the name prefix, not a session name: what this starts is a host, and
         // everything it goes on to create is named after the prefix. Left off, they would all
@@ -1727,20 +1757,28 @@ internal static class Commands
         var where = TerminalLauncher.HasWindowsTerminal ? "a tab" : "a terminal";
 
         var items = new List<ActionItem>();
-        foreach (var tab in tabs)
+        foreach (var target in plan.Open)
+        {
+            var command = ClaudeLaunch.Host(target.Project);
+            var trust = granted.TryGetValue(target.Folder, out var said) ? $" ({said})"
+                : target.NeedsTrust && trustDeclined ? " (never trusted here — it will stop at the gate)"
+                : target.NeedsTrust ? " (never trusted here — standby will record the trust first)"
+                : "";
+
             items.Add(new ActionItem
             {
                 // No id, and further from having one than `new` is: a host is not a session at
                 // all, and the sessions it pre-creates and spawns are its business. The folder
                 // is what identifies the row.
                 SessionId = "",
-                Name = tab.Title,
-                Folder = tab.Folder,
+                Name = target.Project,
+                Folder = target.Folder,
                 Ok = true,
-                Message = dry
-                    ? $"would open {where} running: {tab.Command}"
-                    : $"opened {where} running: {tab.Command}",
+                Message = (dry
+                    ? $"would open {where} running: {command}"
+                    : $"opened {where} running: {command}") + trust,
             });
+        }
 
         foreach (var skip in plan.Skipped)
             items.Add(new ActionItem

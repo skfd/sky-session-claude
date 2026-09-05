@@ -508,9 +508,11 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// What to say above the plan. The trust caveat is stated rather than detected: nothing
-    /// outside that terminal can see the prompt, and <c>claude rc</c> will not answer it — it
-    /// says to run <c>claude</c> in the folder once, and stops.
+    /// What to say above the plan. The trust line is read rather than warned about now: a
+    /// folder Claude Code has never been trusted with does not start a host, and <c>claude rc</c>
+    /// will not ask — it says to run <c>claude</c> there once and stops, where nothing outside
+    /// that terminal can see it happen. Clicking Open is the answer to that prompt, given for
+    /// every folder in the list at once, so it has to be said before the click and not after.
     /// </summary>
     public static string StandbyPreamble(StandbyPlan plan) =>
         $"A claude rc host in each of these {plan.Open.Count} project(s): one session ready on"
@@ -519,8 +521,11 @@ public partial class MainViewModel : ObservableObject
             ? " They share one Windows Terminal window, a tab each — close a tab to stop that"
               + " host, close the window to stop them all."
             : " Each opens a terminal of its own.")
-        + " A folder Claude Code has not been trusted with will not start a host — run `claude`"
-        + " there once to answer the trust prompt.";
+        + (plan.Open.Count(t => t.NeedsTrust) is var untrusted && untrusted > 0
+            ? $" {(untrusted == 1 ? "One has" : $"{untrusted} have")} never been trusted with"
+              + " Claude Code and would stop at the folder-trust gate, so opening records the"
+              + " trust for them — ~/.claude.json is backed up first."
+            : "");
 
     /// <summary>
     /// Open a host per project. Nothing here can lose work — every terminal it opens is one it
@@ -535,6 +540,14 @@ public partial class MainViewModel : ObservableObject
             StatusLine = plan.Open.Count == 1
                 ? $"Opening a host in \"{plan.Open[0].Project}\"…"
                 : $"Opening {plan.Open.Count} hosts, a tab each…";
+
+            // Trust before terminals: a folder the gate stops is a tab that opens and a host
+            // that never comes up, and the click that got here is the answer to that gate.
+            var untrusted = plan.Open.Where(t => t.NeedsTrust).ToList();
+            var refused = 0;
+            if (untrusted.Count > 0)
+                refused = await Task.Run(() =>
+                    untrusted.Count(t => !ClaudeTrust.Grant(t.Folder).Ok));
 
             // The project is doing two jobs here and neither is a session name. It is the
             // prefix every session the host goes on to create is named after — left off, every
@@ -551,7 +564,10 @@ public partial class MainViewModel : ObservableObject
             var named = string.Join(", ", plan.Open.Select(t => t.Project));
             var also = plan.Skipped.Count > 0 ? $"; skipping {plan.Skipped.Count}" : "";
             StatusLine = $"{plan.Open.Count} project(s) on standby: {named}{also}."
-                + " Give them a moment to connect.";
+                + " Give them a moment to connect."
+                + (refused > 0
+                    ? $" {refused} could not be trusted and will stop at the gate — check its tab."
+                    : "");
 
             await RefreshLiveAsync();
         }
