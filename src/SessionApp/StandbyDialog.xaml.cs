@@ -11,8 +11,8 @@ public sealed record StandbyLine(string Title, string Detail, bool Skipped);
 /// <c>--yes</c> is on the command line.
 ///
 /// The confirmation is not about anything at risk: everything standby touches is something it
-/// just made, and nothing it does can lose work. It is about the terminals that are about to
-/// appear on the desktop, one per project, which is a thing to be told before it happens
+/// just made, and nothing it does can lose work. It is about the hosts that are about to start
+/// — a tab each in one Windows Terminal window — which is a thing to be told before it happens
 /// rather than after.
 /// </summary>
 public partial class StandbyDialog : Window
