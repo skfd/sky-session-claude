@@ -290,6 +290,23 @@ public partial class MainWindow : Window
     // it lands on the desktop rather than after.
     private async void StandbyBtn_Click(object sender, RoutedEventArgs e)
     {
+        // The button is disabled for the whole errand, but the check is here too: the scan
+        // behind a plan takes seconds and nothing on screen says so, and a click that lands in
+        // that gap used to buy a second plan, a second dialog and two hosts per project.
+        if (!_vm.NotSweeping) return;
+        _vm.IsPlanningStandby = true;
+        try
+        {
+            await StandbyAsync();
+        }
+        finally
+        {
+            _vm.IsPlanningStandby = false;
+        }
+    }
+
+    private async Task StandbyAsync()
+    {
         StandbyPlan plan;
         _vm.StatusLine = "Looking for projects to put on standby…";
         try

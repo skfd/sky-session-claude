@@ -358,7 +358,7 @@ public partial class MainViewModel : ObservableObject
     /// status line and the desk. Two running at once means a progress line that names one of
     /// them while the other is what is actually happening.
     /// </summary>
-    public bool NotSweeping => !IsRestarting && !IsStandingBy;
+    public bool NotSweeping => !IsRestarting && !IsStandingBy && !IsPlanningStandby;
 
     public string RestartStaleLabel =>
         StaleCount > 0 ? $"Restart stale ({StaleCount})" : "Restart stale";
@@ -468,12 +468,26 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty] private bool _isStandingBy;
 
+    /// <summary>
+    /// The half of standby the other flag does not cover: working out the plan, and the dialog
+    /// waiting on an answer. The scan behind a plan takes seconds on a machine with a few
+    /// hundred sessions and nothing on screen says so, so a second click lands in the gap — and
+    /// a second click used to mean a second plan, a second dialog, and two hosts per project
+    /// once both were answered. <see cref="IsStandingBy"/> cannot be reused for it: it is what
+    /// <see cref="StandbyAsync"/> checks to refuse a re-entry, and setting it early would make
+    /// the sweep refuse its own plan.
+    /// </summary>
+    [ObservableProperty] private bool _isPlanningStandby;
+
     public string StandbyLabel => StandbyCount > 0 ? $"Standby ({StandbyCount})" : "Standby";
 
     partial void OnStandbyCountChanged(int value) =>
         OnPropertyChanged(nameof(StandbyLabel));
 
     partial void OnIsStandingByChanged(bool value) =>
+        OnPropertyChanged(nameof(NotSweeping));
+
+    partial void OnIsPlanningStandbyChanged(bool value) =>
         OnPropertyChanged(nameof(NotSweeping));
 
     /// <summary>
