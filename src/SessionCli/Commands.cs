@@ -1711,27 +1711,36 @@ internal static class Commands
         // No --yes is a plan, the same as the other sweeps; --dry-run says so outright.
         bool dry = args.Has("dry-run") || !args.Has("yes");
 
-        var items = new List<ActionItem>();
-        foreach (var target in plan.Open)
-        {
-            // The project is the name prefix, not a session name: what this starts is a host,
-            // and everything it goes on to create is named after the prefix. Left off, they
-            // would all be named after this machine instead — see ClaudeLaunch.Host.
-            var command = LaunchLine.HostIn(target.Folder, target.Project);
-            if (!dry) StartTerminal(command);
+        // The project is the name prefix, not a session name: what this starts is a host, and
+        // everything it goes on to create is named after the prefix. Left off, they would all
+        // be named after this machine instead — see ClaudeLaunch.Host. It names the tab too,
+        // which is what tells one PowerShell from the next fifteen.
+        var tabs = plan.Open
+            .Select(t => new TerminalTab(t.Folder, t.Project, ClaudeLaunch.Host(t.Project)))
+            .ToList();
 
+        // One window with a tab per project, in one wt invocation — see TerminalLauncher.
+        // StartTabs for why it is one and not sixteen. Without Windows Terminal it falls back
+        // to the window per project this used to open, which is what `where` reports.
+        if (!dry) TerminalLauncher.StartTabs(tabs, TerminalLauncher.StandbyWindow);
+
+        var where = TerminalLauncher.HasWindowsTerminal ? "a tab" : "a terminal";
+
+        var items = new List<ActionItem>();
+        foreach (var tab in tabs)
             items.Add(new ActionItem
             {
                 // No id, and further from having one than `new` is: a host is not a session at
                 // all, and the sessions it pre-creates and spawns are its business. The folder
                 // is what identifies the row.
                 SessionId = "",
-                Name = target.Project,
-                Folder = target.Folder,
+                Name = tab.Title,
+                Folder = tab.Folder,
                 Ok = true,
-                Message = dry ? $"would run: {command}" : $"opened a terminal running: {command}",
+                Message = dry
+                    ? $"would open {where} running: {tab.Command}"
+                    : $"opened {where} running: {tab.Command}",
             });
-        }
 
         foreach (var skip in plan.Skipped)
             items.Add(new ActionItem
@@ -1759,6 +1768,10 @@ internal static class Commands
             message = $"{plan.Open.Count} project(s) on standby: {named}{also}."
                 + " Each is a claude rc host: one session ready on your phone now, more when you"
                 + " start them. Give them a moment to connect."
+                + (TerminalLauncher.HasWindowsTerminal
+                    ? " They share one Windows Terminal window, a tab each — close a tab to stop"
+                      + " that host, close the window to stop them all."
+                    : "")
                 + untrustedNote;
 
         return Cli.EmitResult(new ActionResult

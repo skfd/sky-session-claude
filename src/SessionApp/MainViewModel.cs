@@ -514,8 +514,11 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public static string StandbyPreamble(StandbyPlan plan) =>
         $"A claude rc host in each of these {plan.Open.Count} project(s): one session ready on"
-        + " your phone straight away, more when you start them there. Each opens a terminal of"
-        + " its own."
+        + " your phone straight away, more when you start them there."
+        + (TerminalLauncher.HasWindowsTerminal
+            ? " They share one Windows Terminal window, a tab each — close a tab to stop that"
+              + " host, close the window to stop them all."
+            : " Each opens a terminal of its own.")
         + " A folder Claude Code has not been trusted with will not start a host — run `claude`"
         + " there once to answer the trust prompt.";
 
@@ -529,16 +532,21 @@ public partial class MainViewModel : ObservableObject
         IsStandingBy = true;
         try
         {
-            for (int i = 0; i < plan.Open.Count; i++)
-            {
-                var target = plan.Open[i];
-                StatusLine = $"Opening a host in \"{target.Project}\" ({i + 1} of {plan.Open.Count})…";
+            StatusLine = plan.Open.Count == 1
+                ? $"Opening a host in \"{plan.Open[0].Project}\"…"
+                : $"Opening {plan.Open.Count} hosts, a tab each…";
 
-                // The project is a name prefix for the sessions the host goes on to create,
-                // not a session name — see LaunchLine.HostIn. Left off, every row on the phone
-                // would be named after this machine instead.
-                TerminalLauncher.Start(LaunchLine.HostIn(target.Folder, target.Project));
-            }
+            // The project is doing two jobs here and neither is a session name. It is the
+            // prefix every session the host goes on to create is named after — left off, every
+            // row on the phone would be named after this machine instead (see ClaudeLaunch.Host)
+            // — and it is what the tab is called, which is the only thing that tells sixteen
+            // identical PowerShells apart.
+            var tabs = plan.Open
+                .Select(t => new TerminalTab(t.Folder, t.Project, ClaudeLaunch.Host(t.Project)))
+                .ToList();
+
+            // Off the UI thread: a run long enough to be split waits between the pieces.
+            await Task.Run(() => TerminalLauncher.StartTabs(tabs, TerminalLauncher.StandbyWindow));
 
             var named = string.Join(", ", plan.Open.Select(t => t.Project));
             var also = plan.Skipped.Count > 0 ? $"; skipping {plan.Skipped.Count}" : "";
