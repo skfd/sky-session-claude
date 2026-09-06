@@ -68,9 +68,16 @@ public sealed class SessionScanner
         // Anything deeper is per-session auxiliary data — subagent transcripts
         // (<session-id>/subagents/agent-*.jsonl, not resumable and never titled),
         // tool-results, memory — so only the top level of each project counts.
+        //
+        // An empty file is a session nothing has happened in: no cwd, no title, no turn to
+        // date it by. A `claude rc` host used to pre-create one per project it served, and
+        // the file outlives the host — fifty-four of them here, every one reading as an
+        // untitled session in a folder that could not be named. There is nothing in one to
+        // show, resume or ask about, so it is not a row.
         var files = new DirectoryInfo(_projectsDir)
             .EnumerateDirectories()
             .SelectMany(d => d.EnumerateFiles("*.jsonl"))
+            .Where(f => f.Length > 0)
             .ToList();
 
         IEnumerable<FileInfo> selected = files;
