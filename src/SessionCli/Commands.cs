@@ -1695,7 +1695,12 @@ internal static class Commands
                     Folder = folder,
                     Project = project,
                     LastActive = now,
-                    NeedsTrust = ClaudeTrust.IsTrusted(folder) is false,
+                    // Anything short of a yes. The sweep only acts on a definite no, because
+                    // its folders all have transcripts and so an entry in the config; a
+                    // folder you point at may never have had Claude Code run in it, and one
+                    // with no entry stops at the gate exactly as an untrusted one does --
+                    // a host started in a fresh folder exited with "Workspace not trusted".
+                    NeedsTrust = ClaudeTrust.IsTrusted(folder) is not true,
                 }],
                 Skipped = [],
             };
