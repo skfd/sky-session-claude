@@ -10,14 +10,18 @@ namespace SessionCore;
 ///
 /// Two things differ, and both are about a host having no registry entry. What goes back in
 /// is the host's own command line rather than a resume (see <see cref="LaunchLine.HostAgain"/>),
-/// and what confirms it came back is <c>bridge-pointer.json</c> naming a new pid — the file
-/// is how a host says it is serving a folder, and the only way to hear it say so.
+/// and what confirms it came back is a new <c>claude rc</c> process working in the folder
+/// (see <see cref="RemoteControlHosts.Running"/>) — a host writes nothing that says it is
+/// serving, so the process is the only place to hear it. That is a weaker proof than a
+/// session's registry entry: the process exists the instant the shell runs the line, before
+/// it has connected to the account, so "back" here means launched and not yet ready.
 /// </summary>
 public static class HostRestarter
 {
     /// <summary>
-    /// How long to wait for a host to claim the folder again. Longer than a session's, since
-    /// a host has to connect to the account and pre-create a session before it writes.
+    /// How long to wait for a new host to appear in the folder. The shell has to take the
+    /// line and the process has to come up far enough to have a working directory; seconds,
+    /// usually, but a machine mid-update can be slow to start anything.
     /// </summary>
     private static readonly TimeSpan ReturnTimeout = TimeSpan.FromSeconds(60);
 
@@ -47,30 +51,28 @@ public static class HostRestarter
         var back = await WaitForNewHost(host, ReturnTimeout);
         if (back is null)
             return RestartResult.Fail(
-                "it quit and was relaunched, but no host has claimed the folder yet — check its terminal");
+                "it quit and was relaunched, but no new host is running in the folder yet — check its terminal");
 
-        var note = $"back as pid {back.Pid}";
-        return RestartResult.Done(
-            back.SessionId == host.BridgeSessionId ? $"{note}, on the same bridge session" : note);
+        return RestartResult.Done($"relaunched as pid {back.Pid} — give it a moment to connect");
     }
 
     /// <summary>
-    /// The folder's pointer naming a pid that is not the one we just quit.
+    /// A host in the folder whose pid is not the one we just quit.
     ///
-    /// Existence is not the test: the pointer outlives its host, so the dead one's file is
-    /// still sitting there and would answer immediately. Only a changed pid means a new host
-    /// got far enough to serve the folder.
+    /// The old one may still be on its way out when this starts looking — the quit was
+    /// acknowledged, not necessarily finished — so a host with the old pid is not the answer,
+    /// and only a different pid working in the same folder means the relaunch took.
     /// </summary>
-    private static async Task<BridgePointer?> WaitForNewHost(RemoteControlHost old, TimeSpan timeout)
+    private static async Task<RemoteControlHost?> WaitForNewHost(RemoteControlHost old, TimeSpan timeout)
     {
         var until = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < until)
         {
             await Task.Delay(500);
 
-            if (await Task.Run(() => BridgePointer.Read(old.ProjectDir)) is { } pointer
-                && pointer.Pid != old.Pid)
-                return pointer;
+            var back = await Task.Run(() => RemoteControlHosts.Running()
+                .FirstOrDefault(h => h.Pid != old.Pid && RemoteControlHosts.SameFolder(h.Folder, old.Folder)));
+            if (back is not null) return back;
         }
         return null;
     }

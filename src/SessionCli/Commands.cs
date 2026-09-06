@@ -131,7 +131,7 @@ internal static class Commands
         var claims = new DeclarationStore();
 
         var hosted = new HashSet<string>(
-            RemoteControlHosts.FromScan(scanned).Select(h => FolderKey(h.Folder)),
+            RemoteControlHosts.Running().Select(h => FolderKey(h.Folder)),
             StringComparer.OrdinalIgnoreCase);
 
         // Whether the process is there, and whether it is mid-turn — neither of which any
@@ -195,7 +195,7 @@ internal static class Commands
             i => i.SessionId, i => (SessionStatus?)i.Status, StringComparer.OrdinalIgnoreCase);
         var found = new List<HostDto>();
 
-        foreach (var host in RemoteControlHosts.FromScan(scanned))
+        foreach (var host in RemoteControlHosts.Running())
         {
             if (staleOnly && !host.Stale) continue;
 
@@ -487,7 +487,7 @@ internal static class Commands
             var infos = scanner.Scan(new ScanOptions { All = true, Top = int.MaxValue })
                 .ToDictionary(i => i.SessionId, StringComparer.OrdinalIgnoreCase);
 
-            var hosts = RemoteControlHosts.FromScan(infos.Values).ToList();
+            var hosts = RemoteControlHosts.Running().ToList();
             var host = OneHost(hosts, wanted);
 
             var tree = ProcessTree.Snapshot();
@@ -554,7 +554,7 @@ internal static class Commands
             var tree = ProcessTree.Snapshot();
             var running = live.Values.SelectMany(v => v).ToList();
 
-            foreach (var host in RemoteControlHosts.FromScan(infos.Values))
+            foreach (var host in RemoteControlHosts.Running())
             {
                 if (!host.Stale) continue;
 
@@ -1624,11 +1624,13 @@ internal static class Commands
     /// you get back. This one has to happen before you leave.
     ///
     /// What it starts is <c>claude rc</c>, the host, rather than <c>claude --remote-control</c>,
-    /// a bridged interactive session. The host pre-creates one session so there is a row on the
-    /// phone immediately and then spawns more on demand, which matters because second thoughts
-    /// are what phones are for: a session per project caps you at one conversation per repo,
-    /// and starting another is precisely the thing a phone cannot do for itself. The cost is
-    /// that a host has no terminal you can type into at the desk, and that what it spawns is
+    /// a bridged interactive session. The host spawns a session in the folder each time the
+    /// phone asks for one, which matters because second thoughts are what phones are for: a
+    /// session per project caps you at one conversation per repo, and starting another is
+    /// precisely the thing a phone cannot do for itself. It spawns nothing until asked — the
+    /// session it would pre-create on arrival is an empty one under a name nobody chose, and
+    /// twenty of them is a phone list (see <see cref="ClaudeLaunch.Host"/>). The cost is that
+    /// a host has no terminal you can type into at the desk, and that what it spawns is
     /// <c>sdk-cli</c> — the kind <see cref="ClosePolicy"/> refuses to sweep, on purpose.
     ///
     /// The same distinction decides what it passes over: only a live host means a folder is
@@ -1669,9 +1671,8 @@ internal static class Commands
             // runs is the check that matters from a phone: a second host in a repo that already
             // has one is two identical rows in a list that shows no folders.
             var project = SessionCore.Standby.ProjectOf(folder);
-            var projectDir = new SessionScanner().ProjectDirFor(folder);
 
-            if (RemoteControlHosts.ServingFrom(projectDir) is { } host)
+            if (RemoteControlHosts.ServingFolder(folder) is { } host)
                 return Cli.EmitResult(new ActionResult
                 {
                     Ok = true,
@@ -1768,8 +1769,8 @@ internal static class Commands
             items.Add(new ActionItem
             {
                 // No id, and further from having one than `new` is: a host is not a session at
-                // all, and the sessions it pre-creates and spawns are its business. The folder
-                // is what identifies the row.
+                // all, and the sessions it spawns are its business. The folder is what
+                // identifies the row.
                 SessionId = "",
                 Name = target.Project,
                 Folder = target.Folder,
@@ -1804,8 +1805,8 @@ internal static class Commands
                 + untrustedNote;
         else
             message = $"{plan.Open.Count} project(s) on standby: {named}{also}."
-                + " Each is a claude rc host: one session ready on your phone now, more when you"
-                + " start them. Give them a moment to connect."
+                + " Each is a claude rc host: the phone can open a session in the folder whenever"
+                + " you ask it to, and nothing is opened until then. Give them a moment to connect."
                 + (TerminalLauncher.HasWindowsTerminal
                     ? " They share one Windows Terminal window, a tab each — close a tab to stop"
                       + " that host, close the window to stop them all."

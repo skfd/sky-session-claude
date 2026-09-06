@@ -63,7 +63,7 @@ public class StandbyWindowTests
 
         Assert.Contains(
             "powershell.exe -NoExit -Command \"claude rc --remote-control-session-name-prefix"
-            + " 'battle-agents' --create-session-in-dir --spawn=same-dir\"",
+            + " 'battle-agents' --no-create-session-in-dir --spawn=same-dir\"",
             line);
     }
 

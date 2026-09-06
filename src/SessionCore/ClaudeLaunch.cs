@@ -23,10 +23,10 @@ public static class ClaudeLaunch
 
     /// <summary>
     /// A Remote Control <b>host</b> for the folder the shell is in — not a session, but the
-    /// server that makes them. <c>claude rc</c> pre-creates one so the phone has somewhere to
-    /// type immediately, then spawns more on demand.
+    /// server that makes them. <c>claude rc</c> serves the folder and spawns a conversation
+    /// there whenever the phone asks for one.
     ///
-    /// <paramref name="namePrefix"/> is what every session it creates is named after, and it
+    /// <paramref name="namePrefix"/> is what every session it spawns is named after, and it
     /// is the difference between a usable phone list and an unusable one. Left off, the prefix
     /// defaults to the machine's hostname and the rows read <c>cc-pc-sorted-stallman</c> —
     /// which says nothing about which repo you are about to type into. Given the project, they
@@ -36,9 +36,14 @@ public static class ClaudeLaunch
     /// <c>--name</c> and never on <c>--remote-control</c>. Different flag, different command,
     /// and this one is the naming lever that works.
     ///
-    /// The pre-creation is already the default; it is written out anyway because a phone row
-    /// that exists the moment the host does is the whole point of putting one here, and a
-    /// default is a thing that can change.
+    /// <c>--no-create-session-in-dir</c> turns off the one thing the host does unasked. By
+    /// default it pre-creates a session the moment it starts, so there is somewhere to type
+    /// before anyone has asked to — and a sweep of twenty projects is twenty of those at once.
+    /// Each is an empty conversation under a derived name (<c>morning-briefs-57</c>) that
+    /// nobody chose, sitting in the phone's list next to the real ones, and each leaves a
+    /// zero-byte transcript that outlives the host and reads as an untitled session in a
+    /// folder nothing can name. The host serves the folder just as well without it: the
+    /// phone opens a conversation there when there is something to say, and not before.
     ///
     /// <c>--spawn</c> is written out for a harder reason: unset, and with no answer recorded
     /// for the project, the host stops on a "same-dir or worktree?" question before it serves
@@ -52,7 +57,7 @@ public static class ClaudeLaunch
         + (namePrefix is { Length: > 0 }
             ? $" --remote-control-session-name-prefix {SessionName.Quote(namePrefix)}"
             : "")
-        + " --create-session-in-dir --spawn=same-dir";
+        + " --no-create-session-in-dir --spawn=same-dir";
 
     private static string Line(string? sessionId, string? name)
     {

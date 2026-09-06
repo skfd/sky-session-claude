@@ -59,6 +59,24 @@ public class HostRelaunchTests
             @"cd 'C:\Users\kk\Code\demo'; claude rc",
             LaunchLine.HostAgain(@"C:\Users\kk\Code\demo", @"""C:\Users\kk\.local\bin\claude.exe"" rc"));
 
+    /// <summary>
+    /// The one flag that is not carried over. Standby used to write <c>--create-session-in-dir</c>
+    /// out, and a restart that replayed it would put back the empty pre-created session the
+    /// sweep is the user's only way to retire. The <c>--no-</c> form, and nothing else, changes.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        @"""C:\claude.exe"" rc --remote-control-session-name-prefix demo --create-session-in-dir --spawn=same-dir",
+        @"cd 'C:\Users\kk\Code\demo'; claude rc --remote-control-session-name-prefix demo --no-create-session-in-dir --spawn=same-dir")]
+    [InlineData(
+        @"""C:\claude.exe"" rc --create-session-in-dir",
+        @"cd 'C:\Users\kk\Code\demo'; claude rc --no-create-session-in-dir")]
+    [InlineData(
+        @"""C:\claude.exe"" rc --no-create-session-in-dir --spawn=same-dir",
+        @"cd 'C:\Users\kk\Code\demo'; claude rc --no-create-session-in-dir --spawn=same-dir")]
+    public void PreCreationIsTurnedOffOnTheWayBack(string commandLine, string expected) =>
+        Assert.Equal(expected, LaunchLine.HostAgain(@"C:\Users\kk\Code\demo", commandLine));
+
     [Fact]
     public void StandbysFlagsAreCarriedOverVerbatim() =>
         Assert.Equal(
@@ -125,9 +143,8 @@ public class HostRelaunchTests
 
     private static RemoteControlHost At(string folder, int pid = 4242) => new()
     {
-        Pointer = new BridgePointer { SessionId = "session_abc123", Pid = pid },
+        Pid = pid,
         Folder = folder,
-        ProjectDir = @"C:\Users\kk\.claude\projects\slug",
         ProcessName = "claude.exe.old.1787697313311",
     };
 

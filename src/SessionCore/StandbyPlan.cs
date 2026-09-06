@@ -47,9 +47,10 @@ public sealed record StandbyPlan
 ///
 /// What it puts there is a <c>claude rc</c> <b>host</b>, not a session. The two are different
 /// things wearing the same words: <c>claude --remote-control</c> is one interactive session in
-/// a terminal that happens to be bridged, while <c>claude rc</c> is a server that pre-creates
-/// one session so there is somewhere to type immediately and then spawns more on demand, up to
-/// its capacity. A host is the right shape here because the phone is where second thoughts
+/// a terminal that happens to be bridged, while <c>claude rc</c> is a server that spawns a
+/// session in the folder whenever the phone asks for one, up to its capacity (and no sooner:
+/// see <see cref="ClaudeLaunch.Host"/> for the empty session it would otherwise open on
+/// arrival). A host is the right shape here because the phone is where second thoughts
 /// happen — a session per project caps you at one conversation per repo, and starting another
 /// is the one thing a phone cannot do for itself.
 ///
@@ -61,6 +62,12 @@ public sealed record StandbyPlan
 /// thing that means "already on standby" is a live host, and a bridged terminal in the folder
 /// is passed over in silence: it is not in the way, and one extra row is a smaller cost than
 /// a repo you cannot start a thought in.
+///
+/// A live host is a process — a running <c>claude rc</c> whose working directory is the
+/// folder — and nothing else. It used to be the pointer file a host leaves beside the
+/// project's transcripts, and that was right until the host stopped pre-creating a session,
+/// because the file is written for the session and a host with none writes nothing. See
+/// <see cref="RemoteControlHosts"/>.
 ///
 /// It is folders, not sessions, all the way down: the host decides what conversations exist,
 /// so there was never a resumed-versus-fresh question for this to answer.
@@ -89,12 +96,12 @@ public static class Standby
     /// <see cref="HasGit"/> for why the test is a <c>.git</c>.
     /// </param>
     /// <param name="hostFor">
-    /// The <c>claude rc</c> host serving a project's transcript folder, if one is. The whole
-    /// question of "is this folder already on standby", because a host is the only thing that
-    /// answers it — the session registry cannot, in either direction: a host publishes no
-    /// session of its own, and a session that is bridged is not a host. Asked of the transcript
-    /// folder rather than the repo because that is where the pointer is written, and it comes
-    /// from the scan itself, so no path has to be slugged to ask it.
+    /// The <c>claude rc</c> host working in a folder, if one is. The whole question of "is
+    /// this folder already on standby", because a host is the only thing that answers it —
+    /// the session registry cannot, in either direction: a host publishes no session of its
+    /// own, and a session that is bridged is not a host. Asked of the repo folder, which is
+    /// the host's working directory. The default takes one look at the process table for the
+    /// whole plan rather than one per folder.
     /// </param>
     /// <param name="isTrusted">
     /// Whether Claude Code has been trusted with a folder — true, false, or null when the
@@ -108,16 +115,16 @@ public static class Standby
         int max = int.MaxValue,
         Func<string, bool>? folderExists = null,
         Func<string, bool>? isRepo = null,
-        Func<string, BridgePointer?>? hostFor = null,
+        Func<string, RemoteControlHost?>? hostFor = null,
         Func<string, bool?>? isTrusted = null)
     {
         var since = now - (window ?? DefaultWindow);
         var exists = folderExists ?? Directory.Exists;
         var repo = isRepo ?? HasGit;
-        var host = hostFor ?? (dir => RemoteControlHosts.ServingFrom(dir));
+        var host = hostFor ?? LiveHostLookup();
         var trusted = isTrusted ?? (dir => ClaudeTrust.IsTrusted(dir));
 
-        var newest = new Dictionary<string, (string Folder, string ProjectDir, DateTime LastActive)>(
+        var newest = new Dictionary<string, (string Folder, DateTime LastActive)>(
             StringComparer.OrdinalIgnoreCase);
         foreach (var session in sessions)
         {
@@ -128,10 +135,7 @@ public static class Standby
             var key = Key(cwd);
             if (newest.TryGetValue(key, out var seen) && seen.LastActive >= session.LastActive) continue;
 
-            // The transcript folder the session file sits in, which is where a host writes its
-            // pointer. Taken from the scan rather than slugged from the path, so the one rule
-            // this code would otherwise have to duplicate stays Claude Code's own.
-            newest[key] = (cwd, DirectoryOf(session.FilePath), session.LastActive);
+            newest[key] = (cwd, session.LastActive);
         }
 
         var open = new List<StandbyTarget>();
@@ -145,7 +149,7 @@ public static class Standby
             // that does what standby is for. Launching a second host is the mistake this verb
             // is most likely to make — it publishes no session of its own, so nothing in the
             // registry would have caught it — and a bridged terminal here is not that mistake.
-            if (host(folder.ProjectDir) is { } serving)
+            if (host(folder.Folder) is { } serving)
             {
                 skipped.Add(new StandbySkip
                 {
@@ -224,15 +228,18 @@ public static class Standby
     }
 
     /// <summary>How a folder a host is already serving is reported.</summary>
-    public static string AlreadyReason(BridgePointer serving) =>
+    public static string AlreadyReason(RemoteControlHost serving) =>
         $"already on standby — a claude rc host (pid {serving.Pid}) is serving this folder";
 
     /// <summary>
-    /// The folder a session file sits in, tolerating the empty path a hand-built
-    /// <see cref="SessionInfo"/> has.
+    /// One look at the process table, closed over for every folder the plan asks about.
+    /// Twenty folders are twenty questions, and the answer to all of them is the same list.
     /// </summary>
-    private static string DirectoryOf(string filePath) =>
-        string.IsNullOrEmpty(filePath) ? "" : Path.GetDirectoryName(filePath) ?? "";
+    private static Func<string, RemoteControlHost?> LiveHostLookup()
+    {
+        IReadOnlyList<RemoteControlHost>? hosts = null;
+        return folder => RemoteControlHosts.ServingFolder(hosts ??= RemoteControlHosts.Running(), folder);
+    }
 
     /// <summary>What the project in a folder is called: the folder's leaf name.</summary>
     public static string ProjectOf(string path)

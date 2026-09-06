@@ -123,9 +123,6 @@ internal sealed class HostDto
     public required string Folder { get; init; }
     public required int Pid { get; init; }
 
-    /// <summary>The bridge session the phone addresses. Not a Claude session id — no verb takes it.</summary>
-    public required string BridgeSessionId { get; init; }
-
     /// <summary>Running since. A host publishes no version, so this is the age you get.</summary>
     public required DateTime? Started { get; init; }
 
@@ -148,7 +145,6 @@ internal sealed class HostDto
         Project = host.Project,
         Folder = host.Folder,
         Pid = host.Pid,
-        BridgeSessionId = host.BridgeSessionId,
         Started = host.Started,
         Stale = host.Stale,
         Serving = serving,

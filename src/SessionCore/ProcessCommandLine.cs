@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace SessionCore;
 
 /// <summary>
-/// The command line a running process was started with.
+/// The command line a running process was started with, and the folder it was started in.
 ///
 /// The registry is the reliable map from session to process, but only for a session that
 /// got far enough to write one. A CLI that starts and then hangs before registering is
@@ -13,16 +13,33 @@ namespace SessionCore;
 /// carries <c>--resume &lt;id&gt;</c> on it from the moment the process exists, before any
 /// file is written and whether or not startup ever completes.
 ///
-/// Read straight out of the process's own memory (PEB → process parameters), because
-/// Win32_Process would mean taking a WMI dependency and paying a full-table query for one
-/// answer. Anything that fails — a process that exited mid-read, one belonging to another
-/// user, a 32-bit image — returns null, which every caller reads as "no answer" rather
-/// than "no match".
+/// The working directory answers a question nothing on disk can: which folder a
+/// <c>claude rc</c> host is serving. A host publishes no registry entry, and one started
+/// without a pre-created session writes no <c>bridge-pointer.json</c> either — so the
+/// process is the only record that it exists, and its cwd is the folder (see
+/// <see cref="RemoteControlHosts"/>).
+///
+/// Both are read straight out of the process's own memory (PEB → process parameters),
+/// because Win32_Process would mean taking a WMI dependency and paying a full-table query
+/// for one answer. Anything that fails — a process that exited mid-read, one belonging to
+/// another user, a 32-bit image — returns null, which every caller reads as "no answer"
+/// rather than "no match".
 /// </summary>
 public static class ProcessCommandLine
 {
     /// <summary>The full command line of <paramref name="pid"/>, or null if it cannot be read.</summary>
-    public static string? Of(int pid)
+    public static string? Of(int pid) => ReadParameter(pid, ParametersCommandLine);
+
+    /// <summary>
+    /// The working directory of <paramref name="pid"/> as Windows keeps it — a DOS path with
+    /// a trailing backslash (<c>C:\Users\kk\Code\demo\</c>) — or null if it cannot be read.
+    /// Callers compare it with <see cref="RemoteControlHosts.SameFolder"/>, which forgives
+    /// the slash and the case.
+    /// </summary>
+    public static string? CurrentDirectoryOf(int pid) => ReadParameter(pid, ParametersCurrentDirectory);
+
+    /// <summary>One UNICODE_STRING field of the process's RTL_USER_PROCESS_PARAMETERS.</summary>
+    private static string? ReadParameter(int pid, IntPtr fieldOffset)
     {
         IntPtr handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, false, pid);
         if (handle == IntPtr.Zero) return null;
@@ -35,9 +52,9 @@ public static class ProcessCommandLine
                 return null;
             if (info.PebBaseAddress == IntPtr.Zero) return null;
 
-            // PEB.ProcessParameters, then RTL_USER_PROCESS_PARAMETERS.CommandLine.
+            // PEB.ProcessParameters, then the field inside RTL_USER_PROCESS_PARAMETERS.
             if (ReadPointer(handle, info.PebBaseAddress + PebProcessParameters) is not { } parameters) return null;
-            return ReadUnicodeString(handle, parameters + ParametersCommandLine);
+            return ReadUnicodeString(handle, parameters + fieldOffset);
         }
         catch { return null; }
         finally { CloseHandle(handle); }
@@ -155,6 +172,9 @@ public static class ProcessCommandLine
     // x64 layout. The app, the CLI and the sessions they inspect are all x64; a 32-bit
     // target would read nonsense here, which is why nothing below is trusted blindly.
     private static readonly IntPtr PebProcessParameters = new(0x20);
+    // CurrentDirectory is a CURDIR { UNICODE_STRING DosPath; HANDLE Handle; } — the string
+    // is its first member, so the field's own offset is the string's.
+    private static readonly IntPtr ParametersCurrentDirectory = new(0x38);
     private static readonly IntPtr ParametersCommandLine = new(0x70);
 
     /// <summary>Windows caps a command line well below this; the bound is only a sanity rail.</summary>

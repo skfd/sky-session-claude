@@ -16,9 +16,8 @@ public class HostRestartPolicyTests
 
     private static RemoteControlHost Host(string processName = "claude.exe.old.1787697313311") => new()
     {
-        Pointer = new BridgePointer { SessionId = "session_abc123", Pid = 4242 },
+        Pid = 4242,
         Folder = @"C:\Users\kk\Code\demo",
-        ProjectDir = @"C:\Users\kk\.claude\projects\C--Users-kk-Code-demo",
         ProcessName = processName,
         CommandLine = @"""C:\Users\kk\.local\bin\claude.exe"" rc",
     };

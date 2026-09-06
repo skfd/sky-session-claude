@@ -529,8 +529,8 @@ public partial class MainViewModel : ObservableObject
     /// every folder in the list at once, so it has to be said before the click and not after.
     /// </summary>
     public static string StandbyPreamble(StandbyPlan plan) =>
-        $"A claude rc host in each of these {plan.Open.Count} project(s): one session ready on"
-        + " your phone straight away, more when you start them there."
+        $"A claude rc host in each of these {plan.Open.Count} project(s): the phone can open a"
+        + " session in any of them whenever you ask it to, and nothing is opened until then."
         + (TerminalLauncher.HasWindowsTerminal
             ? " They share one Windows Terminal window, a tab each — close a tab to stop that"
               + " host, close the window to stop them all."

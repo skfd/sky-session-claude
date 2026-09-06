@@ -25,17 +25,13 @@ public class StandbyTests
         SessionId = Guid.NewGuid().ToString(),
         Cwd = cwd,
         LastActive = Now.AddDays(-daysAgo),
-
-        // The transcript folder is where a host writes its pointer, and standby reads it off
-        // the scan rather than slugging the path. Named after the repo here only so a test
-        // can tell one from another.
         FilePath = $@"C:\projects\{ProjectOf(cwd)}\{Guid.NewGuid():N}.jsonl",
     };
 
     private static string ProjectOf(string cwd) => Standby.ProjectOf(cwd);
 
-    private static BridgePointer Host(int pid = 4242) =>
-        new() { SessionId = "session_01WH7wucUtkLYNU3bM3HM38d", Pid = pid };
+    private static RemoteControlHost Host(string folder, int pid = 4242) =>
+        new() { Pid = pid, Folder = folder, ProcessName = "claude" };
 
     /// <summary>Every folder in these tests is pretended to exist unless a test says otherwise.</summary>
     private static StandbyPlan Decide(
@@ -44,13 +40,15 @@ public class StandbyTests
         int max = int.MaxValue,
         Func<string, bool>? folderExists = null,
         Func<string, bool>? isRepo = null,
-        Func<string, BridgePointer?>? hostFor = null) =>
+        Func<string, RemoteControlHost?>? hostFor = null) =>
         Standby.Decide(sessions, Now, window, max,
             folderExists ?? (_ => true), isRepo ?? (_ => true), hostFor ?? (_ => null));
 
-    /// <summary>A host serving the transcript folder of the named project, and nothing else.</summary>
-    private static Func<string, BridgePointer?> HostServing(string project, int pid = 4242) =>
-        dir => ProjectOf(dir).Equals(project, StringComparison.OrdinalIgnoreCase) ? Host(pid) : null;
+    /// <summary>A host working in the folder of the named project, and nothing else.</summary>
+    private static Func<string, RemoteControlHost?> HostServing(string project, int pid = 4242) =>
+        folder => ProjectOf(folder).Equals(project, StringComparison.OrdinalIgnoreCase)
+            ? Host(folder, pid)
+            : null;
 
     [Fact]
     public void TakesTheFoldersWorkedInInsideTheWindow()
@@ -135,17 +133,18 @@ public class StandbyTests
     }
 
     /// <summary>
-    /// The pointer is asked of the transcript folder, not the repo — that is where the host
-    /// writes it, and reading it off the scan is what keeps Claude Code's slug rule out of
-    /// this code.
+    /// The question is asked of the repo itself — the folder a host would be working in —
+    /// not of the transcript folder beside it. It used to be the latter, because that is
+    /// where a host wrote its pointer file; a host with no session writes none, so the
+    /// process's own working directory is what gets compared now.
     /// </summary>
     [Fact]
-    public void AsksAboutTheTranscriptFolderRatherThanTheRepo()
+    public void AsksAboutTheRepoFolder()
     {
         string? asked = null;
-        Decide([In(@"C:\Code\sky", 1)], hostFor: dir => { asked = dir; return null; });
+        Decide([In(@"C:\Code\sky", 1)], hostFor: folder => { asked = folder; return null; });
 
-        Assert.Equal(@"C:\projects\sky", asked);
+        Assert.Equal(@"C:\Code\sky", asked);
     }
 
     /// <summary>

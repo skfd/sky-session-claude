@@ -245,7 +245,7 @@ say so.
 Two things that follow, both easy to get backwards:
 
 - **A host is stale by its image, not by its version.** It publishes no registry
-  entry (see `BridgePointer`), so there is no build on it to compare. What says
+  entry (see `RemoteControlHosts`), so there is no build on it to compare. What says
   so instead is the rename: an updater moves the running binary to
   `claude.exe.old.<timestamp>` so the new build can take the name, so a harness
   reporting that image has been overtaken at least once

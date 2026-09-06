@@ -33,19 +33,21 @@ public static class LaunchLine
     /// restart took away. Only when the command line cannot be read — a process that exited
     /// mid-inspection, or one not ours to inspect — does this fall back to what standby
     /// would have opened, which is the best guess available and worth saying out loud.
+    ///
+    /// One flag is the exception to verbatim. Standby used to spell out
+    /// <c>--create-session-in-dir</c>, and every host it opened before that stopped still
+    /// carries it. Putting it back would put back the empty pre-created session with it — the
+    /// very thing a restart sweep is the user's only way to retire — so it comes back as the
+    /// <c>--no-</c> form. This is safe to treat as standby's signature: the flag is the CLI's
+    /// default, and a host typed by hand does not spell its defaults out.
     /// </summary>
     public static string HostAgain(string folder, string? commandLine) =>
-        IsHostCommand(ProcessCommandLine.ArgumentsOf(commandLine))
-            ? $"cd {SessionName.Quote(folder)}; claude {ProcessCommandLine.ArgumentsOf(commandLine)}"
+        ProcessCommandLine.ArgumentsOf(commandLine) is { } arguments && RemoteControlHosts.IsHostCommand(arguments)
+            ? $"cd {SessionName.Quote(folder)}; claude {WithoutPreCreation(arguments)}"
             : HostIn(folder, Standby.ProjectOf(folder));
 
-    /// <summary>
-    /// Whether arguments read off a process are a host's. <c>rc</c> has to be the whole first
-    /// token: a future <c>rcx</c> is not this verb, and relaunching it as one would be worse
-    /// than admitting the command line was not understood.
-    /// </summary>
-    private static bool IsHostCommand(string? arguments) =>
-        arguments is { Length: > 0 }
-        && (arguments.Equals("rc", StringComparison.OrdinalIgnoreCase)
-            || arguments.StartsWith("rc ", StringComparison.OrdinalIgnoreCase));
+    /// <summary>The arguments with the pre-creation flag turned off, wherever it sat.</summary>
+    private static string WithoutPreCreation(string arguments) =>
+        System.Text.RegularExpressions.Regex.Replace(
+            arguments, @"(?<![\w-])--create-session-in-dir(?![\w-])", "--no-create-session-in-dir");
 }
