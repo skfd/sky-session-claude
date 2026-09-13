@@ -230,6 +230,20 @@ Three things had to be checked before trusting it, and all three held:
   window outside `battle-agents` are scheduled `experiment-2026-*` runs or spawned one-shots
   with zero or one prompt. No operator session is wrongly excluded.
 
+Two more that were checked because they would have bitten at release rather than in the
+tests:
+
+- **The parse cache does not persist.** `SessionFileCache` is an in-memory
+  `ConcurrentDictionary` keyed on write time, length and context window. Had it been a file,
+  every entry written before this build would deserialize `HasOperator` as `false` and the
+  fold would drop every session on the first run after an update — a bug that shows up only
+  on the installed app, only once, and looks like the feature is broken.
+- **The phone counts as a person.** A prompt typed into a `claude rc` host from the phone
+  arrives as `promptSource: queued` through a bridge, which is neither of the shapes the rule
+  was sampled on. Checked directly: a session with 51 `bridge-session` records and 4 queued
+  prompts carries 5 human origins. Standby is the user's actual workflow, so this one had to
+  be verified rather than inferred from the audit.
+
 **The re-read, same window, 2026-09-13: 150 sessions, 149 judged, 111 declared, 28 stale,
 10 silent — 74.5% live**, with 191 unattended excluded. The convention was never landing on
 one session in three; it lands on three in four. And **silent collapsed from 194 to 10**,

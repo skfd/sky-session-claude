@@ -27,7 +27,16 @@ wrong: a classifier that guesses at intent, or a declaration that quietly overwr
 
 A project's derived state is a fold over the Status of every session that ran in its folder,
 plus the runtime facts already on hand. No agent cooperation, no new file, and it works on
-every session already on disk:
+every session already on disk.
+
+Every session somebody was actually in, that is. An **unattended** session — one no person
+ever spoke in, because a program was calling Claude and the call was written to a file shaped
+like a conversation — is dropped before any of this is asked, ahead even of the operator's
+cross. There is no operator to be waiting on and nothing to go back into, so counting one as
+silent or unfinished would be answering a question about somebody who was never there. A
+folder holding nothing else produces no project row at all. See *Unattended* in
+[`docs/GLOSSARY.md`](GLOSSARY.md) for how it is read off the file, and why the harness fields
+cannot answer it.
 
 | In the project | The project reads as |
 |---|---|
