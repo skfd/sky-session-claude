@@ -2,8 +2,9 @@
 
 [`docs/PROJECT-STATE.md`](PROJECT-STATE.md) is the design and the *why*. This is the build
 order and the traps. **Steps 1 to 4 are built** — what each turned out to cost, and where it
-came out different, is recorded under each one. Steps 5 and 6 are not, and the plan's reason
-for holding them still holds.
+came out different, is recorded under each one. Steps 5 to 7 are not. Step 5 did not exist
+when this was written and is now the one in the way; the reasons for holding 6 and 7 still
+hold.
 
 Read the design first. This file does not restate the vocabulary; it says what to touch, in
 what order, and what will bite.
@@ -105,7 +106,7 @@ axis, next to derived Status and declared disposition), and the states `quiet`, 
 disposition law is. The glossary is what stops these words drifting; a design doc alone will
 not hold them.
 
-### 4. The convention, and measuring it — built; deciding reading due 2026-09-05
+### 4. The convention, and measuring it — built; deciding reading taken 2026-09-13
 
 The line is in `~/.claude/CLAUDE.md`, under *What happens next here*, carrying the full path.
 
@@ -133,16 +134,74 @@ agents having seen the convention line at all. The honest silent count among ses
 *could* have declared is closer to two. Small denominator; one row moves the number by
 eight points.
 
-**The reading that decides is the one taken on or after 2026-09-05** — a full week of the
-convention. If it is low, the `Stop` hook is next — it cannot know the *state*, but it can
-write `undeclared` with the turn uuid, which distinguishes "this agent never reports" from
-"this agent reported and things moved on".
+**The deciding reading, 2026-09-13** (eight days later than the plan asked for, which changes
+nothing — more window, not less): **341 sessions, 340 judged, 116 declared, 30 stale, 194
+silent — 34.1% live.**
 
-Do not build the hook before that reading. The convention may be enough, and a hook that
-fires on every session is not free. A 2.5-day number, whatever it says, does not authorize
-starting it.
+That number is not a reading of the convention. It is a reading of the denominator, and the
+denominator is wrong. One project, `battle-agents`, contributes 166 of the 341 rows and 157
+of the 194 silent. Take it out and the same window says **108 declared, 29 stale, 37 silent —
+62.1% live** (108/174). The convention is landing on roughly two sessions in three, not one
+in three.
 
-### 5. App group headers
+`battle-agents` is not a project with 157 silent sessions. It is a project that **uses Claude
+as a library**, and every call it makes writes a file the scanner counts as a session. Their
+prompts are what that looks like from the inside — *"Reply with ONLY strict JSON, no markdown
+fence"*, *"You are the slop filter for a personal index…"*. Nobody sat in those. There is
+nothing to go back to, nothing to declare, and no operator the declaration would be for.
+This is not a measurement problem that a better script fixes; see the new step 5 below.
+
+The second exclusion worth naming and *not* worth netting out: fourteen `experiment-2026-…`
+folders, one per day, each a single silent session whose last prompt reads *"Final turn. It
+is 12:44. Stop after this — the process is killed at 18:00."* A scheduled routine, checked
+rather than inferred from the folder name. Excluding those too would say 67.9%, and that is
+where this stops — subtract exclusions until the number pleases and it has stopped being a
+measurement. **62.1% is the figure of record.**
+
+**The stale bucket is the other half and has its own number: 29 of 174, about one in six.**
+Those agents declared once and the operator prompted past it without a re-declare. A `Stop`
+hook does not fix them — law 2 already catches a stale claim and falls the project back to
+`undeclared`, which is correct and also means the hook would be draining the wrong bucket.
+`poi-categories` is the extreme case: 1 declared, 6 stale. The CLAUDE.md line already says
+"declare again before you stop again"; it is not landing.
+
+So the hook decision does not decide itself, and the plan never defined "low". 62% among
+sessions that could comply, with a distinct 17% who complied once and then went quiet, is not
+the lopsided number that authorises building it — and the bucket it would drain cannot be
+counted correctly until step 5 exists. Held, deliberately, and handed to the operator rather
+than settled here.
+
+### 5. Operator sessions and programmatic ones — not built, and now the blocker
+
+The measurement turned this up, but it is not about the measurement. Every roll-up in this
+design reads the same session list, so every one of them inherits the problem:
+`list --projects` reports `battle-agents` as one project holding 273 rows that will read
+`undeclared` forever, the tray count carries them, and the `undeclared`-below-`runnable`
+worry in *What is left to look at* is this same thing magnified. A project whose sessions
+nobody will ever declare on is not a project in the sense this design means, and there is
+currently no way to say so.
+
+What the file records, checked rather than guessed:
+
+- **`entrypoint`**, on every `user` record: `cli` for a terminal, `claude-desktop` for the
+  desktop app, `sdk-cli` for a session driven through the SDK. Every one of the 40
+  `battle-agents` files sampled says `sdk-cli`.
+- **`promptSource`**, per prompt: `typed` or `sdk`. All 39 sampled `battle-agents` prompts
+  say `sdk`.
+
+**Neither is sufficient, and this is the trap.** This very session is `sdk-cli` with
+`promptSource: "sdk"` and has an operator typing into it — the same two values
+`battle-agents` carries. Worse, a session can change entrypoint mid-file: this one holds 58
+`cli` records and 131 `sdk-cli`, because it was resumed under a different harness. So the
+signal exists, it is genuinely there in the file, and it does not by itself separate "a human
+is driving an SDK harness" from "a program is calling Claude as a library". Whatever
+distinguishes them is a step further in, and finding it is the work.
+
+Do not patch `measure-declarations.ps1` to exclude `battle-agents` by name in the meantime.
+The script's denominator is wrong for a reason the whole feature shares, and hardcoding the
+one project that exposed it would hide the finding and keep the bug.
+
+### 6. App group headers
 
 Grouping goes through `RowsView`, which is already an `ICollectionView` — add a
 `GroupDescription` on project and a header template carrying the rolled-up state. No new
@@ -151,7 +210,7 @@ collection, no second scan.
 Leave this until the CLI has been lived with, so the headers show the states that turned out
 to carry weight rather than all seven.
 
-### 6. The tray and title split
+### 7. The tray and title split
 
 `MainViewModel.cs:527` is where the count and the window title are set today — one number,
 "still on the hook". Splitting it into *N need you* / *N just need waking* lands here and in
@@ -172,3 +231,8 @@ something to look at:
   a project that merely needs waking. On this machine that is two projects under one, and it
   reads wrong. Leave it until the convention has been running long enough to say how often a
   question is actually declared.
+
+  The 2026-09-13 reading makes this worse before it makes it better: `undeclared` is also
+  what a project full of programmatic sessions reads as, so the rank currently decides
+  between a real question and `battle-agents`. Settle step 5 first — the ordering question is
+  only answerable once `undeclared` means one thing.
