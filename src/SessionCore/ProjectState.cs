@@ -143,6 +143,13 @@ public sealed record ProjectRoll
     /// <summary>How many were crossed out and skipped.</summary>
     public required int Abandoned { get; init; }
 
+    /// <summary>
+    /// How many sessions here nobody ever sat in — a program's calls to Claude, skipped
+    /// before anything else is asked. Reported rather than silently dropped: a project whose
+    /// number is in the hundreds is being used as a library, and that is worth seeing.
+    /// </summary>
+    public required int Unattended { get; init; }
+
     /// <summary>How many carried a declaration that still stands.</summary>
     public required int Declared { get; init; }
 
@@ -157,7 +164,10 @@ public sealed record ProjectRoll
     /// <summary>
     /// Every session folded in, newest first — the key back to the session rows, since
     /// <c>list --projects</c> answers with projects instead of them. Abandoned sessions are
-    /// included: they are part of what is here, they just do not decide anything.
+    /// included: they are part of what is here, they just do not decide anything. Unattended
+    /// ones are not, and that is the difference between the two skips — a cross is a session
+    /// the operator has an opinion about, while an unattended file is not a session they have
+    /// any way back into. Listing the 263 a library call left behind would bury the rest.
     /// </summary>
     public required IReadOnlyList<string> SessionIds { get; init; }
 }
@@ -234,6 +244,14 @@ public static class ProjectFold
 
         return groups
             .Select(g => One(folders[g.Key], g.Value, mark, claim, liveness))
+            // A project of nothing but unattended sessions is not a project this answers
+            // about: there is no operator to be on the hook for it. Every experiment-2026-*
+            // folder is one, and so is anything else that only ever ran Claude as a library.
+            // The trade-off is deliberate and worth naming — a scheduled routine that died on
+            // a usage limit disappears from here rather than reading `broken`. "What am I on
+            // the hook for" and "did last night's job crash" are different questions, and the
+            // second one is not this verb's.
+            .Where(r => r.Sessions > 0 || r.Abandoned > 0)
             .OrderBy(r => r.State)
             .ThenBy(r => r.Project, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -246,7 +264,19 @@ public static class ProjectFold
         Func<string, Declaration?> claim,
         Func<string, Liveness> liveness)
     {
-        var newestFirst = sessions.OrderByDescending(s => s.LastActive).ToList();
+        // Unattended sessions are dropped here, before anything else is asked of them. This
+        // comes first because it is not a judgment about the work: an abandoned session is one
+        // the operator decided against, while an unattended file records a conversation nobody
+        // had. Counting one as silent, unfinished or anything else would be answering a
+        // question about a person who was never there.
+        var unattended = sessions.Count(s => s.Unattended);
+        var newestFirst = sessions
+            .Where(s => s.HasOperator)
+            .OrderByDescending(s => s.LastActive)
+            .ToList();
+
+        if (newestFirst.Count == 0)
+            return Empty(folder, unattended);
 
         // What a project of nothing but crosses reads as. Every other state is more urgent,
         // so the first session that counts will replace it.
@@ -292,11 +322,31 @@ public static class ProjectFold
             Sessions = counted,
             Unfinished = unfinished,
             Abandoned = abandoned,
+            Unattended = unattended,
             Declared = declared,
             LastActive = lastActive ?? newestFirst[0].LastActive,
             SessionIds = newestFirst.Select(s => s.SessionId).ToList(),
         };
     }
+
+    /// <summary>
+    /// A folder that held nothing but unattended sessions. Returned rather than skipped inside
+    /// the loop so <see cref="Roll"/> does the dropping in one place, where the reason for it
+    /// is written down.
+    /// </summary>
+    private static ProjectRoll Empty(string folder, int unattended) => new()
+    {
+        Project = Standby.ProjectOf(folder),
+        Folder = folder,
+        State = ProjectState.Abandoned,
+        Sessions = 0,
+        Unfinished = 0,
+        Abandoned = 0,
+        Unattended = unattended,
+        Declared = 0,
+        LastActive = default,
+        SessionIds = [],
+    };
 
     /// <summary>The declaration standing over a session right now, or null.</summary>
     private static Declaration? Live(SessionInfo session, Func<string, Declaration?> claim) =>

@@ -10,6 +10,26 @@ raw JSON role strings (`"user"` / `"assistant"`) with what they actually mean.
 |---|---|---|
 | **Operator** | The human who runs the session and types prompts. | The JSON `"user"` role, which is broader (see *turns* below). |
 | **Agent** | Claude, the AI doing the work. | The JSON `"assistant"` role string; also the parent-vs-subagent sense elsewhere. |
+| **Unattended** | A session with no operator — nobody ever spoke in it. A program called Claude and the call was written to a file shaped like a conversation. | A session that is merely *finished*, or one running headless on someone's behalf. The question is whether a person was ever in it at all, not whether they are there now. |
+
+An unattended session is read off the file: a prompt carrying
+`origin: {"kind": "human"}` says a person sent it, and one anywhere in the file settles it
+(`SessionFileFields.HasOperator`). The other origin seen in the wild is `task-notification`,
+which is the harness telling a session its background work finished — an origin, and not an
+operator.
+
+The harness fields look like they would answer this and do not. **`entrypoint`** names the
+door, not who came through it: a terminal is `cli`, the desktop app is `claude-desktop`, and
+an operator driving an SDK harness is `sdk-cli` — exactly what a library call reports. It is
+not even constant within one file, since a session resumed under a different harness carries
+both. **`promptSource`** reads `typed` only for a terminal, so it would call the phone and
+the desktop app unattended. Measured across 730 session files on 2026-09-13; the tests in
+`HasOperatorTests` exist to stop either being substituted later.
+
+Unattended matters because it is the one kind of session nothing in this app is *for*. There
+is no operator to be waiting on, nothing to resume into, and no state anyone would declare —
+so the project fold passes them over entirely, and a folder holding nothing else produces no
+project row. See *Project state* below.
 
 ## Structure
 

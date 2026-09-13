@@ -66,6 +66,13 @@ internal sealed class ProjectDto
     public required int Abandoned { get; init; }
 
     /// <summary>
+    /// Sessions here nobody ever sat in — a program's calls to Claude rather than anyone's
+    /// conversation. Skipped before the fold asks anything; reported so a project being used
+    /// as a library says so out loud.
+    /// </summary>
+    public required int Unattended { get; init; }
+
+    /// <summary>
     /// How many carry a declaration that still stands. Zero on a project full of unfinished
     /// work is the measurement this feature exists to take: nobody there is reporting.
     /// </summary>
@@ -104,6 +111,7 @@ internal sealed class ProjectDto
         Sessions = roll.Sessions,
         Unfinished = roll.Unfinished,
         Abandoned = roll.Abandoned,
+        Unattended = roll.Unattended,
         Declared = roll.Declared,
         LastActive = roll.LastActive,
         Live = live,
@@ -247,6 +255,13 @@ internal sealed class SessionDto
     /// </summary>
     public required bool DeclaredStale { get; init; }
 
+    /// <summary>
+    /// False when nobody ever spoke in this session — see <c>SessionFileFields.HasOperator</c>.
+    /// Additive, like <c>Declared</c>: the default dump keeps meaning what it always did, and
+    /// anything counting operator behaviour (measure-declarations.ps1) filters on it.
+    /// </summary>
+    public required bool HasOperator { get; init; }
+
     /// <summary>Null unless the session is open in a terminal right now.</summary>
     public LiveDto? Live { get; init; }
 
@@ -277,6 +292,7 @@ internal sealed class SessionDto
             ? ProjectFold.ToWire(claim.State)
             : "none",
         DeclaredStale = claim is not null && !claim.StillStands(s),
+        HasOperator = s.HasOperator,
         Live = live,
     };
 }

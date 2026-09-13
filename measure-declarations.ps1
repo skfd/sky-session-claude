@@ -13,6 +13,8 @@
 #   silent    — ended a turn since the window opened and said nothing. This is the bucket
 #               the Stop hook would drain.
 #
+# Unattended sessions never reach the buckets at all — see the filter below.
+#
 # The headline fraction is declared / (declared + stale + silent) — mid-turn rows are
 # excluded from the denominator because they still might declare.
 param(
@@ -27,7 +29,14 @@ $ErrorActionPreference = 'Stop'
 $dump = & $Cli list | ConvertFrom-Json
 if ($dump.Warning) { Write-Warning $dump.Warning }
 
-$window = @($dump.Sessions | Where-Object { [datetime]$_.LastActive -ge $Since })
+$all = @($dump.Sessions | Where-Object { [datetime]$_.LastActive -ge $Since })
+
+# Sessions nobody sat in are not a measurement of a convention aimed at agents working for
+# somebody. The first reading taken without this said 34.1%, and 157 of its 194 silent rows
+# were one project's library calls — a denominator, not a finding. Filtered on the field
+# rather than by project name on purpose: the name that exposed this is not the bug.
+$window = @($all | Where-Object { $_.HasOperator })
+$unattended = $all.Count - $window.Count
 
 $declared = @($window | Where-Object { $_.Declared -ne 'none' })
 $stale    = @($window | Where-Object { $_.Declared -eq 'none' -and $_.DeclaredStale })
@@ -40,6 +49,7 @@ $judged = $declared.Count + $stale.Count + $silent.Count
 $fraction = if ($judged -gt 0) { [math]::Round(100.0 * $declared.Count / $judged, 1) } else { 0 }
 
 "Window: sessions active since $($Since.ToString('yyyy-MM-dd HH:mm')) — $($window.Count) session(s), $judged judged"
+"  ($unattended unattended session(s) excluded — nobody sat in them)"
 "  declared : $($declared.Count)"
 "  stale    : $($stale.Count)"
 "  mid-turn : $($midturn.Count)  (excluded from the fraction)"

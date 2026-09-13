@@ -21,7 +21,8 @@ public class ProjectFoldTests
         SessionStatus status = SessionStatus.Complete,
         string cwd = @"C:\Users\kk\Code\demo",
         string? promptUuid = "u1",
-        int minutesAgo = 0) => new()
+        int minutesAgo = 0,
+        bool hasOperator = true) => new()
         {
             SessionId = id,
             Cwd = cwd,
@@ -29,6 +30,10 @@ public class ProjectFoldTests
             LastPromptUuid = promptUuid,
             LastActive = Now.AddMinutes(-minutesAgo),
             Project = "demo",
+            // True by default because every other test here is about a session somebody had.
+            // The fold drops the ones nobody sat in before it asks anything else, so leaving
+            // this false would quietly empty every case below rather than fail one of them.
+            HasOperator = hasOperator,
         };
 
     private static Declaration D(Declared state, string? note = null, string? atTurn = "u1") =>
@@ -396,5 +401,59 @@ public class ProjectFoldTests
     {
         foreach (var state in Enum.GetValues<ProjectState>())
             Assert.NotEmpty(ProjectFold.ToWire(state));
+    }
+
+    // --- sessions nobody sat in ---------------------------------------------
+    //
+    // The 2026-09-13 reading is what these are for: one project using Claude as a library
+    // contributed 166 of 341 rows and 157 of 194 silent ones, and read `undeclared` on the
+    // strength of conversations nobody had. Everything below is that not happening again.
+
+    [Fact]
+    public void UnattendedSessionsDoNotDecideTheState()
+    {
+        // The unattended one is waiting-agent, which would otherwise make the project
+        // runnable and outrank the settled session that a person actually had.
+        var roll = Roll([S("a"), S("bot", SessionStatus.WaitingAgent, hasOperator: false)]);
+
+        Assert.Equal(ProjectState.Quiet, roll.State);
+        Assert.Equal(1, roll.Sessions);
+        Assert.Equal(1, roll.Unattended);
+    }
+
+    [Fact]
+    public void UnattendedSessionsAreCountedButNotListed()
+    {
+        var roll = Roll([S("a"), S("bot1", hasOperator: false), S("bot2", hasOperator: false)]);
+
+        Assert.Equal(2, roll.Unattended);
+        Assert.Equal(["a"], roll.SessionIds);
+    }
+
+    [Fact]
+    public void AProjectOfNothingButUnattendedSessionsIsNotAProject()
+    {
+        // Every experiment-2026-* folder on this machine. No operator is on the hook for a
+        // scheduled routine, so it produces no row at all rather than an undeclared one.
+        var rolls = ProjectFold.Roll([
+            S("bot1", hasOperator: false),
+            S("bot2", SessionStatus.Limit, hasOperator: false)]);
+
+        Assert.Empty(rolls);
+    }
+
+    [Fact]
+    public void AnUnattendedSessionIsNotSilentTheWayACrossIs()
+    {
+        // The two skips are different judgments and must not collapse into one count: a cross
+        // is the operator's opinion about work, an unattended file is a conversation that
+        // never happened.
+        var roll = Roll(
+            [S("a"), S("crossed"), S("bot", hasOperator: false)],
+            marks: new() { ["crossed"] = Disposition.Abandoned });
+
+        Assert.Equal(1, roll.Sessions);
+        Assert.Equal(1, roll.Abandoned);
+        Assert.Equal(1, roll.Unattended);
     }
 }

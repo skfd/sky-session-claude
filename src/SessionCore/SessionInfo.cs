@@ -82,6 +82,20 @@ public sealed class SessionInfo
     /// </summary>
     public string? LastPromptUuid { get; init; }
 
+    /// <summary>
+    /// Whether a person ever spoke here. See <see cref="SessionFileFields.HasOperator"/> for
+    /// how it is read; <see cref="Unattended"/> is the word for the other case.
+    /// </summary>
+    public bool HasOperator { get; init; }
+
+    /// <summary>
+    /// Nobody ever sat in this session: it is a program's call to Claude, written to a file
+    /// that looks like a conversation. There is no operator to be waiting on, nothing to go
+    /// back to, and no state anyone would declare — which is why the project fold passes it
+    /// over entirely (<see cref="ProjectState"/>) rather than counting it as silent.
+    /// </summary>
+    public bool Unattended => !HasOperator;
+
     public double AgeDays { get; init; }
     public double SizeKB { get; init; }
 

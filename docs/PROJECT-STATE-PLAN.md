@@ -1,10 +1,10 @@
 # Implementing project state
 
 [`docs/PROJECT-STATE.md`](PROJECT-STATE.md) is the design and the *why*. This is the build
-order and the traps. **Steps 1 to 4 are built** — what each turned out to cost, and where it
-came out different, is recorded under each one. Steps 5 to 7 are not. Step 5 did not exist
-when this was written and is now the one in the way; the reasons for holding 6 and 7 still
-hold.
+order and the traps. **Steps 1 to 5 are built** — what each turned out to cost, and where it
+came out different, is recorded under each one. Step 5 did not exist when this was first
+written; the 2026-09-13 reading turned it up, and taking it out moved the headline number
+from 34.1% to 74.5%. Steps 6 and 7 are not built and the reasons for holding them still hold.
 
 Read the design first. This file does not restate the vocabulary; it says what to touch, in
 what order, and what will bite.
@@ -171,7 +171,16 @@ the lopsided number that authorises building it — and the bucket it would drai
 counted correctly until step 5 exists. Held, deliberately, and handed to the operator rather
 than settled here.
 
-### 5. Operator sessions and programmatic ones — not built, and now the blocker
+**Corrected by step 5, and the correction changes the question.** With unattended sessions out
+of the denominator the same window reads **74.5%** — 111 declared, 28 stale, **10 silent**.
+The convention is working. The `Stop` hook was aimed at the silent bucket, and that bucket is
+now ten rows out of 149; stale is 28, nearly three times as many. Building the hook would be
+spending the effort on the smaller of the two failures, and on the one that is already
+shrinking on its own. **Stale is the failure to work on**, and law 2 already surfaces it
+correctly — what is missing is anything that prompts a re-declare. Still the operator's call;
+the number now points somewhere different than it did three paragraphs ago.
+
+### 5. Operator sessions and programmatic ones — done
 
 The measurement turned this up, but it is not about the measurement. Every roll-up in this
 design reads the same session list, so every one of them inherits the problem:
@@ -200,6 +209,44 @@ distinguishes them is a step further in, and finding it is the work.
 Do not patch `measure-declarations.ps1` to exclude `battle-agents` by name in the meantime.
 The script's denominator is wrong for a reason the whole feature shares, and hardcoding the
 one project that exposed it would hide the finding and keep the bug.
+
+**What it turned out to be: `origin`.** A prompt a person sent carries
+`origin: {"kind": "human"}`; the only other kind in the corpus is `task-notification`, the
+harness telling a session its background work finished. One human record anywhere in a file
+settles it for good, which is `SessionFileFields.HasOperator`, and the glossary's word for the
+other case is **unattended**.
+
+Three things had to be checked before trusting it, and all three held:
+
+- **Terminals carry it.** The worry above was that `origin` was an SDK-only field and the
+  rule would call every `cli` session unattended — the commonest harness on this machine.
+  Sampled terminals carry 8, 3 and 3 human origins. It is broader than `promptSource` too:
+  this session holds 3 human origins against 1 `typed` prompt.
+- **It is not version-gated.** Human origins appear from 2.1.217 through 2.1.270 and
+  no-human files span the same range, so a file without one is silent about its operator on
+  purpose rather than because it predates the field. This was the real risk — a format
+  boundary would have made every old session unattended.
+- **The false-positive audit is clean.** All 32 no-human sessions active in the measurement
+  window outside `battle-agents` are scheduled `experiment-2026-*` runs or spawned one-shots
+  with zero or one prompt. No operator session is wrongly excluded.
+
+**The re-read, same window, 2026-09-13: 150 sessions, 149 judged, 111 declared, 28 stale,
+10 silent — 74.5% live**, with 191 unattended excluded. The convention was never landing on
+one session in three; it lands on three in four. And **silent collapsed from 194 to 10**,
+which changes what the held decision is about: see step 4.
+
+`list --projects` came out the way the design wanted. `battle-agents` now folds over its 10
+real sessions and reads `blocked`, carrying `Unattended: 263` so the library use is stated
+rather than hidden. All fourteen `experiment-2026-*` folders produce no row at all; the
+`experiment-runner` repo that *contains* the routine still does, on the one session a person
+had there. Corpus-wide the field says 347 of 729 session files were never sat in — close to
+half of what the scanner had been calling sessions.
+
+One consequence, deliberate and worth having written down: a scheduled routine that dies on a
+usage limit now disappears from `list --projects` rather than reading `broken`.
+`experiment-2026-09-13` did exactly that today. "What am I on the hook for" and "did last
+night's job crash" are different questions and the second one is not this verb's — but if it
+ever needs answering, this is the line that traded it away.
 
 ### 6. App group headers
 
@@ -232,7 +279,6 @@ something to look at:
   reads wrong. Leave it until the convention has been running long enough to say how often a
   question is actually declared.
 
-  The 2026-09-13 reading makes this worse before it makes it better: `undeclared` is also
-  what a project full of programmatic sessions reads as, so the rank currently decides
-  between a real question and `battle-agents`. Settle step 5 first — the ordering question is
-  only answerable once `undeclared` means one thing.
+  Step 5 cleared the way for this: `undeclared` no longer doubles as "a project full of
+  library calls", so the rank now decides between real things and the question can actually be
+  answered. Still open, and now genuinely answerable.

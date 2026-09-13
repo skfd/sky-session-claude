@@ -61,6 +61,27 @@ public sealed record SessionFileFields
     /// operator speaking, so they leave this alone.
     /// </summary>
     public string? LastPromptUuid { get; init; }
+
+    /// <summary>
+    /// Whether a person ever spoke in this session — true when any prompt records
+    /// <c>origin: {"kind": "human"}</c>. False means the file is a transcript of a program
+    /// calling Claude, not a conversation anybody had (see docs/GLOSSARY.md, "Unattended").
+    ///
+    /// The field is written by whoever sent the prompt, so it says the one thing the
+    /// harness fields cannot. <c>entrypoint</c> reports the door the session came in
+    /// through and a person can use any of them — a terminal is <c>cli</c>, the desktop app
+    /// is <c>claude-desktop</c>, and an operator driving an SDK harness is <c>sdk-cli</c>,
+    /// exactly what a library call also reports. It is not even constant within a file: a
+    /// session resumed under a different harness carries both. <c>promptSource</c> is
+    /// narrower still — it reads <c>typed</c> only for a terminal, so it would call the
+    /// phone and the desktop app unattended.
+    ///
+    /// Checked on every non-meta user record rather than on prompts alone, which is what
+    /// the 2026-09-13 survey of 730 session files measured. Not version-gated: human
+    /// origins appear from 2.1.217 through 2.1.270, so a file without one is silent about
+    /// its operator on purpose, not because it predates the field.
+    /// </summary>
+    public bool HasOperator { get; init; }
 }
 
 /// <summary>
@@ -87,6 +108,7 @@ public static class SessionFileParser
         bool sawLargeModel = false;
         DateTime? lastTurnUtc = null, previousSittingUtc = null;
         string? lastPromptUuid = null;
+        bool hasOperator = false;
 
         foreach (var line in lines)
         {
@@ -125,6 +147,12 @@ public static class SessionFileParser
                         summary = content;
                     break;
                 case "user":
+                    // Asked before the noise filter, and of every record rather than only the
+                    // prompts: a person's origin is stamped on more records than the classifier
+                    // calls prompts, and one anywhere in the file is enough to settle the
+                    // question for good. Nothing later can make a session unattended again.
+                    if (!hasOperator && IsHumanOrigin(o)) hasOperator = true;
+
                     var turn = HandleUser(o, ref userText, ref lastRole, ref lastToolResult, ref lastInterrupt);
                     if (turn == UserTurn.Noise) break;
                     Advance(ref lastTurnUtc, ref previousSittingUtc, recordUtc);
@@ -176,6 +204,7 @@ public static class SessionFileParser
             LastTurnUtc = lastTurnUtc,
             PreviousSittingUtc = previousSittingUtc,
             LastPromptUuid = lastPromptUuid,
+            HasOperator = hasOperator,
         };
     }
 
@@ -349,6 +378,21 @@ public static class SessionFileParser
             : null;
 
     // --- small JSON helpers --------------------------------------------------
+    /// <summary>
+    /// A user record a person sent: <c>origin: {"kind": "human"}</c>, and not a meta record.
+    /// The other kind seen in the wild is <c>task-notification</c>, which is the harness
+    /// telling a session its background work finished — an origin, and not an operator.
+    /// </summary>
+    private static bool IsHumanOrigin(JsonElement o)
+    {
+        if (o.TryGetProperty("isMeta", out var meta)
+            && meta.ValueKind == JsonValueKind.True) return false;
+
+        return o.TryGetProperty("origin", out var origin)
+            && origin.ValueKind == JsonValueKind.Object
+            && GetString(origin, "kind") == "human";
+    }
+
     private static string GetString(JsonElement o, string prop) =>
         o.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
