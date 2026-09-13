@@ -170,6 +170,12 @@ internal static class Cli
             none        take back what was declared
           Never changes the session's Status; it moves what the project reads as. Expires
           the next time you prompt that session, so re-declare before you stop.
+          SessionCli stop-check               for a Stop hook: asks for a declaration when
+                                              one is missing or has expired. Reads the hook's
+                                              JSON on stdin; exits 2 to ask, 0 otherwise --
+                                              including on any failure, so it can never be
+                                              what stops you working. --session <id> and
+                                              --dry-run run the same check by hand.
 
         Acting
           SessionCli fork <id> --at-prompt <n>   branch from before prompt n (no terminal)
@@ -281,6 +287,7 @@ internal static class Cli
                 "fork" => Commands.Fork(rest),
                 "rename" => Commands.Rename(rest),
                 "state" => Commands.Declare(rest),
+                "stop-check" => Commands.StopCheck(rest),
                 "restart" => Commands.Restart(rest),
                 "close" => Commands.Close(rest),
                 "resume" => Commands.Resume(rest),

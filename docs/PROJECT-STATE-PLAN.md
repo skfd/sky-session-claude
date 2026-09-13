@@ -305,16 +305,38 @@ three sessions today anchor a declaration on one — *"Continue from where you l
 skill preamble, a `/context` dump. Small now; every stop would have been one once a hook
 existed.
 
-**What is left to build**, and it needs the operator's eyes before it lands:
+**`SessionCli stop-check` — built.** It reads the hook's JSON on stdin, exits 0 when
+`stop_hook_active` is true, and otherwise compares the sidecar's `AtTurn` against the file's
+`LastPromptUuid`, exiting 2 with a reason only when no current declaration stands. The logic
+lives here so the hook stays dumb plumbing; `--session <id>` and `--dry-run` run the same
+check by hand, which is the only way to see what a hook would do without stopping a session
+to find out.
 
-1. A `SessionCli` verb the hook can call — reads the hook's stdin JSON, exits 0 when
-   `stop_hook_active` is true (or the loop never ends), compares the sidecar's `AtTurn` against
-   the file's `LastPromptUuid`, and exits 2 with a reason only when no current declaration
-   stands. The logic belongs here; the hook stays dumb plumbing.
-2. One line in `~/.claude/settings.json` under `Stop`. **Show it to the operator first** — it
+Two rules it is built around, both easy to get wrong:
+
+- **Exit 0 on every failure.** A missing session, an unreadable store, a line of JSON that
+  will not parse — all of them stand down and say so on *stdout*, because stderr on a
+  non-zero exit is the block reason and a diagnostic is not one. A hook that errors must never
+  be the thing that stops somebody working. The measurement is worth something; nobody's
+  evening is.
+- **One ask per stop.** `stop_hook_active` is the harness saying the agent is only still going
+  because this hook blocked it. Answering that with another block is how a session never ends.
+  If the agent ignores the ask, the state stays undeclared and the next reading says so —
+  honest, and better than an agent stuck in a corridor.
+
+It also stands down on unattended sessions, which falls out of step 5: there is nobody to
+declare for, and blocking a `-p` run would hold work no operator is waiting on.
+
+Verified against real sessions: a stale one asks (exit 2, reason on stderr), one carrying a
+current declaration is silent, an unattended one is silent, and garbage on stdin, an unknown
+id and empty input all stand down at exit 0.
+
+**What is left**, and it needs the operator's eyes before it lands:
+
+1. One line in `~/.claude/settings.json` under `Stop`. **Show it to the operator first** — it
    fires on every session on this machine, and the existing `SessionStart` hook is the shape
    to copy.
-3. Re-read afterwards. If stale and silent both collapse, step 4's question is finally closed.
+2. Re-read afterwards. If stale and silent both collapse, step 4's question is finally closed.
 
 ### 7. App group headers
 

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using SessionCore;
 
 namespace SessionCli;
@@ -1027,6 +1028,93 @@ internal static class Commands
     /// with. A declaration is a session reporting on itself; `--self` is the ordinary case
     /// and there is nothing here to lose.
     /// </summary>
+    /// <summary>
+    /// The question a <c>Stop</c> hook asks: does this session still owe a declaration?
+    ///
+    /// Exit 2 is what makes a Claude Code Stop hook block, handing whatever went to stderr
+    /// back to the agent as its next turn — so this verb exits 2 only to ask for a
+    /// declaration, and exits 0 every other time, including every time it fails. A hook that
+    /// errors must never be what stops somebody working: a missing session, an unreadable
+    /// store, a line of JSON that will not parse are all reasons to get out of the way, not
+    /// to hold the session open. The measurement is worth something; nobody's evening is.
+    ///
+    /// The loop guard is not optional. The harness sets <c>stop_hook_active</c> when the
+    /// agent is only still going because this hook blocked it, and answering that with
+    /// another block is how a session never ends. One ask per stop, and if the agent ignores
+    /// it the state stays undeclared and the next reading says so — which is the honest
+    /// outcome, and better than an agent trapped in a corridor.
+    /// </summary>
+    public static int StopCheck(Args args)
+    {
+        args.RejectUnknown("session", "dry-run");
+
+        try
+        {
+            return StopCheckCore(args);
+        }
+        catch (Exception e)
+        {
+            // Deliberately swallowed, and deliberately reported on stdout rather than stderr:
+            // stderr on a non-zero exit is the block reason, and this is not one.
+            Console.WriteLine($"sky stop-check: stood down ({e.GetType().Name}: {e.Message})");
+            return 0;
+        }
+    }
+
+    private static int StopCheckCore(Args args)
+    {
+        // The hook is handed its context as one JSON object on stdin. --session is for
+        // running the same check by hand, which is the only way to see what a hook would do
+        // without stopping a session to find out.
+        var id = args.Value("session");
+        if (id is null)
+        {
+            var stdin = Console.In.ReadToEnd();
+            if (string.IsNullOrWhiteSpace(stdin)) return 0;
+
+            using var doc = JsonDocument.Parse(stdin);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("stop_hook_active", out var active)
+                && active.ValueKind == JsonValueKind.True) return 0;
+
+            if (!root.TryGetProperty("session_id", out var sid)
+                || sid.ValueKind != JsonValueKind.String) return 0;
+            id = sid.GetString();
+        }
+
+        if (string.IsNullOrWhiteSpace(id)) return 0;
+
+        var scanner = RequireScanner();
+        var file = Resolve(scanner, id);
+        var info = scanner.BuildRow(file, SessionFileParser.DefaultContextWindow);
+
+        // Nobody was ever here, so there is nobody to declare for. A -p run, a library call,
+        // a spawned one-shot: asking these to declare would block work no operator is waiting
+        // on, in sessions the fold has already stopped counting.
+        if (info.Unattended) return 0;
+
+        var claim = new DeclarationStore().Get(info.SessionId);
+        if (claim is not null && claim.StillStands(info)) return 0;
+
+        var reason = claim is null
+            ? "Before you stop: say what the operator should do with this session, with "
+              + "SessionCli state <runnable|blocked|needs-read|exhausted> --self --note \"...\". "
+              + "It never changes the session's status, only what the project reads as."
+            : "Before you stop: what you declared about this session expired when the operator "
+              + "prompted you again. Declare it once more with SessionCli state "
+              + "<runnable|blocked|needs-read|exhausted> --self --note \"...\".";
+
+        if (args.Has("dry-run"))
+        {
+            Console.WriteLine($"would ask: {reason}");
+            return 0;
+        }
+
+        Console.Error.WriteLine(reason);
+        return 2;
+    }
+
     public static int Declare(Args args)
     {
         args.RejectUnknown("self", "note", "dry-run");
