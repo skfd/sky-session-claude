@@ -4,7 +4,8 @@
 order and the traps. **Steps 1 to 5 are built** — what each turned out to cost, and where it
 came out different, is recorded under each one. Step 5 did not exist when this was first
 written; the 2026-09-13 reading turned it up, and taking it out moved the headline number
-from 34.1% to 74.5%. Steps 6 and 7 are not built and the reasons for holding them still hold.
+from 34.1% to 74.5%. Steps 6 to 8 are not built. Step 6 is new and is where the work goes
+next; the reasons for holding 7 and 8 still hold.
 
 Read the design first. This file does not restate the vocabulary; it says what to touch, in
 what order, and what will bite.
@@ -262,7 +263,60 @@ usage limit now disappears from `list --projects` rather than reading `broken`.
 night's job crash" are different questions and the second one is not this verb's — but if it
 ever needs answering, this is the line that traded it away.
 
-### 6. App group headers
+### 6. Re-declaring — the failure that is left
+
+The 74.5% reading leaves two buckets, and this is the big one: **28 stale against 10 silent**.
+An agent declares once, the operator asks for something else, the agent does it and stops
+without declaring again. Law 2 catches it correctly and the project falls back to
+`undeclared`; nothing asks for the re-declare.
+
+**Checked first, because it would have changed the answer: law 2 is not over-expiring.** The
+worry was that trivial follow-ups were killing good declarations. The prompts that expired
+the 24 `complete` stale rows are real work — *"push it"*, *"xtb it"*, *"add to xrm-ribbon
+backlog this idea with details pls"*, *"why is syncthing like that"*. Two of the 24 are
+close-outs (*"all good, just surpised it was easy"*, *"leave it, enough for now"*). The rest
+are the agent simply not declaring again.
+
+**Do not implement close-out detection for those two.** It has been suggested once and will
+be suggested again, so: it means classifying prose for intent, which is the guess this design
+refuses everywhere else — the fold may not derive `blocked` for exactly this reason, and the
+glossary deliberately keeps close-outs out of Status. Two rows in 149 does not buy an
+exception, and a false positive is worse than the stale it fixes: it keeps a dead declaration
+alive and the project reads confidently wrong.
+
+**What does work — verified, not assumed.** A blocking `Stop` hook can ask. Run in a scratch
+project on 2026-09-13: the hook exits 2 with a reason, the harness feeds the reason back, and
+the agent's next act was to try to declare (it was denied by permission mode, which is its own
+lesson for the real thing). This also corrects something this file said earlier — the hook was
+written off as able only to "write `undeclared`", which is true of a hook that reports and
+false of one that asks. A hook that asks fixes stale and silent with one mechanism.
+
+**The trap it walked into, now fixed.** The hook's feedback is written to the session file as
+a **plain-string `user` record carrying no tag the harness-text filter recognises** — so it
+read as an operator prompt and moved `LastPromptUuid`. A hook that asks an agent to declare
+would have moved the anchor it was asking the agent to declare against, and every prompted
+declaration would have been stale the moment it was made. The record does carry `isMeta:
+true`, and the parser was reading `isMeta` nowhere. It does now: a meta record is never a
+prompt, which is the rule `LastPromptUuid` already documented, stated by a field instead of
+guessed from a prefix. `LastPromptUuidTests` pins the exact record shape.
+
+This was worth fixing on its own. 541 `isMeta` user records exist across 51 projects, and
+three sessions today anchor a declaration on one — *"Continue from where you left off."*, a
+skill preamble, a `/context` dump. Small now; every stop would have been one once a hook
+existed.
+
+**What is left to build**, and it needs the operator's eyes before it lands:
+
+1. A `SessionCli` verb the hook can call — reads the hook's stdin JSON, exits 0 when
+   `stop_hook_active` is true (or the loop never ends), compares the sidecar's `AtTurn` against
+   the file's `LastPromptUuid`, and exits 2 with a reason only when no current declaration
+   stands. The logic belongs here; the hook stays dumb plumbing.
+2. One line in `~/.claude/settings.json` under `Stop`. **Show it to the operator first** — it
+   fires on every session on this machine, and the existing `SessionStart` hook is the shape
+   to copy.
+3. Re-read afterwards. If stale and silent both collapse, step 4's question is finally closed.
+
+### 7. App group headers
 
 Grouping goes through `RowsView`, which is already an `ICollectionView` — add a
 `GroupDescription` on project and a header template carrying the rolled-up state. No new
@@ -271,7 +325,7 @@ collection, no second scan.
 Leave this until the CLI has been lived with, so the headers show the states that turned out
 to carry weight rather than all seven.
 
-### 7. The tray and title split
+### 8. The tray and title split
 
 `MainViewModel.cs:527` is where the count and the window title are set today — one number,
 "still on the hook". Splitting it into *N need you* / *N just need waking* lands here and in

@@ -58,7 +58,9 @@ public sealed record SessionFileFields
     ///
     /// Tool results and harness-injected records are not prompts. They are user records and
     /// they are real turns, so they still move <see cref="LastTurnUtc"/>; they are not the
-    /// operator speaking, so they leave this alone.
+    /// operator speaking, so they leave this alone. Harness-injected covers two shapes: text
+    /// opening with a tag the filter knows, and any record flagged <c>isMeta</c> — the
+    /// harness saying so itself, which is the only thing that catches Stop-hook feedback.
     /// </summary>
     public string? LastPromptUuid { get; init; }
 
@@ -159,7 +161,18 @@ public static class SessionFileParser
                     // Taken in file order rather than by timestamp: the file is append-only,
                     // and what a declaration is measured against is what the transcript ends
                     // with, not which record claims the latest clock reading.
-                    if (turn == UserTurn.Prompt && TryGetString(o, "uuid", out var uid) && uid.Length > 0)
+                    //
+                    // A meta record is never a prompt. `isMeta` is the harness saying outright
+                    // that it wrote this one — "Continue from where you left off", a skill's
+                    // preamble, Stop-hook feedback — which is the same rule the harness-text
+                    // filter applies, stated by a field instead of guessed from a prefix. It
+                    // matters most for the record this parser had no way to see coming: a
+                    // blocking Stop hook writes its feedback as a plain-string user record
+                    // carrying no recognisable tag, so without this every stop would move the
+                    // anchor and a declaration made when asked would be measured against the
+                    // asking.
+                    if (turn == UserTurn.Prompt && !IsMeta(o)
+                        && TryGetString(o, "uuid", out var uid) && uid.Length > 0)
                         lastPromptUuid = uid;
                     break;
                 case "assistant":
@@ -379,14 +392,20 @@ public static class SessionFileParser
 
     // --- small JSON helpers --------------------------------------------------
     /// <summary>
+    /// The harness marking a record as its own rather than the operator's. Set on restore
+    /// preambles, skill headers and Stop-hook feedback.
+    /// </summary>
+    private static bool IsMeta(JsonElement o) =>
+        o.TryGetProperty("isMeta", out var meta) && meta.ValueKind == JsonValueKind.True;
+
+    /// <summary>
     /// A user record a person sent: <c>origin: {"kind": "human"}</c>, and not a meta record.
     /// The other kind seen in the wild is <c>task-notification</c>, which is the harness
     /// telling a session its background work finished — an origin, and not an operator.
     /// </summary>
     private static bool IsHumanOrigin(JsonElement o)
     {
-        if (o.TryGetProperty("isMeta", out var meta)
-            && meta.ValueKind == JsonValueKind.True) return false;
+        if (IsMeta(o)) return false;
 
         return o.TryGetProperty("origin", out var origin)
             && origin.ValueKind == JsonValueKind.Object

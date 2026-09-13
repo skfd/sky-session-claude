@@ -33,6 +33,45 @@ public class LastPromptUuidTests
     private static string Uuid(string? uuid) =>
         uuid is null ? "" : ",\"uuid\":" + J(uuid);
 
+    private static string Meta(string text, string? uuid = null) =>
+        "{\"type\":\"user\"" + Uuid(uuid) + ",\"isMeta\":true,\"message\":{\"content\":" + J(text) + "}}";
+
+    // --- records the harness wrote and flagged as its own --------------------
+
+    [Fact]
+    public void AMetaRecordIsNotAPrompt()
+    {
+        // "Continue from where you left off." and a skill's preamble both arrive this way.
+        var f = Parse(
+            User("do the thing", "u1"),
+            Asst("done", "a1"),
+            Meta("Continue from where you left off.", "m1"));
+
+        Assert.Equal("u1", f.LastPromptUuid);
+    }
+
+    [Fact]
+    public void StopHookFeedbackDoesNotMoveTheAnchor()
+    {
+        // The record a blocking Stop hook writes, verbatim in shape: a plain-string user
+        // record carrying no tag the harness-text filter recognises, flagged isMeta. Without
+        // the flag being read, a hook that asks an agent to declare would move the anchor it
+        // is asking the agent to declare against, and every prompted declaration would be
+        // stale on arrival.
+        var f = Parse(
+            User("push it", "u1"),
+            Asst("pushed", "a1"),
+            Meta("Stop hook feedback:\n[a command]: declare your state before stopping\n", "m1"));
+
+        Assert.Equal("u1", f.LastPromptUuid);
+    }
+
+    [Fact]
+    public void AMetaRecordDoesNotBecomeTheAnchorEvenWhenItIsAllThereIs()
+    {
+        Assert.Null(Parse(Meta("Continue from where you left off.", "m1")).LastPromptUuid);
+    }
+
     [Fact]
     public void IsTheLastOperatorPrompt()
     {
