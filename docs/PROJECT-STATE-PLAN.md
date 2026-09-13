@@ -4,8 +4,9 @@
 order and the traps. **Steps 1 to 5 are built** — what each turned out to cost, and where it
 came out different, is recorded under each one. Step 5 did not exist when this was first
 written; the 2026-09-13 reading turned it up, and taking it out moved the headline number
-from 34.1% to 74.5%. Steps 6 to 8 are not built. Step 6 is new and is where the work goes
-next; the reasons for holding 7 and 8 still hold.
+from 34.1% to 74.5%. **Step 6 is built too** — it did not exist either, and the Stop hook it
+ends in is live. Steps 7 and 8 are not, and the reasons for holding them still hold. The next
+thing owed is not code: it is the reading due on or after 2026-09-20.
 
 Read the design first. This file does not restate the vocabulary; it says what to touch, in
 what order, and what will bite.
@@ -116,8 +117,10 @@ verb ships in no release yet, so the installed binary under `%LOCALAPPDATA%` ans
 `Unknown command: state` and every agent that follows the line fails. `dist` is refreshed by
 `publish.ps1 -SkipInstall` (or a `dotnet publish` of the CLI project alone), which never
 touches the installed app or a running Sky window — so the convention can be iterated on
-without a release. **Move the line to the installed path at the next release**; the CLAUDE.md
-entry says so itself, which is the copy that will actually be in front of whoever does it.
+without a release. ~~**Move the line to the installed path at the next release.**~~ Done: the
+verb ships in v1.12.0, and the CLAUDE.md line now points at
+`%LOCALAPPDATA%\Programs\SkySessionClaude`. The paragraph that used to say so has been
+replaced there by one describing the hook.
 **The measurement now exists, and has a first reading.** The instrument is
 `measure-declarations.ps1` at the repo root, over two additive fields the session rows grew
 for it: `Declared`, the claim while it still stands, and `DeclaredStale`, a claim the
@@ -263,7 +266,7 @@ usage limit now disappears from `list --projects` rather than reading `broken`.
 night's job crash" are different questions and the second one is not this verb's — but if it
 ever needs answering, this is the line that traded it away.
 
-### 6. Re-declaring — the failure that is left
+### 6. Re-declaring — built; deciding reading due 2026-09-20
 
 The 74.5% reading leaves two buckets, and this is the big one: **28 stale against 10 silent**.
 An agent declares once, the operator asks for something else, the agent does it and stops
@@ -331,12 +334,32 @@ Verified against real sessions: a stale one asks (exit 2, reason on stderr), one
 current declaration is silent, an unattended one is silent, and garbage on stdin, an unknown
 id and empty input all stand down at exit 0.
 
-**What is left**, and it needs the operator's eyes before it lands:
+**The hook is live**, added to `~/.claude/settings.json` with the operator's go-ahead on
+2026-09-13, next to the existing `SessionStart` entry:
 
-1. One line in `~/.claude/settings.json` under `Stop`. **Show it to the operator first** — it
-   fires on every session on this machine, and the existing `SessionStart` hook is the shape
-   to copy.
-2. Re-read afterwards. If stale and silent both collapse, step 4's question is finally closed.
+```json
+"Stop": [{ "hooks": [{
+  "type": "command",
+  "command": "\"C:/Users/kk/AppData/Local/Programs/SkySessionClaude/SessionCli.exe\" stop-check",
+  "timeout": 15,
+  "statusMessage": "Checking this session declared its state"
+}}]]
+```
+
+It points at the **installed** CLI, not `dist` — v1.12.0 ships the verb, so the reason for
+the dev path in step 4 is gone. It was timed before being wired in, because something that
+runs at every stop has to be cheap: 120 ms on the loop-guard exit, 250 ms worst case.
+
+Proven firing rather than assumed: a fresh session in a scratch folder wrote
+`{"subtype":"stop_hook_summary","hookCount":1,...,"hookErrors":[],"preventedContinuation":false}`
+— the hook ran in 195 ms and stood down, correctly, because a `-p` session is unattended.
+`~/.claude` is not a git repo, so both edits there are in place and untracked; this block is
+the record of what the file says.
+
+**What is left: re-read the measurement.** Give the hook a week of real sessions, then run
+`measure-declarations.ps1` again. If stale and silent both collapse, step 4's question is
+finally closed and the fold-order question in *What is left to look at* becomes answerable
+with data rather than argument. **Due on or after 2026-09-20.**
 
 ### 7. App group headers
 
