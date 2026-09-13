@@ -44,6 +44,8 @@
     <SolidColorBrush x:Key="Brush.Accent.Red" Color="#B91C1C"/>
     <SolidColorBrush x:Key="Brush.Accent.Purple" Color="#7E22CE"/>
     <SolidColorBrush x:Key="Brush.Accent.Orange" Color="#C2410C"/>
+    <!-- Green reads as "go": a project that needs nothing from you. -->
+    <SolidColorBrush x:Key="Brush.Accent.Green" Color="#15803D"/>
 
     <!-- "You marked this done" tick. A disposition, not a status, so it too sits outside the set. -->
     <SolidColorBrush x:Key="Brush.Done.Tick" Color="#15803D"/>

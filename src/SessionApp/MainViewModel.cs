@@ -22,10 +22,26 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Every live session's current name, for the collision rule.</summary>
     private IReadOnlyCollection<string> _liveNames = [];
 
+    /// <summary>What agents have declared about their sessions, for the project fold.</summary>
+    private readonly DeclarationStore _declarations = new();
+
     /// <summary>Backing list; the grid binds to <see cref="RowsView"/> so filters apply.</summary>
     public ObservableCollection<SessionRow> Rows { get; } = new();
 
     public ICollectionView RowsView { get; }
+
+    /// <summary>
+    /// The same scan rolled up one level: one row per project instead of one per session.
+    ///
+    /// A second list rather than a grouping of the first, which is the shape
+    /// <c>list --projects</c> settled on and for the same reasons. Most projects are quiet,
+    /// so grouping would mostly produce headers over nothing; the note wants a line of its
+    /// own, which a header has nowhere to put; and the fold arrives sorted by urgency while
+    /// the cards are sorted by recency, which is one sort order too many for one list.
+    /// </summary>
+    public ObservableCollection<ProjectRow> Projects { get; } = new();
+
+    public ICollectionView ProjectsView { get; }
 
     // --- filter-bar state ---------------------------------------------------
     [ObservableProperty] private string _searchText = "";
@@ -107,6 +123,9 @@ public partial class MainViewModel : ObservableObject
     {
         RowsView = CollectionViewSource.GetDefaultView(Rows);
         RowsView.Filter = FilterRow;
+
+        ProjectsView = new CollectionViewSource { Source = Projects }.View;
+        ProjectsView.Filter = FilterProject;
     }
 
     private void KeepingSelection(Action update)
@@ -115,7 +134,56 @@ public partial class MainViewModel : ObservableObject
         else SelectionKeeper(update);
     }
 
-    private void RefreshView() => KeepingSelection(RowsView.Refresh);
+    private void RefreshView() => KeepingSelection(() =>
+    {
+        RowsView.Refresh();
+        ProjectsView.Refresh();
+    });
+
+    // --- the two lists ------------------------------------------------------
+
+    /// <summary>
+    /// Which list the window is showing. False (the default) is the session cards this app
+    /// has always been: the project view answers a different question and should be asked
+    /// for, not arrived in.
+    /// </summary>
+    [ObservableProperty] private bool _showProjects;
+
+    /// <summary>
+    /// Drop the projects with nothing to say. Quiet is most of them — 26 of 49 on the machine
+    /// this was built on — and a list of "nothing pending" is a list nobody reads.
+    /// </summary>
+    [ObservableProperty] private bool _hideQuietProjects = true;
+
+    partial void OnShowProjectsChanged(bool value) => UpdateStatusLine();
+    partial void OnHideQuietProjectsChanged(bool value) => RefreshView();
+
+    private bool FilterProject(object obj)
+    {
+        if (obj is not ProjectRow p) return false;
+
+        if (HideQuietProjects && !p.WantsSomething) return false;
+
+        // Search reads the project's own words: its name, the folder, and the note — which is
+        // where "the thing about the bike parking" actually is.
+        if (SearchText is { Length: > 0 } q
+            && !p.Project.Contains(q, StringComparison.OrdinalIgnoreCase)
+            && !p.Folder.Contains(q, StringComparison.OrdinalIgnoreCase)
+            && !p.Note.Contains(q, StringComparison.OrdinalIgnoreCase)) return false;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Drop into one project's sessions: set the project filter and switch lists. Both
+    /// controls already exist, so drilling down is driving them rather than new machinery.
+    /// </summary>
+    public void OpenProject(ProjectRow project)
+    {
+        AllProjects = true;
+        ProjectFilter = project.Project;
+        ShowProjects = false;
+    }
 
     // Re-apply filters whenever any filter input changes.
     partial void OnSearchTextChanged(string value) => RefreshView();
@@ -179,13 +247,13 @@ public partial class MainViewModel : ObservableObject
                 RowsView.Refresh();
             });
             await RefreshLiveAsync();
+            // After the live pass, not before: the fold rules `broken` out for a session whose
+            // process is there, and without the dots it would call every mid-turn session a
+            // corpse — including, reliably, the one doing the reading.
+            KeepingSelection(MergeProjects);
             UpdateWindowTitle();
-            StatusLine = $"{infos.Count} session(s)  ·  {DateTime.Now:HH:mm:ss}"
-                + "  —  double-click to resume · A: hide/show completed · D: done · X: abandon"
-                + " · R: refresh · Ctrl+R: restart · F: fork";
-
-            if (_dispositions.LoadWarning is { Length: > 0 } warning)
-                StatusLine = $"Dispositions: {warning}.  ·  {StatusLine}";
+            _lastScanCount = infos.Count;
+            UpdateStatusLine();   // carries the dispositions warning itself
         }
         finally
         {
@@ -630,8 +698,90 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    private int _lastScanCount;
+
+    /// <summary>
+    /// The bottom line, which says different things for the two lists because the two lists
+    /// are for different things. Rebuilt on a mode switch as well as on a scan, so the hints
+    /// never describe the list you are not looking at.
+    /// </summary>
+    private void UpdateStatusLine()
+    {
+        var clock = DateTime.Now.ToString("HH:mm:ss");
+
+        if (ShowProjects)
+        {
+            var wanting = Projects.Count(p => p.WantsSomething);
+            StatusLine = $"{wanting} of {Projects.Count} project(s) want something  ·  {clock}"
+                + "  —  double-click to open its sessions · P: back to sessions · R: refresh";
+        }
+        else
+        {
+            StatusLine = $"{_lastScanCount} session(s)  ·  {clock}"
+                + "  —  double-click to resume · A: hide/show completed · D: done · X: abandon"
+                + " · R: refresh · Ctrl+R: restart · F: fork · P: projects";
+        }
+
+        if (_dispositions.LoadWarning is { Length: > 0 } warning)
+            StatusLine = $"Dispositions: {warning}.  ·  {StatusLine}";
+    }
+
+    /// <summary>
+    /// Roll the current rows up into project rows, in place. Same merge discipline as
+    /// <see cref="Merge"/>: an existing row takes the new roll rather than being replaced,
+    /// so the selection and scroll survive a live tick.
+    /// </summary>
+    private void MergeProjects()
+    {
+        // The dots the live pass just set, read back per session. A harness under the SDK or
+        // answering a phone publishes no busy or idle, so it comes back Live rather than
+        // Working and the fold treats being there as enough on its own.
+        var live = Rows
+            .Where(r => r.Live is not null)
+            .ToDictionary(
+                r => r.Info.SessionId,
+                r => string.Equals(r.Live!.Status, "busy", StringComparison.OrdinalIgnoreCase)
+                    ? Liveness.Working
+                    : Liveness.Live,
+                StringComparer.OrdinalIgnoreCase);
+
+        Liveness Of(string id) => live.TryGetValue(id, out var l) ? l : Liveness.Gone;
+
+        var rolls = ProjectFold.Roll(
+            Rows.Select(r => r.Info),
+            _dispositions.Get,
+            _declarations.Get,
+            Of).ToList();
+
+        var byFolder = Projects.ToDictionary(p => p.Folder, StringComparer.OrdinalIgnoreCase);
+        for (int idx = 0; idx < rolls.Count; idx++)
+        {
+            var roll = rolls[idx];
+            if (byFolder.TryGetValue(roll.Folder, out var existing))
+            {
+                existing.Roll = roll;
+                int cur = Projects.IndexOf(existing);
+                if (cur != idx) Projects.Move(cur, idx);
+            }
+            else
+            {
+                var row = new ProjectRow(roll);
+                Projects.Insert(idx, row);
+                byFolder[roll.Folder] = row;
+            }
+        }
+
+        // A folder whose last session was filtered out of the scan has no roll any more.
+        while (Projects.Count > rolls.Count) Projects.RemoveAt(Projects.Count - 1);
+
+        ProjectsView.Refresh();
+    }
+
     /// <summary>Toggle the hide-completed filter (bound to the A hotkey).</summary>
     public void ToggleHideCompleted() => HideCompleted = !HideCompleted;
+
+    /// <summary>Swap the window between session cards and project rows (the P hotkey).</summary>
+    public void ToggleProjects() => ShowProjects = !ShowProjects;
 
     /// <summary>
     /// Record the operator's verdict on the given rows: Done (D) or Abandoned (X).

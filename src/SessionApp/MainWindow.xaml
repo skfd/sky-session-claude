@@ -12,6 +12,7 @@
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <local:InverseBoolToVisibility x:Key="InverseBoolToVis"/>
 
         <!-- Card row. Fixed height: long recaps are clipped, never stretch the row. -->
         <Style x:Key="CardItem" TargetType="ListBoxItem">
@@ -92,6 +93,33 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+
+        <!--
+            The same stripe, one level up. Colours are chosen so the left edge alone answers
+            "does this want me?": red and amber do, green and blue do not, and nothing at all
+            means the project is quiet. Same dynamic-resource rule as above so a theme swap
+            repaints it.
+        -->
+        <Style x:Key="ProjectStripe" TargetType="Rectangle">
+            <Setter Property="Fill" Value="{DynamicResource Brush.Accent.None}"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding StateWord}" Value="broken">
+                    <Setter Property="Fill" Value="{DynamicResource Brush.Accent.Red}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding StateWord}" Value="blocked">
+                    <Setter Property="Fill" Value="{DynamicResource Brush.Accent.Amber}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding StateWord}" Value="needs-read">
+                    <Setter Property="Fill" Value="{DynamicResource Brush.Accent.Blue}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding StateWord}" Value="runnable">
+                    <Setter Property="Fill" Value="{DynamicResource Brush.Accent.Green}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding StateWord}" Value="undeclared">
+                    <Setter Property="Fill" Value="{DynamicResource Brush.Accent.Orange}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -134,16 +162,34 @@
                               ItemsSource="{Binding ProjectOptions}"
                               SelectedItem="{Binding ProjectFilter}"/>
 
+                    <!--
+                        The two lists answer different questions, so the switch sits at the
+                        front of the bar where you decide which one you are asking, and the
+                        filters that only mean something for sessions fold away behind it.
+                    -->
+                    <CheckBox Content="Projects" VerticalAlignment="Center" Margin="0,0,14,0"
+                              FontWeight="SemiBold"
+                              IsChecked="{Binding ShowProjects}"
+                              ToolTip="One row per project — what each is waiting on, rather than what each session did (P)"/>
+
+                    <CheckBox Content="Hide quiet" VerticalAlignment="Center" Margin="0,0,10,0"
+                              IsChecked="{Binding HideQuietProjects}"
+                              Visibility="{Binding ShowProjects, Converter={StaticResource BoolToVis}}"
+                              ToolTip="Hides the projects with nothing pending — usually most of them"/>
+
                     <CheckBox Content="Hide completed" VerticalAlignment="Center" Margin="0,0,10,0"
                               IsChecked="{Binding HideCompleted}"
+                              Visibility="{Binding ShowProjects, Converter={StaticResource InverseBoolToVis}}"
                               ToolTip="Hides sessions the classifier called complete, and the ones you ticked done with D"/>
                     <CheckBox Content="Show abandoned" VerticalAlignment="Center" Margin="0,0,10,0"
                               IsChecked="{Binding ShowAbandoned}"
+                              Visibility="{Binding ShowProjects, Converter={StaticResource InverseBoolToVis}}"
                               ToolTip="Sessions you crossed out with X — still unfinished, just not coming back to"/>
                     <CheckBox Content="All projects" VerticalAlignment="Center" Margin="0,0,10,0"
                               IsChecked="{Binding AllProjects}"/>
                     <CheckBox Content="Live" VerticalAlignment="Center" Margin="0,0,10,0"
                               IsChecked="{Binding LiveUpdates}"
+                              Visibility="{Binding ShowProjects, Converter={StaticResource InverseBoolToVis}}"
                               ToolTip="Auto-refresh when a session file changes"/>
 
                     <TextBlock Text="Show:" Style="{StaticResource BarLabel}"/>
@@ -156,6 +202,7 @@
         </Border>
 
         <ListBox x:Name="Grid" Grid.Row="1"
+                 Visibility="{Binding ShowProjects, Converter={StaticResource InverseBoolToVis}}"
                  ItemsSource="{Binding RowsView}"
                  SelectionMode="Extended"
                  BorderThickness="0"
@@ -289,6 +336,80 @@
                                                Foreground="{DynamicResource Brush.Chip.Remote.Text}"/>
                                 </Border>
                             </StackPanel>
+                        </Grid>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!--
+            The project list. Two lines where a card is four, because a card is read to find
+            a conversation again and this is read to decide what to do next: one state, one
+            note, and the counts behind them. Sorted by urgency by the fold, not by recency —
+            which is the other reason this is its own list rather than a grouping of the cards.
+        -->
+        <ListBox x:Name="ProjectGrid" Grid.Row="1"
+                 Visibility="{Binding ShowProjects, Converter={StaticResource BoolToVis}}"
+                 ItemsSource="{Binding ProjectsView}"
+                 SelectionMode="Single"
+                 BorderThickness="0"
+                 Background="{DynamicResource Brush.List.Background}"
+                 HorizontalContentAlignment="Stretch"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 ItemContainerStyle="{StaticResource CardItem}"
+                 MouseDoubleClick="ProjectGrid_MouseDoubleClick">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Grid Height="52">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="4"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Rectangle Grid.Column="0" Style="{StaticResource ProjectStripe}"/>
+
+                        <Grid Grid.Column="1" Margin="10,6,10,6">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Name on the left, counts and age on the right. -->
+                            <DockPanel Grid.Row="0">
+                                <TextBlock DockPanel.Dock="Right"
+                                           Text="{Binding Age}"
+                                           ToolTip="{Binding LastActiveTooltip}"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"
+                                           VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                <TextBlock DockPanel.Dock="Right"
+                                           Text="{Binding MetaLine}"
+                                           Foreground="{DynamicResource Brush.Text.Disabled}"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding Project}"
+                                           FontWeight="SemiBold" FontSize="15"
+                                           Foreground="{DynamicResource Brush.Text.Title}"
+                                           ToolTip="{Binding Folder}"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </DockPanel>
+
+                            <!-- State, then the one line somebody actually wrote about it. -->
+                            <DockPanel Grid.Row="1" Margin="0,3,0,0">
+                                <TextBlock DockPanel.Dock="Left"
+                                           Text="{Binding StateWord}"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.Text.Emphasis}"
+                                           Margin="0,0,7,0"/>
+                                <TextBlock Text="{Binding Note}"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"
+                                           TextTrimming="CharacterEllipsis">
+                                    <TextBlock.ToolTip>
+                                        <ToolTip MaxWidth="620">
+                                            <TextBlock Text="{Binding Note}" TextWrapping="Wrap" FontSize="14"/>
+                                        </ToolTip>
+                                    </TextBlock.ToolTip>
+                                </TextBlock>
+                            </DockPanel>
                         </Grid>
                     </Grid>
                 </DataTemplate>

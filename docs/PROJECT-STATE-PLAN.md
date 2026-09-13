@@ -4,9 +4,11 @@
 order and the traps. **Steps 1 to 5 are built** — what each turned out to cost, and where it
 came out different, is recorded under each one. Step 5 did not exist when this was first
 written; the 2026-09-13 reading turned it up, and taking it out moved the headline number
-from 34.1% to 74.5%. **Step 6 is built too** — it did not exist either, and the Stop hook it
-ends in is live. Steps 7 and 8 are not, and the reasons for holding them still hold. The next
-thing owed is not code: it is the reading due on or after 2026-09-20.
+from 34.1% to 74.5%. **Steps 6 and 7 are built too** — 6 did not exist either, and the Stop
+hook it ends in is live; 7 came out as a second list rather than the group headers this file
+first assumed, for reasons recorded under it. Only step 8 is left, and it is the one worth
+deciding with the list in front of you. The other thing owed is not code at all: it is the
+reading due on or after 2026-09-20.
 
 Read the design first. This file does not restate the vocabulary; it says what to touch, in
 what order, and what will bite.
@@ -361,7 +363,49 @@ the record of what the file says.
 finally closed and the fold-order question in *What is left to look at* becomes answerable
 with data rather than argument. **Due on or after 2026-09-20.**
 
-### 7. App group headers
+### 7. The project list — done, and not as group headers
+
+**The shape here was decided against what this file originally said.** Group headers were the
+guess; a run of `list --projects` against real data argued the other way, and the CLI had
+already settled it — project rows come back *instead of* session rows, each carrying its
+`sessionIds` as the way back down. Three reasons the window matches that rather than grouping:
+
+- **26 of 49 projects are quiet.** Grouping them produces 26 headers over nothing, or hides
+  them and does nothing at all.
+- **The note wants a line of its own.** A header has nowhere to put *"Review batch of 29 is
+  the only thing blocking Phase 2.5"*, and the note is the whole payload — the only part of a
+  row that nobody could work out from the files.
+- **Two sort orders cannot share one list.** The fold arrives sorted by urgency; the cards are
+  sorted by recency. That difference is the point rather than an inconvenience.
+
+So: a **Projects** checkbox at the front of the filter bar (and `P`) swaps the window between
+the two lists. `ProjectRow` wraps a `ProjectRoll` the way `SessionRow` wraps a `SessionInfo`,
+merged in place on each scan so a live tick keeps the selection. Rows are two lines and 52px
+where a card is four and 126px: name, counts and age on the first; state and note on the
+second. The left stripe carries the state — red `broken`, amber `blocked`, blue `needs-read`,
+green `runnable`, orange `undeclared`, nothing at all for quiet — so the edge alone answers
+"does this want me?". `Brush.Accent.Green` was added to both themes for it.
+
+Traps worth keeping:
+
+- **The fold runs after the live pass, not before.** `broken` is ruled out for a session whose
+  process is there, so folding before the dots are set calls every mid-turn session a corpse —
+  reliably including the one doing the reading. Same bug the CLI hit in step 1, in a new place.
+- **Filters split by mode.** *Hide completed*, *Show abandoned* and *Live* mean nothing to a
+  project row and fold away; *Hide quiet* takes their place. `InverseBoolToVisibility` exists
+  for that and nothing else. *All projects* and *Show* stay in both — they size the scan, not
+  the list.
+- **Drill-down is the two controls that already exist.** Double-click sets the project
+  dropdown and unticks Projects. It works because both lists name a project by the same rule —
+  `LeafOf` and `Standby.ProjectOf` are the same three lines — and if either ever drifts, the
+  drill-down silently filters to nothing.
+
+Left alone deliberately: the window title and tray count, which still count unfinished
+sessions. That is step 8, and it is the one that should be decided with the list in front of
+you.
+
+<details>
+<summary>The original plan for this step</summary>
 
 Grouping goes through `RowsView`, which is already an `ICollectionView` — add a
 `GroupDescription` on project and a header template carrying the rolled-up state. No new
@@ -369,6 +413,8 @@ collection, no second scan.
 
 Leave this until the CLI has been lived with, so the headers show the states that turned out
 to carry weight rather than all seven.
+
+</details>
 
 ### 8. The tray and title split
 

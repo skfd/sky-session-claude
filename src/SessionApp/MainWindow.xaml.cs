@@ -165,6 +165,10 @@ public partial class MainWindow : Window
 
         switch (e.Key)
         {
+            case Key.P:
+                _vm.ToggleProjects();
+                e.Handled = true;
+                break;
             case Key.A:
                 _vm.ToggleHideCompleted();
                 e.Handled = true;
@@ -264,6 +268,20 @@ public partial class MainWindow : Window
         }
 
         Start(_vm.ResumeCommandFor(row));
+    }
+
+    /// <summary>
+    /// Drop into one project's sessions. The project dropdown and the list switch already
+    /// exist, so this drives them rather than opening anything of its own — which also means
+    /// the way back out is the control the operator can already see.
+    /// </summary>
+    private void ProjectGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (ProjectGrid.SelectedItem is not ProjectRow project) return;
+
+        _vm.OpenProject(project);
+        _vm.StatusLine = $"Showing the {_vm.Rows.Count(r => r.Info.Project == project.Project)}"
+            + $" session(s) in \"{project.Project}\" — untick Projects' filter to see them all.";
     }
 
     // True if this session is live in a terminal and we brought that window to the front.
