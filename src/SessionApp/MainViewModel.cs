@@ -13,6 +13,13 @@ public partial class MainViewModel : ObservableObject
     private readonly DispositionStore _dispositions = new();
 
     /// <summary>
+    /// What Ctrl+Z and Ctrl+Y walk back and forth over. Marks only, for now, and only this
+    /// window's own — see <see cref="EditHistory"/> for why it neither persists nor guards
+    /// against the store's other writers.
+    /// </summary>
+    private readonly EditHistory _history = new();
+
+    /// <summary>
     /// Which names are Sky's own. Held here rather than looked up per call because the
     /// background pass reads it on every tick, and because one instance per window is what
     /// keeps its reload-merge-replace meaningful.
@@ -719,6 +726,7 @@ public partial class MainViewModel : ObservableObject
         {
             StatusLine = $"{_lastScanCount} session(s)  ·  {clock}"
                 + "  —  double-click to resume · A: hide/show completed · D: done · X: abandon"
+                + " · Ctrl+Z/Ctrl+Y: undo/redo marks"
                 + " · R: refresh · Ctrl+R: restart · F: fork · P: projects";
         }
 
@@ -797,21 +805,89 @@ public partial class MainViewModel : ObservableObject
         }
 
         var target = rows.Any(r => r.Disposition != disposition) ? disposition : Disposition.None;
-        // One reload-merge-replace for the whole selection, not one per row.
-        _dispositions.SetMany(rows.Select(r => r.Info.SessionId), target);
-        foreach (var r in rows) r.Disposition = target;
+
+        var before = rows.ToDictionary(
+            r => r.Info.SessionId, r => r.Disposition, StringComparer.OrdinalIgnoreCase);
+        var after = before.Keys.ToDictionary(
+            id => id, _ => target, StringComparer.OrdinalIgnoreCase);
+
+        // What the change is called, kept free of the filter hints: the same sentence has to
+        // read right behind "Undone:", where "untick Hide completed" would be advice about a
+        // card the undo has just put back on screen.
+        var label = target switch
+        {
+            Disposition.Done => $"Marked {rows.Count} session(s) done.",
+            Disposition.Abandoned => $"Abandoned {rows.Count} session(s).",
+            _ => $"Restored {rows.Count} session(s).",
+        };
+
+        // No guard for "nothing moved" here: target is derived from the rows, so a keystroke
+        // that would change nothing has already become the one that clears the mark instead.
+        _history.Push(new MarkEdit(before, after, label));
+        Apply(after, label + WhereTheyWent(target));
+    }
+
+    /// <summary>
+    /// Where a mark just sent the rows, when the filters are about to hide them. Said at the
+    /// moment they vanish and not at any other, which is the only moment it answers anything.
+    /// </summary>
+    private string WhereTheyWent(Disposition target) => target switch
+    {
+        Disposition.Done when HideCompleted => "  Untick \"Hide completed\" to see them.",
+        Disposition.Abandoned when !ShowAbandoned => "  Tick \"Show abandoned\" to see them.",
+        _ => "",
+    };
+
+    /// <summary>
+    /// The one path every mark change takes, whether it came from a keystroke, a Ctrl+Z or a
+    /// Ctrl+Y: one reload-merge-replace for the whole map, then push what the store now holds
+    /// onto whatever rows exist. Onto rows by id rather than onto the rows the caller was
+    /// holding, because a live scan between the mark and the undo can have replaced them.
+    /// </summary>
+    private void Apply(IReadOnlyDictionary<string, Disposition> wanted, string statusLine)
+    {
+        _dispositions.SetMany(wanted);
+        SyncDispositions();
+
+        // The fold counts marks too, and Ctrl+Z is reachable from the project list, where a
+        // stale roll would be the only thing on screen not answering the keystroke.
+        KeepingSelection(MergeProjects);
 
         RefreshView();
         UpdateWindowTitle();
-        // Marked rows drop out of the list under the default filters, so say where they went.
-        StatusLine = target switch
+        StatusLine = statusLine;
+    }
+
+    /// <summary>
+    /// Ctrl+Z: put the marks back the way they were before the last D or X.
+    ///
+    /// It needs no selection and works in either list — the edit remembers its own sessions,
+    /// which is the point: the rows it touched may well have been filtered out of sight by the
+    /// very mark you are undoing.
+    /// </summary>
+    public void Undo()
+    {
+        if (_history.Undo() is not { } edit)
         {
-            Disposition.Done => $"Marked {rows.Count} session(s) done."
-                + (HideCompleted ? "  Untick \"Hide completed\" to see them." : ""),
-            Disposition.Abandoned => $"Abandoned {rows.Count} session(s)."
-                + (ShowAbandoned ? "" : "  Tick \"Show abandoned\" to see them."),
-            _ => $"Restored {rows.Count} session(s).",
-        };
+            StatusLine = "Nothing to undo.";
+            return;
+        }
+
+        Apply(edit.Before, $"Undone: {edit.Label}  ·  Ctrl+Y to redo.");
+    }
+
+    /// <summary>Ctrl+Y: do the last undone mark again.</summary>
+    public void Redo()
+    {
+        if (_history.Redo() is not { } edit)
+        {
+            StatusLine = "Nothing to redo.";
+            return;
+        }
+
+        // Redo hides the same rows the mark did, so it owes the same sentence about it.
+        var target = edit.After.Values.FirstOrDefault();
+        Apply(edit.After, $"Redone: {edit.Label}{WhereTheyWent(target)}");
     }
 
     private void UpdateWindowTitle()

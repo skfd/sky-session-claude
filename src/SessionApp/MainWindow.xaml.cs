@@ -149,18 +149,34 @@ public partial class MainWindow : Window
         _liveTimer.Start();
     }
 
-    // A: hide/show completed · D: done · X: abandon · R: refresh · Ctrl+R: restart · F: fork.
-    // Ignore while typing.
+    // A: hide/show completed · D: done · X: abandon · Ctrl+Z/Ctrl+Y: undo/redo marks ·
+    // R: refresh · Ctrl+R: restart · F: fork. Ignore while typing — the search box keeps its
+    // own Ctrl+Z, which is what you mean while the caret is in it.
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
         if (Keyboard.FocusedElement is TextBox) return;
 
-        // Ctrl+R before plain R, or the refresh would swallow it.
-        if (e.Key == Key.R && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
         {
-            _ = _vm.RestartSelectedAsync(Grid.SelectedItems.OfType<SessionRow>().ToList());
-            e.Handled = true;
-            return;
+            bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+            switch (e.Key)
+            {
+                // Ctrl+R before plain R, or the refresh would swallow it.
+                case Key.R:
+                    _ = _vm.RestartSelectedAsync(Grid.SelectedItems.OfType<SessionRow>().ToList());
+                    e.Handled = true;
+                    return;
+                // Ctrl+Shift+Z is redo everywhere else, so it is redo here too.
+                case Key.Z when shift:
+                case Key.Y:
+                    _vm.Redo();
+                    e.Handled = true;
+                    return;
+                case Key.Z:
+                    _vm.Undo();
+                    e.Handled = true;
+                    return;
+            }
         }
 
         switch (e.Key)

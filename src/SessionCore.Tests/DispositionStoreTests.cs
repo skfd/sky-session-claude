@@ -53,6 +53,45 @@ public class DispositionStoreTests : IDisposable
         Assert.Equal(Disposition.Done, reread.Get("c"));
     }
 
+    // What Ctrl+Z asks of the store: a mixed selection collapsed into one mark has to come
+    // back as the three different marks it was, and in one write.
+    [Fact]
+    public void SetManyRestoresADifferentMarkPerSession()
+    {
+        var store = new DispositionStore(_dir);
+        store.SetMany(new[] { "a", "b", "c" }, Disposition.Done);
+
+        store.SetMany(new Dictionary<string, Disposition>
+        {
+            ["a"] = Disposition.Done,
+            ["b"] = Disposition.Abandoned,
+            ["c"] = Disposition.None,
+        });
+
+        var reread = new DispositionStore(_dir);
+        Assert.Equal(Disposition.Done, reread.Get("a"));
+        Assert.Equal(Disposition.Abandoned, reread.Get("b"));
+        Assert.Equal(Disposition.None, reread.Get("c"));
+    }
+
+    // An undo is a write like any other, so it re-reads first: a mark made elsewhere on a
+    // session the edit never touched survives it.
+    [Fact]
+    public void SetManyLeavesSessionsItWasNotGivenAlone()
+    {
+        var mine = new DispositionStore(_dir);
+        mine.Set("a", Disposition.Done);
+
+        var elsewhere = new DispositionStore(_dir);
+        elsewhere.Set("b", Disposition.Abandoned);
+
+        mine.SetMany(new Dictionary<string, Disposition> { ["a"] = Disposition.None });
+
+        var reread = new DispositionStore(_dir);
+        Assert.Equal(Disposition.None, reread.Get("a"));
+        Assert.Equal(Disposition.Abandoned, reread.Get("b"));
+    }
+
     // The bug this whole class exists for: two stores are open, and the one that writes
     // second must not flatten the file back to the copy it loaded at startup.
     [Fact]

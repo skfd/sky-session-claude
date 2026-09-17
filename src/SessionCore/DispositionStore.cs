@@ -108,18 +108,31 @@ public sealed class DispositionStore
     /// Apply one disposition to several sessions in a single reload-merge-replace, so a
     /// twenty-row selection costs one write rather than twenty.
     /// </summary>
-    public void SetMany(IEnumerable<string> sessionIds, Disposition disposition)
-    {
-        var ids = sessionIds
+    public void SetMany(IEnumerable<string> sessionIds, Disposition disposition) =>
+        SetMany(sessionIds
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        if (ids.Count == 0) return;
+            .ToDictionary(id => id, _ => disposition, StringComparer.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Apply a different disposition per session, still in a single reload-merge-replace.
+    ///
+    /// What undo needs, and the reason the one-disposition overload is not enough for it: a
+    /// keystroke over a mixed selection collapses three different marks into one, so putting
+    /// it back is three different marks again, and doing that as three writes would leave a
+    /// reader between them looking at a half-undone selection.
+    /// </summary>
+    public void SetMany(IReadOnlyDictionary<string, Disposition> wanted)
+    {
+        var want = wanted
+            .Where(kv => !string.IsNullOrWhiteSpace(kv.Key))
+            .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
+        if (want.Count == 0) return;
 
         _marks = MutateOrKeep(marks =>
         {
             bool changed = false;
-            foreach (var id in ids)
+            foreach (var (id, disposition) in want)
             {
                 var current = marks.TryGetValue(id, out var d) ? d : Disposition.None;
                 if (current == disposition) continue;
