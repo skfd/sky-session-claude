@@ -105,8 +105,12 @@ public static class Standby
     /// </param>
     /// <param name="isTrusted">
     /// Whether Claude Code has been trusted with a folder — true, false, or null when the
-    /// config cannot say. Only a definite no is reported, because "unreadable" and "never
-    /// opened there" are not the same claim and neither is worth stopping for.
+    /// config has never heard of it or cannot be read. Anything short of a yes is reported,
+    /// because only a yes gets a host past the gate. It was tempting to report the definite
+    /// no alone, on the theory that a folder with transcripts has an entry in the config to
+    /// be false in — but a session started by a host or by the desktop app leaves transcripts
+    /// and writes no entry, so the folders standby most wants are exactly the ones with no
+    /// entry at all, and they stop at the gate the same way an untrusted one does.
     /// </param>
     public static StandbyPlan Decide(
         IEnumerable<SessionInfo> sessions,
@@ -190,7 +194,7 @@ public static class Standby
                 Folder = folder.Folder,
                 Project = project,
                 LastActive = folder.LastActive,
-                NeedsTrust = trusted(folder.Folder) is false,
+                NeedsTrust = trusted(folder.Folder) is not true,
             });
         }
 

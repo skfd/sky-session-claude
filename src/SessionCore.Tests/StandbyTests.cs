@@ -40,9 +40,11 @@ public class StandbyTests
         int max = int.MaxValue,
         Func<string, bool>? folderExists = null,
         Func<string, bool>? isRepo = null,
-        Func<string, RemoteControlHost?>? hostFor = null) =>
+        Func<string, RemoteControlHost?>? hostFor = null,
+        Func<string, bool?>? isTrusted = null) =>
         Standby.Decide(sessions, Now, window, max,
-            folderExists ?? (_ => true), isRepo ?? (_ => true), hostFor ?? (_ => null));
+            folderExists ?? (_ => true), isRepo ?? (_ => true), hostFor ?? (_ => null),
+            isTrusted ?? (_ => true));
 
     /// <summary>A host working in the folder of the named project, and nothing else.</summary>
     private static Func<string, RemoteControlHost?> HostServing(string project, int pid = 4242) =>
@@ -288,5 +290,23 @@ public class StandbyTests
 
         Assert.Equal(["b", "c"], plan.Open.Select(t => t.Project));
         Assert.Equal("a", Assert.Single(plan.Skipped).Project);
+    }
+
+    /// <summary>
+    /// The gate, from all three sides. A folder the config has never heard of is the one that
+    /// matters: reading only the definite no let the sweep walk past every folder whose
+    /// sessions were started by a host or the desktop app — they leave transcripts and write
+    /// no config entry — and each one opened a tab whose host then stopped at the trust gate,
+    /// which is the single failure standby cannot see happen.
+    /// </summary>
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void AnythingShortOfATrustedYesIsAFolderToGrant(bool? trusted, bool needsTrust)
+    {
+        var plan = Decide([In(@"C:\Code\sky", 1)], isTrusted: _ => trusted);
+
+        Assert.Equal(needsTrust, Assert.Single(plan.Open).NeedsTrust);
     }
 }
