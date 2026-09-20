@@ -16,6 +16,13 @@ public partial class MainWindow : Window
     private TrayIcon? _tray;
     private bool _started;
 
+    /// <summary>
+    /// Run the Standby sweep once the first scan is in, without the dialog — what a
+    /// <c>--standby</c> launch asks for. See <see cref="StandbyUnattendedAsync"/> for what
+    /// "without the dialog" commits to.
+    /// </summary>
+    public bool StandbyOnStart { get; init; }
+
     public MainWindow()
     {
         InitializeComponent();
@@ -68,7 +75,22 @@ public partial class MainWindow : Window
         DrawTray();          // first real count: the icon appears now, not saying 0
         StartWatcher();
         StartLiveTimer();
+
+        // After the scan, because the plan is decided over the scanner's cache and a cold
+        // plan would cost a second full read. After the watcher and the poll, because the
+        // sweep ends by refreshing the dots and there is no reason to hold the count back
+        // for it. A sign-in start reaches here a few seconds after the desktop appears; the
+        // pause is for Wi-Fi, which on a laptop is often still connecting at that moment, and
+        // a host that starts before it is up stops in its tab with nothing to serve.
+        if (StandbyOnStart)
+        {
+            await Task.Delay(SignInGrace);
+            await StandbyUnattendedAsync();
+        }
     }
+
+    /// <summary>How long a <c>--standby</c> start waits before opening hosts.</summary>
+    private static readonly TimeSpan SignInGrace = TimeSpan.FromSeconds(15);
 
     // Rescans and filter changes reset the collection view, and the ListBox drops its
     // selection on reset. Rows keep their identity across a merge, so re-select the same
@@ -322,16 +344,29 @@ public partial class MainWindow : Window
     // `SessionCli standby --yes`. The plan comes back first and the dialog is the --yes —
     // nothing here is at risk, but a terminal per project is a thing to be told about before
     // it lands on the desktop rather than after.
-    private async void StandbyBtn_Click(object sender, RoutedEventArgs e)
+    private async void StandbyBtn_Click(object sender, RoutedEventArgs e) =>
+        await StandbyOnceAsync(ask: true);
+
+    /// <summary>
+    /// The sweep a <c>--standby</c> launch runs: the same plan, opened without the dialog.
+    /// Nothing the dialog protects is at risk — every terminal it opens is one it just made —
+    /// but the dialog was also where the trust grants were read out before the click, and an
+    /// unattended run gives that answer for every folder in the plan unasked. That is what
+    /// putting <c>--standby</c> on the Run entry consents to, and the README says so.
+    /// </summary>
+    private Task StandbyUnattendedAsync() => StandbyOnceAsync(ask: false);
+
+    private async Task StandbyOnceAsync(bool ask)
     {
         // The button is disabled for the whole errand, but the check is here too: the scan
         // behind a plan takes seconds and nothing on screen says so, and a click that lands in
-        // that gap used to buy a second plan, a second dialog and two hosts per project.
+        // that gap used to buy a second plan, a second dialog and two hosts per project. It
+        // also keeps a click on the button and the sign-in sweep from running at once.
         if (!_vm.NotSweeping) return;
         _vm.IsPlanningStandby = true;
         try
         {
-            await StandbyAsync();
+            await StandbyAsync(ask);
         }
         finally
         {
@@ -339,7 +374,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task StandbyAsync()
+    private async Task StandbyAsync(bool ask)
     {
         StandbyPlan plan;
         _vm.StatusLine = "Looking for projects to put on standby…";
@@ -368,15 +403,18 @@ public partial class MainWindow : Window
             return;
         }
 
-        _vm.StatusLine = $"{plan.Open.Count} project(s) to put on standby"
-            + (plan.Skipped.Count > 0 ? $", {plan.Skipped.Count} passed over" : "")
-            + " — the plan is up, waiting on your say-so.";
-
-        var dlg = new StandbyDialog(plan, MainViewModel.StandbyPreamble(plan)) { Owner = this };
-        if (dlg.ShowDialog() != true)
+        if (ask)
         {
-            _vm.StatusLine = "Standby cancelled — nothing was opened.";
-            return;
+            _vm.StatusLine = $"{plan.Open.Count} project(s) to put on standby"
+                + (plan.Skipped.Count > 0 ? $", {plan.Skipped.Count} passed over" : "")
+                + " — the plan is up, waiting on your say-so.";
+
+            var dlg = new StandbyDialog(plan, MainViewModel.StandbyPreamble(plan)) { Owner = this };
+            if (dlg.ShowDialog() != true)
+            {
+                _vm.StatusLine = "Standby cancelled — nothing was opened.";
+                return;
+            }
         }
 
         await _vm.StandbyAsync(plan);

@@ -93,9 +93,15 @@ if (-not $SkipInstall) {
     # Manager's Startup tab both show, so Sky appears there among everything else that wakes
     # with the machine, and can be turned off in the place you would go looking for it.
     #
-    # --tray is the whole difference between this and the Start-menu shortcut: at sign-in the
-    # count belongs by the clock, not a window in front of whatever else just opened. The app
-    # builds the window either way (the tray icon rides its HWND) and simply never shows it.
+    # --tray is the difference between this and the Start-menu shortcut: at sign-in the count
+    # belongs by the clock, not a window in front of whatever else just opened. The app builds
+    # the window either way (the tray icon rides its HWND) and simply never shows it.
+    #
+    # --standby is the other thing sign-in is for: once the first scan is in, the app runs the
+    # Standby sweep unasked -- a claude rc host per project worked in this week, in one Windows
+    # Terminal window -- so the phone can reach those projects from the moment the machine is
+    # up, without anyone having to click the button first. Its own flag, not implied by --tray,
+    # so the relaunch below (no flags) never puts a window of hosts on a desktop mid-day.
     #
     # Rewriting this value does not undo a "no" given in Settings. Windows records that answer
     # separately, under Explorer\StartupApproved\Run keyed by this value's name, and leaves it
@@ -103,8 +109,8 @@ if (-not $SkipInstall) {
     # it just installed without ever switching autostart back on behind you.
     # startup-remove.ps1 takes both back out.
     $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-    Set-ItemProperty -Path $run -Name 'Sky Session Claude' -Value "`"$targetExe`" --tray"
-    Write-Host "Registered: starts with Windows, in the tray -> $targetExe --tray"
+    Set-ItemProperty -Path $run -Name 'Sky Session Claude' -Value "`"$targetExe`" --tray --standby"
+    Write-Host "Registered: starts with Windows, in the tray, and puts this week's projects on standby -> $targetExe --tray --standby"
 
     # Put back what we closed. A publish that leaves the desktop emptier than it found it
     # is a publish you have to remember to finish by hand — and only ever what was up:

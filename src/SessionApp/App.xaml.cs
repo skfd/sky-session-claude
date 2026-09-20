@@ -62,6 +62,13 @@ public partial class App : Application
         // exactly where a click on the X leaves Sky: running, counting, out of the way.
         bool tray = e.Args.Any(a => string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase));
 
+        // --standby: once the first scan is in, run the Standby sweep without asking — the
+        // same hosts the toolbar button opens, minus the dialog, because at sign-in nobody is
+        // there to answer it. A flag of its own rather than a consequence of --tray: publish.ps1
+        // relaunches Sky with no flags after an install, and a republish in the middle of the
+        // day must not put a window of hosts on the desktop.
+        bool standby = e.Args.Any(a => string.Equals(a, "--standby", StringComparison.OrdinalIgnoreCase));
+
         // Before anything builds a window: a second launch has nothing to show, and the
         // instance already up is being asked to come forward instead (see SingleInstance).
         // A tray start is the exception — it is Windows opening Sky rather than you, so
@@ -84,7 +91,7 @@ public partial class App : Application
         // and there is no count by the clock without one. A tray start creates the handle and
         // stops there; anything else puts it on screen. This is why App.xaml no longer names a
         // StartupUri: that shows the window it builds, and one of these two must not.
-        var window = new MainWindow();
+        var window = new MainWindow { StandbyOnStart = standby };
         MainWindow = window;
         if (tray) window.StartHidden();
         else window.Show();
