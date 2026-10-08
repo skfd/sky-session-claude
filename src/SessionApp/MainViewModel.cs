@@ -632,6 +632,7 @@ public partial class MainViewModel : ObservableObject
             {
                 var swept = await Task.Run(() => StandbyLauncher.Launch(plan));
                 StatusLine = $"Standby is up; {swept.Summary()}.";
+                StandbyLog.Write(swept.Summary());
                 return;
             }
 
@@ -651,6 +652,7 @@ public partial class MainViewModel : ObservableObject
             // split both wait between steps. See StandbyLauncher for which tab each host gets.
             var outcome = await Task.Run(() => StandbyLauncher.Launch(plan));
             Keeper.Attempted(plan.Open.Select(t => t.Folder), DateTime.Now);
+            StandbyLog.Write($"opened {string.Join(", ", plan.Open.Select(t => t.Project))}: {outcome.Summary()}");
 
             var named = string.Join(", ", plan.Open.Select(t => t.Project));
             var also = plan.Skipped.Count > 0 ? $"; skipping {plan.Skipped.Count}" : "";
@@ -686,21 +688,35 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public async Task KeepStandbyAsync(bool mayGrantTrust)
     {
-        if (!NotSweeping) return;
+        if (!NotSweeping)
+        {
+            StandbyLog.Write($"keeper: waiting on a sweep already running (restart {IsRestarting}, standby {IsStandingBy}, planning {IsPlanningStandby})");
+            return;
+        }
         IsPlanningStandby = true;
         try
         {
-            if (StandbyCount == 0 && (await Task.Run(() => HostShells.Dead())).Count == 0) return;
+            if (StandbyCount == 0 && (await Task.Run(() => HostShells.Dead())).Count == 0)
+            {
+                Keeper.AllUp();
+                return;
+            }
 
             var plan = Keeper.Hold(await PlanStandbyAsync(), DateTime.Now, mayGrantTrust);
+            foreach (var held in plan.Skipped.Where(s => !s.Reason.StartsWith("already on standby")))
+                StandbyLog.Write($"keeper: {held.Project} held — {held.Reason}");
             if (plan.Open.Count == 0 && plan.Close.Count == 0) return;
 
+            StandbyLog.Write("keeper: putting back " + (plan.Open.Count > 0
+                ? string.Join(", ", plan.Open.Select(t => t.Project))
+                : "nothing") + $"; {plan.Close.Count} dead tab(s) to close");
             await StandbyAsync(plan);
         }
-        catch
+        catch (Exception ex)
         {
             // A process that went mid-read, a folder that went mid-stat. The next minute asks
-            // again; nobody is watching this to be told.
+            // again; the log is the only one told.
+            StandbyLog.Write($"keeper: failed — {ex.GetType().Name}: {ex.Message}");
         }
         finally
         {

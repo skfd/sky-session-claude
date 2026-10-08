@@ -22,12 +22,63 @@ public class StandbyKeeperTests
         ReviveIn = reviveIn,
     };
 
+    /// <summary>The same plan seen twice — what a host that is really gone looks like.</summary>
+    private static StandbyPlan HoldTwice(StandbyKeeper keeper, StandbyPlan plan, DateTime now, bool mayGrantTrust = false)
+    {
+        keeper.Hold(plan, now.AddMinutes(-1), mayGrantTrust);
+        return keeper.Hold(plan, now, mayGrantTrust);
+    }
+
     [Fact]
-    public void AFolderNeverTriedIsOpenedAtOnce()
+    public void AFolderNeverTriedIsOpenedOnTheSecondLook()
     {
         var keeper = new StandbyKeeper();
+        var plan = PlanFor(Target(@"C:\Code\sky"));
 
-        Assert.Single(keeper.Hold(PlanFor(Target(@"C:\Code\sky")), Now, mayGrantTrust: false).Open);
+        Assert.Empty(keeper.Hold(plan, Now, mayGrantTrust: false).Open);
+        Assert.Single(keeper.Hold(plan, Now.AddMinutes(1), mayGrantTrust: false).Open);
+    }
+
+    /// <summary>
+    /// A restart from another process quits a host and types its relaunch a second or two
+    /// later. A look in that gap sees a missing host and an idle shell; acting on it would type
+    /// a second relaunch into the shell, or exit it.
+    /// </summary>
+    [Fact]
+    public void AHostSeenGoneOnceIsLeftToWhateverIsRestartingIt()
+    {
+        var keeper = new StandbyKeeper();
+        var shell = new DeadHostShell { Pid = 10, Folder = @"C:\Code\old", HostCommand = "claude rc" };
+        var plan = new StandbyPlan { Open = [Target(@"C:\Code\sky")], Skipped = [], Close = [shell] };
+
+        var first = keeper.Hold(plan, Now, mayGrantTrust: false);
+
+        Assert.Empty(first.Open);
+        Assert.Empty(first.Close);
+    }
+
+    [Fact]
+    public void ADeadTabSeenTwiceIsClosed()
+    {
+        var keeper = new StandbyKeeper();
+        var shell = new DeadHostShell { Pid = 10, Folder = @"C:\Code\old", HostCommand = "claude rc" };
+
+        var plan = HoldTwice(keeper, new StandbyPlan { Open = [], Skipped = [], Close = [shell] }, Now);
+
+        Assert.Equal(10, Assert.Single(plan.Close).Pid);
+    }
+
+    /// <summary>Gone, back, gone again: the second disappearance is a first look, not a second.</summary>
+    [Fact]
+    public void ALookWithEverythingUpForgetsWhatWasMissing()
+    {
+        var keeper = new StandbyKeeper();
+        var plan = PlanFor(Target(@"C:\Code\sky"));
+        keeper.Hold(plan, Now, mayGrantTrust: false);
+
+        keeper.AllUp();
+
+        Assert.Empty(keeper.Hold(plan, Now.AddMinutes(10), mayGrantTrust: false).Open);
     }
 
     [Fact]
@@ -36,7 +87,7 @@ public class StandbyKeeperTests
         var keeper = new StandbyKeeper();
         keeper.Attempted([@"C:\Code\sky"], Now);
 
-        var plan = keeper.Hold(PlanFor(Target(@"C:\Code\sky")), Now.AddMinutes(1), mayGrantTrust: false);
+        var plan = HoldTwice(keeper, PlanFor(Target(@"C:\Code\sky")), Now.AddMinutes(1));
 
         Assert.Empty(plan.Open);
         Assert.Contains("trying again in 1 min", Assert.Single(plan.Skipped).Reason);
@@ -85,8 +136,8 @@ public class StandbyKeeperTests
         var keeper = new StandbyKeeper();
         var plan = PlanFor(Target(@"C:\Code\fresh", needsTrust: true));
 
-        Assert.Empty(keeper.Hold(plan, Now, mayGrantTrust: false).Open);
-        Assert.Single(keeper.Hold(plan, Now, mayGrantTrust: true).Open);
+        Assert.Empty(HoldTwice(keeper, plan, Now).Open);
+        Assert.Single(HoldTwice(keeper, plan, Now, mayGrantTrust: true).Open);
     }
 
     /// <summary>
@@ -100,7 +151,7 @@ public class StandbyKeeperTests
         keeper.Attempted([@"C:\Code\sky"], Now);
         var shell = new DeadHostShell { Pid = 10, Folder = @"C:\Code\sky", HostCommand = "claude rc" };
 
-        var plan = keeper.Hold(PlanFor(Target(@"C:\Code\sky", reviveIn: shell)), Now.AddMinutes(1), mayGrantTrust: false);
+        var plan = HoldTwice(keeper, PlanFor(Target(@"C:\Code\sky", reviveIn: shell)), Now.AddMinutes(1));
 
         Assert.Empty(plan.Open);
         Assert.Empty(plan.Close);

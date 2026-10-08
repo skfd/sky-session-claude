@@ -32,14 +32,31 @@ public sealed class StandbyKeeper
     private readonly Dictionary<string, (DateTime Last, int Attempts)> _tries =
         new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>What the previous look found missing and dead — see <see cref="Hold"/>.</summary>
+    private HashSet<string> _missingBefore = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<int> _deadBefore = [];
+
     /// <summary>
     /// The part of <paramref name="plan"/> the keeper may act on now: the folders still waiting
     /// out their last attempt, and the untrusted ones it may not grant, move to the skips. The
     /// dead tabs kept for those folders stay off the close list, so the next attempt reuses
     /// them.
+    ///
+    /// Nothing is acted on the first time it is seen. A restart — <c>SessionCli restart
+    /// --stale</c>, from another process this cannot see — quits a host and types its relaunch
+    /// a second or two later, and in between the folder has no host and its shell sits idle,
+    /// exactly as if the host had died. A look that lands in that gap would type a second
+    /// relaunch into the same shell, or <c>exit</c> it if the project is out of the week. The
+    /// gap is seconds and the looks are a minute apart, so a host missing on two looks running
+    /// is missing, and a shell dead on two is dead.
     /// </summary>
     public StandbyPlan Hold(StandbyPlan plan, DateTime now, bool mayGrantTrust)
     {
+        var missingBefore = _missingBefore;
+        var deadBefore = _deadBefore;
+        _missingBefore = plan.Open.Select(t => Key(t.Folder)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _deadBefore = [.. plan.Close.Select(s => s.Pid), .. plan.Open.Where(t => t.ReviveIn is not null).Select(t => t.ReviveIn!.Pid)];
+
         // A folder the plan no longer needs is either up or no longer wanted; once that has
         // lasted, its history stops counting against the next time it goes down.
         var wanted = plan.Open.Select(t => Key(t.Folder)).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -51,7 +68,10 @@ public sealed class StandbyKeeper
 
         foreach (var target in plan.Open)
         {
-            if (target.NeedsTrust && !mayGrantTrust)
+            if (!missingBefore.Contains(Key(target.Folder))
+                || (target.ReviveIn is { } shell && !deadBefore.Contains(shell.Pid)))
+                skipped.Add(Skip(target, "its host has only just gone — looking again in a minute"));
+            else if (target.NeedsTrust && !mayGrantTrust)
                 skipped.Add(Skip(target,
                     "never trusted with Claude Code — the Standby button records the trust and opens it"));
             else if (WaitLeft(target.Folder, now) is { } left)
@@ -61,7 +81,22 @@ public sealed class StandbyKeeper
                 open.Add(target);
         }
 
-        return plan with { Open = open, Skipped = skipped };
+        return plan with
+        {
+            Open = open,
+            Skipped = skipped,
+            Close = plan.Close.Where(s => deadBefore.Contains(s.Pid)).ToList(),
+        };
+    }
+
+    /// <summary>
+    /// A look that found everything up, made without a plan. What was missing before is not
+    /// missing now, and must not count as the first of two looks the next time it goes.
+    /// </summary>
+    public void AllUp()
+    {
+        _missingBefore.Clear();
+        _deadBefore.Clear();
     }
 
     /// <summary>Count an attempt at each folder — by the keeper, the button, or a sign-in sweep.</summary>
