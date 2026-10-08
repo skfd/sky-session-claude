@@ -1801,6 +1801,14 @@ internal static class Commands
 
         }
 
+        // A tab whose host died is reused for that folder's host, and the rest are closed —
+        // a sweep that only ever adds tabs leaves a window of dead ones. `--in` touches its own
+        // folder's tabs and nobody else's: it was pointed at one place.
+        var dead = HostShells.Dead();
+        plan = SessionCore.Standby.Reuse(plan, args.Has("in")
+            ? dead.Where(d => RemoteControlHosts.SameFolder(d.Folder, plan.Open[0].Folder))
+            : dead);
+
         // The gate is now read rather than warned about: a folder Claude Code has never been
         // trusted with does not start a host, and `claude rc` will not ask — it says to run
         // `claude` there first and stops, where nothing outside that terminal can see it. These
@@ -1834,25 +1842,26 @@ internal static class Commands
                     ? ok.Message
                     : $"could not be trusted — the host will stop at the gate";
 
-        // The project is the name prefix, not a session name: what this starts is a host, and
-        // everything it goes on to create is named after the prefix. Left off, they would all
-        // be named after this machine instead — see ClaudeLaunch.Host. It names the tab too,
-        // which is what tells one PowerShell from the next fifteen.
-        var tabs = plan.Open
-            .Select(t => new TerminalTab(t.Folder, t.Project, ClaudeLaunch.Host(t.Project)))
-            .ToList();
-
-        // One window with a tab per project, in one wt invocation — see TerminalLauncher.
-        // StartTabs for why it is one and not sixteen. Without Windows Terminal it falls back
-        // to the window per project this used to open, which is what `where` reports.
-        if (!dry) TerminalLauncher.StartTabs(tabs, TerminalLauncher.StandbyWindow);
+        // Old tabs first, then one window with a tab per project for the rest, in one wt
+        // invocation — see StandbyLauncher, and TerminalLauncher.StartTabs for why it is one and
+        // not sixteen. Without Windows Terminal it falls back to the window per project this
+        // used to open, which is what `where` reports.
+        var outcome = dry ? null : StandbyLauncher.Launch(plan);
 
         var where = TerminalLauncher.HasWindowsTerminal ? "a tab" : "a terminal";
 
         var items = new List<ActionItem>();
         foreach (var target in plan.Open)
         {
-            var command = ClaudeLaunch.Host(target.Project);
+            // The project is the name prefix, not a session name: what this starts is a host,
+            // and everything it goes on to create is named after the prefix. Left off, they
+            // would all be named after this machine instead — see ClaudeLaunch.Host.
+            var revive = target.ReviveIn is not null
+                && (outcome is null || outcome.Revived.Contains(target));
+            var command = revive
+                ? target.ReviveIn!.HostCommand
+                : ClaudeLaunch.Host(target.Project);
+            var into = revive ? $"its old tab (pid {target.ReviveIn!.Pid})" : where;
             var trust = granted.TryGetValue(target.Folder, out var said) ? $" ({said})"
                 : target.NeedsTrust && trustDeclined ? " (never trusted here — it will stop at the gate)"
                 : target.NeedsTrust ? " (never trusted here — standby will record the trust first)"
@@ -1868,10 +1877,22 @@ internal static class Commands
                 Folder = target.Folder,
                 Ok = true,
                 Message = (dry
-                    ? $"would open {where} running: {command}"
-                    : $"opened {where} running: {command}") + trust,
+                    ? $"would {(revive ? "relaunch in" : "open")} {into} running: {command}"
+                    : $"{(revive ? "relaunched in" : "opened")} {into} running: {command}") + trust,
             });
         }
+
+        foreach (var shell in plan.Close)
+            items.Add(new ActionItem
+            {
+                SessionId = "",
+                Name = shell.Project,
+                Folder = shell.Folder,
+                Ok = true,
+                Message = dry
+                    ? $"would close a dead host's tab (pid {shell.Pid})"
+                    : $"closed a dead host's tab (pid {shell.Pid})",
+            });
 
         foreach (var skip in plan.Skipped)
             items.Add(new ActionItem
@@ -1904,6 +1925,12 @@ internal static class Commands
                       + " that host, close the window to stop them all."
                     : "")
                 + untrustedNote;
+
+        // What happened to the tabs is its own sentence, whichever of the above was said.
+        if (outcome?.Summary() is { Length: > 0 } how)
+            message += $" Tabs: {how}.";
+        else if (dry && plan.Close.Count > 0)
+            message += $" {plan.Close.Count} dead host tab(s) would be closed.";
 
         return Cli.EmitResult(new ActionResult
         {

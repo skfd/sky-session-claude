@@ -19,6 +19,12 @@ public sealed record StandbyTarget
     /// is the one failure standby cannot see happen. See <see cref="ClaudeTrust"/>.
     /// </summary>
     public bool NeedsTrust { get; init; }
+
+    /// <summary>
+    /// The tab its last host died in, when there is one: the relaunch is typed into that
+    /// shell rather than opening a new tab beside it. See <see cref="Standby.Reuse"/>.
+    /// </summary>
+    public DeadHostShell? ReviveIn { get; init; }
 }
 
 /// <summary>A folder standby considered and passed over, with the reason it did.</summary>
@@ -33,6 +39,12 @@ public sealed record StandbyPlan
 {
     public required IReadOnlyList<StandbyTarget> Open { get; init; }
     public required IReadOnlyList<StandbySkip> Skipped { get; init; }
+
+    /// <summary>
+    /// Tabs whose host died and that nothing in the plan will reuse — a project with a live
+    /// host again, or one that has dropped out of the window. They are closed.
+    /// </summary>
+    public IReadOnlyList<DeadHostShell> Close { get; init; } = [];
 }
 
 /// <summary>
@@ -211,6 +223,38 @@ public static class Standby
                 });
 
         return new StandbyPlan { Open = capped, Skipped = skipped };
+    }
+
+    /// <summary>
+    /// Put the plan's hosts back in the tabs their last hosts died in, and mark the rest of
+    /// those tabs for closing.
+    ///
+    /// Every dead host shell ends up in exactly one place: the relaunch for its folder, or
+    /// the close list. Without this, each sweep after a host died opened a new tab next to the
+    /// dead one, and the standby window filled with tabs called the same thing, most of them
+    /// serving nothing. Reviving in place also keeps the dead host's last words above the new
+    /// one's — the only record of why it went.
+    ///
+    /// A second dead tab for the same folder is closed rather than kept as a spare: one tab
+    /// per project is what standby promises the tab strip.
+    /// </summary>
+    public static StandbyPlan Reuse(StandbyPlan plan, IEnumerable<DeadHostShell> dead)
+    {
+        var pool = dead.GroupBy(d => Key(d.Folder), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => new Queue<DeadHostShell>(g.OrderBy(d => d.Pid)),
+                StringComparer.OrdinalIgnoreCase);
+
+        var open = plan.Open
+            .Select(t => pool.TryGetValue(Key(t.Folder), out var shells) && shells.Count > 0
+                ? t with { ReviveIn = shells.Dequeue() }
+                : t)
+            .ToList();
+
+        return plan with
+        {
+            Open = open,
+            Close = [.. plan.Close, .. pool.Values.SelectMany(q => q)],
+        };
     }
 
     /// <summary>

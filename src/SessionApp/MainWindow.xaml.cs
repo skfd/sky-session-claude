@@ -23,6 +23,16 @@ public partial class MainWindow : Window
     /// </summary>
     public bool StandbyOnStart { get; init; }
 
+    /// <summary>
+    /// Keep this week's projects on standby for as long as Sky runs (see
+    /// <see cref="StandbyKeeper"/>). Off for a <c>--multi</c> instance, which is a second
+    /// copy beside the real one: two keepers would each see the same missing host and open
+    /// it twice.
+    /// </summary>
+    public bool KeepStandby { get; init; } = true;
+
+    private DispatcherTimer? _keeperTimer;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -46,6 +56,7 @@ public partial class MainWindow : Window
         {
             _watcher?.Dispose();
             _liveTimer?.Stop();
+            _keeperTimer?.Stop();
             _tray?.Dispose();
         };
     }
@@ -87,6 +98,27 @@ public partial class MainWindow : Window
             await Task.Delay(SignInGrace);
             await StandbyUnattendedAsync();
         }
+
+        StartKeeper();
+    }
+
+    /// <summary>
+    /// How often the keeper looks. A minute is quick enough that a phone rarely finds a project
+    /// missing, and slow enough that a host just launched has long since shown up in the
+    /// process table — a check sooner than that would see it absent and open a second one.
+    /// </summary>
+    private static readonly TimeSpan KeeperInterval = TimeSpan.FromMinutes(1);
+
+    // Hosts die while nobody is at the desk — a network drop, a sleep — and the tab they were
+    // in stays up looking alive. This is what puts them back, in that same tab. It may grant
+    // folder trust only on a --standby start, the consent the sign-in sweep already has.
+    private void StartKeeper()
+    {
+        if (!KeepStandby) return;
+
+        _keeperTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = KeeperInterval };
+        _keeperTimer.Tick += async (_, _) => await _vm.KeepStandbyAsync(mayGrantTrust: StandbyOnStart);
+        _keeperTimer.Start();
     }
 
     /// <summary>How long a <c>--standby</c> start waits before opening hosts.</summary>
@@ -385,6 +417,14 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             _vm.StatusLine = $"Could not work out what to put on standby: {ex.Message}";
+            return;
+        }
+
+        // Every project has a host and only dead tabs are left over: clear them without the
+        // dialog, which is there for terminals about to appear, not for ones about to go.
+        if (plan.Open.Count == 0 && plan.Close.Count > 0)
+        {
+            await _vm.StandbyAsync(plan);
             return;
         }
 

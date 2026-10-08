@@ -592,8 +592,9 @@ public partial class MainViewModel : ObservableObject
     public async Task<StandbyPlan> PlanStandbyAsync()
     {
         var now = DateTime.Now;
-        return await Task.Run(() => Standby.Decide(
-            _scanner.Scan(new ScanOptions { All = true, Top = int.MaxValue }), now));
+        return await Task.Run(() => Standby.Reuse(
+            Standby.Decide(_scanner.Scan(new ScanOptions { All = true, Top = int.MaxValue }), now),
+            HostShells.Dead()));
     }
 
     /// <summary>
@@ -622,13 +623,21 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public async Task StandbyAsync(StandbyPlan plan)
     {
-        if (IsStandingBy || plan.Open.Count == 0) return;
+        if (IsStandingBy || (plan.Open.Count == 0 && plan.Close.Count == 0)) return;
         IsStandingBy = true;
         try
         {
+            // Nothing to open, only dead tabs to clear: a short errand with a short report.
+            if (plan.Open.Count == 0)
+            {
+                var swept = await Task.Run(() => StandbyLauncher.Launch(plan));
+                StatusLine = $"Standby is up; {swept.Summary()}.";
+                return;
+            }
+
             StatusLine = plan.Open.Count == 1
                 ? $"Opening a host in \"{plan.Open[0].Project}\"…"
-                : $"Opening {plan.Open.Count} hosts, a tab each…";
+                : $"Opening {plan.Open.Count} hosts…";
 
             // Trust before terminals: a folder the gate stops is a tab that opens and a host
             // that never comes up, and the click that got here is the answer to that gate.
@@ -638,21 +647,15 @@ public partial class MainViewModel : ObservableObject
                 refused = await Task.Run(() =>
                     untrusted.Count(t => !ClaudeTrust.Grant(t.Folder).Ok));
 
-            // The project is doing two jobs here and neither is a session name. It is the
-            // prefix every session the host goes on to create is named after — left off, every
-            // row on the phone would be named after this machine instead (see ClaudeLaunch.Host)
-            // — and it is what the tab is called, which is the only thing that tells sixteen
-            // identical PowerShells apart.
-            var tabs = plan.Open
-                .Select(t => new TerminalTab(t.Folder, t.Project, ClaudeLaunch.Host(t.Project)))
-                .ToList();
-
-            // Off the UI thread: a run long enough to be split waits between the pieces.
-            await Task.Run(() => TerminalLauncher.StartTabs(tabs, TerminalLauncher.StandbyWindow));
+            // Off the UI thread: typing into old tabs and a run of new ones long enough to be
+            // split both wait between steps. See StandbyLauncher for which tab each host gets.
+            var outcome = await Task.Run(() => StandbyLauncher.Launch(plan));
+            Keeper.Attempted(plan.Open.Select(t => t.Folder), DateTime.Now);
 
             var named = string.Join(", ", plan.Open.Select(t => t.Project));
             var also = plan.Skipped.Count > 0 ? $"; skipping {plan.Skipped.Count}" : "";
-            StatusLine = $"{plan.Open.Count} project(s) on standby: {named}{also}."
+            StatusLine = $"{plan.Open.Count} project(s) on standby: {named}{also}"
+                + (outcome.Summary() is { Length: > 0 } how ? $" ({how})." : ".")
                 + " Give them a moment to connect."
                 + (refused > 0
                     ? $" {refused} could not be trusted and will stop at the gate — check its tab."
@@ -663,6 +666,45 @@ public partial class MainViewModel : ObservableObject
         finally
         {
             IsStandingBy = false;
+        }
+    }
+
+    /// <summary>
+    /// Remembers when each folder was last given a host, so the keeper backs off one that
+    /// keeps going down. Every way of opening hosts counts against it — the button and the
+    /// sign-in sweep too — so the keeper never relaunches what was opened a minute ago.
+    /// </summary>
+    public StandbyKeeper Keeper { get; } = new();
+
+    /// <summary>
+    /// The keeper's turn: put back any host this week's projects have lost, and clear the
+    /// tabs dead ones left, without asking. See <see cref="StandbyKeeper"/> for the restraint,
+    /// and <paramref name="mayGrantTrust"/> for the one thing it will not do unless told.
+    ///
+    /// The full plan costs a scan, so it is only made when there is something to find: the
+    /// button's own count says a project has no host, or a dead tab is sitting there.
+    /// </summary>
+    public async Task KeepStandbyAsync(bool mayGrantTrust)
+    {
+        if (!NotSweeping) return;
+        IsPlanningStandby = true;
+        try
+        {
+            if (StandbyCount == 0 && (await Task.Run(() => HostShells.Dead())).Count == 0) return;
+
+            var plan = Keeper.Hold(await PlanStandbyAsync(), DateTime.Now, mayGrantTrust);
+            if (plan.Open.Count == 0 && plan.Close.Count == 0) return;
+
+            await StandbyAsync(plan);
+        }
+        catch
+        {
+            // A process that went mid-read, a folder that went mid-stat. The next minute asks
+            // again; nobody is watching this to be told.
+        }
+        finally
+        {
+            IsPlanningStandby = false;
         }
     }
 

@@ -31,8 +31,11 @@ public partial class StandbyDialog : Window
             lines.Add(new StandbyLine(
                 target.Project,
                 $"{target.Folder}  ·  {TextUtil.RelativeAge(target.LastActive)}"
-                + (target.NeedsTrust ? "  ·  never trusted — opening will record it" : ""),
+                + (target.NeedsTrust ? "  ·  never trusted — opening will record it" : "")
+                + (target.ReviveIn is not null ? "  ·  back in the tab its last host died in" : ""),
                 false));
+        foreach (var dead in plan.Close)
+            lines.Add(new StandbyLine(dead.Project, "a dead host's tab — it will be closed", true));
         foreach (var skip in plan.Skipped)
             lines.Add(new StandbyLine(skip.Project, $"skipped — {skip.Reason}", true));
 
