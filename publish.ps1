@@ -115,8 +115,13 @@ if (-not $SkipInstall) {
     # Put back what we closed. A publish that leaves the desktop emptier than it found it
     # is a publish you have to remember to finish by hand — and only ever what was up:
     # starting an app nobody had open would be this script deciding something for you.
+    #
+    # Through WMI rather than Start-Process: run from an agent session, this script sits in
+    # that session's job object, and a child started here joins it -- so quitting the Claude
+    # app took the tray app down with it, and with it the keeper. Win32_Process.Create starts
+    # Sky from the WMI host instead, outside any job of ours.
     if ($wasRunning) {
-        Start-Process $targetExe
+        Invoke-CimMethod Win32_Process -MethodName Create -Arguments @{ CommandLine = "`"$targetExe`"" } | Out-Null
         Write-Host "Relaunched: $targetExe"
     }
 } else {
