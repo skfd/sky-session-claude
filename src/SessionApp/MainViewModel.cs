@@ -314,6 +314,16 @@ public partial class MainViewModel : ObservableObject
             });
             UpdateWindowTitle();
         }
+
+        // Same again for declarations, whose only writer is `SessionCli state` — never this
+        // process. Without it the store is whatever it held when Sky started, which went
+        // unnoticed while Sky died with every Claude window; now that it outlives them, every
+        // declaration made after launch was simply missing from the project rows.
+        if (_declarations.ReloadIfChanged())
+        {
+            KeepingSelection(MergeProjects);
+            UpdateStatusLine();
+        }
     }
 
     /// <summary>
