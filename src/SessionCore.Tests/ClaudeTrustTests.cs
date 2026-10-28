@@ -146,6 +146,38 @@ public class ClaudeTrustTests
         Assert.Contains("\"lastFolder\": \"C:/Users/kk/Code/new-repo\"", after);
     }
 
+    /// <summary>
+    /// A backup is made per newly trusted folder, so only the newest few are kept — and only
+    /// this tool's own stamped copies are touched, not Claude Code's <c>.backup</c> or a copy
+    /// the operator made by hand.
+    /// </summary>
+    [Fact]
+    public void KeepsOnlyTheNewestBackups()
+    {
+        var dir = Directory.CreateTempSubdirectory("trust-prune-").FullName;
+        try
+        {
+            var config = Path.Combine(dir, ".claude.json");
+            File.WriteAllText(config, Config);
+            string[] stamps = ["20260905-143349", "20260913-201351", "20260913-201352", "20261022-123839", "20261026-215634"];
+            foreach (var s in stamps) File.WriteAllText($"{config}.bak-{s}", "");
+            string[] others = [".claude.json.backup", ".claude.json.pre-standby-bak", ".claude.json.bak-mine"];
+            foreach (var o in others) File.WriteAllText(Path.Combine(dir, o), "");
+
+            Assert.True(ClaudeTrust.Grant(@"C:\Users\kk\Code\new-repo", config).Ok);
+
+            var left = Directory.GetFiles(dir, ".claude.json.bak-2*").Select(Path.GetFileName).Order().ToArray();
+            Assert.Equal(ClaudeTrust.BackupsKept, left.Length);
+            Assert.DoesNotContain(".claude.json.bak-20260905-143349", left);
+            Assert.Contains(".claude.json.bak-20261026-215634", left);
+            foreach (var o in others) Assert.True(File.Exists(Path.Combine(dir, o)), o);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     /// <summary>A config that cannot be understood is left alone and said so.</summary>
     [Fact]
     public void RefusesToEditWhatItCannotRead()

@@ -106,6 +106,7 @@ public static class ClaudeTrust
             if (!File.Exists(backup)) File.Copy(path, backup);
 
             File.WriteAllText(path, updated);
+            PruneBackups(path);
             return new TrustGrant(true, $"trusted the folder (config backed up to {Path.GetFileName(backup)})");
         }
         catch (Exception ex)
@@ -113,6 +114,39 @@ public static class ClaudeTrust
             return new TrustGrant(false, $"could not record trust: {ex.Message}");
         }
     }
+
+    /// <summary>How many of this tool's backups of the config are kept beside it.</summary>
+    public const int BackupsKept = 3;
+
+    /// <summary>
+    /// Drop all but the newest <paramref name="keep"/> of this tool's own backups — the
+    /// <c>.bak-yyyyMMdd-HHmmss</c> copies, and nothing else beside the config. One is made per
+    /// newly trusted folder, so without this they pile up in the home folder for good. The
+    /// stamp sorts as text, so the newest are the last by name. Best effort: a backup that
+    /// cannot be deleted is left for next time, never a reason to call the grant a failure.
+    /// </summary>
+    public static void PruneBackups(string configPath, int keep = BackupsKept)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(Path.GetFullPath(configPath))!;
+            var prefix = Path.GetFileName(configPath) + ".bak-";
+            var stale = Directory.EnumerateFiles(dir, prefix + "*")
+                .Where(f => IsStamp(Path.GetFileName(f)[prefix.Length..]))
+                .OrderByDescending(f => f, StringComparer.Ordinal)
+                .Skip(keep);
+
+            foreach (var file in stale)
+            {
+                try { File.Delete(file); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
+    private static bool IsStamp(string s) =>
+        s.Length == 15 && s[8] == '-' && s.Remove(8, 1).All(char.IsAsciiDigit);
 
     /// <summary>
     /// The edit itself, on text: the flag set to true inside that project's object, or the
