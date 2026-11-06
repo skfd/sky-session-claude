@@ -67,7 +67,7 @@ public class HostRelaunchTests
     [Theory]
     [InlineData(
         @"""C:\claude.exe"" rc --remote-control-session-name-prefix demo --create-session-in-dir --spawn=same-dir",
-        @"cd 'C:\Users\kk\Code\demo'; claude rc --remote-control-session-name-prefix demo --no-create-session-in-dir --spawn=same-dir")]
+        @"cd 'C:\Users\kk\Code\demo'; claude rc --remote-control-session-name-prefix demo --no-create-session-in-dir --spawn=same-dir --chrome")]
     [InlineData(
         @"""C:\claude.exe"" rc --create-session-in-dir",
         @"cd 'C:\Users\kk\Code\demo'; claude rc --no-create-session-in-dir")]
@@ -80,9 +80,37 @@ public class HostRelaunchTests
     [Fact]
     public void StandbysFlagsAreCarriedOverVerbatim() =>
         Assert.Equal(
-            @"cd 'C:\Users\kk\Code\demo'; claude rc --remote-control-session-name-prefix demo --spawn=same-dir",
+            @"cd 'C:\Users\kk\Code\demo'; claude rc --remote-control-session-name-prefix demo --spawn=same-dir --chrome",
             LaunchLine.HostAgain(@"C:\Users\kk\Code\demo",
-                @"""C:\claude.exe"" rc --remote-control-session-name-prefix demo --spawn=same-dir"));
+                @"""C:\claude.exe"" rc --remote-control-session-name-prefix demo --spawn=same-dir --chrome"));
+
+    /// <summary>
+    /// A host opened before standby passed <c>--chrome</c> has no other road to it: it stays up
+    /// for days and its folder is passed over. Coming back is when it gets the flag, whether
+    /// from a restart or from the tab a dead host left.
+    /// </summary>
+    [Theory]
+    [InlineData(@"""C:\claude.exe"" rc --remote-control-session-name-prefix demo --spawn=same-dir")]
+    [InlineData(@"""C:\claude.exe"" rc --remote-control-session-name-prefix=demo --spawn=same-dir")]
+    [InlineData("claude rc --remote-control-session-name-prefix 'demo' --no-create-session-in-dir --spawn=same-dir")]
+    public void AnOlderStandbyHostComesBackWithChrome(string commandLine) =>
+        Assert.EndsWith(" --chrome", LaunchLine.HostAgain(@"C:\Users\kk\Code\demo", commandLine));
+
+    /// <summary>
+    /// Chrome is standby's to add and nobody else's. A host with no name prefix was not opened
+    /// by standby, and a host that says either way has already been told.
+    /// </summary>
+    [Theory]
+    [InlineData(@"""C:\claude.exe"" rc --spawn=same-dir", "rc --spawn=same-dir")]
+    [InlineData(
+        @"""C:\claude.exe"" rc --remote-control-session-name-prefix demo --no-chrome",
+        "rc --remote-control-session-name-prefix demo --no-chrome")]
+    [InlineData(
+        @"""C:\claude.exe"" rc --chrome --remote-control-session-name-prefix demo",
+        "rc --chrome --remote-control-session-name-prefix demo")]
+    public void ChromeIsNotAddedWhereItIsNotStandbysToAdd(string commandLine, string expected) =>
+        Assert.Equal($@"cd 'C:\Users\kk\Code\demo'; claude {expected}",
+            LaunchLine.HostAgain(@"C:\Users\kk\Code\demo", commandLine));
 
     /// <summary>
     /// With no command line to read, standby's line is the honest guess — and it is what the

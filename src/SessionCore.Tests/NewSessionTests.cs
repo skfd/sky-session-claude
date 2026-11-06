@@ -15,14 +15,14 @@ public class NewSessionTests
     [Fact]
     public void LaunchesInTheFolderWithNoNameOfItsOwn()
     {
-        Assert.Equal(@"cd 'C:\Code\sky'; claude --remote-control", Commands.NewSessionLine(@"C:\Code\sky", null));
+        Assert.Equal(@"cd 'C:\Code\sky'; claude --chrome --remote-control", Commands.NewSessionLine(@"C:\Code\sky", null));
     }
 
     [Fact]
     public void PassesAChosenNameThrough()
     {
         Assert.Equal(
-            @"cd 'C:\Code\sky'; claude --name 'nightly triage' --remote-control",
+            @"cd 'C:\Code\sky'; claude --name 'nightly triage' --chrome --remote-control",
             Commands.NewSessionLine(@"C:\Code\sky", "nightly triage"));
     }
 
@@ -32,7 +32,7 @@ public class NewSessionTests
     public void QuotesAFolderOrNameThatContainsAQuote()
     {
         Assert.Equal(
-            @"cd 'C:\Code\kk''s repo'; claude --name 'kk''s session' --remote-control",
+            @"cd 'C:\Code\kk''s repo'; claude --name 'kk''s session' --chrome --remote-control",
             Commands.NewSessionLine(@"C:\Code\kk's repo", "kk's session"));
     }
 
@@ -47,12 +47,13 @@ public class NewSessionTests
     {
         Assert.EndsWith("--remote-control", Commands.NewSessionLine(@"C:\Code\sky", null));
         Assert.EndsWith("--remote-control", Commands.NewSessionLine(@"C:\Code\sky", "nightly triage"));
+        Assert.Contains(" --chrome ", Commands.NewSessionLine(@"C:\Code\sky", null));
     }
 
     [Fact]
     public void TreatsAnEmptyNameAsNoName()
     {
-        Assert.Equal(@"cd 'C:\Code\sky'; claude --remote-control", Commands.NewSessionLine(@"C:\Code\sky", ""));
+        Assert.Equal(@"cd 'C:\Code\sky'; claude --chrome --remote-control", Commands.NewSessionLine(@"C:\Code\sky", ""));
     }
 
     [Fact]
@@ -83,11 +84,11 @@ public class NewSessionTests
     public void AsksForRemoteControlWithoutHangingTheNameOnIt()
     {
         Assert.Equal(
-            @"cd 'C:\Code\sky'; claude --remote-control",
+            @"cd 'C:\Code\sky'; claude --chrome --remote-control",
             Commands.NewSessionLine(@"C:\Code\sky", null));
 
         Assert.Equal(
-            @"cd 'C:\Code\sky'; claude --name 'night shift' --remote-control",
+            @"cd 'C:\Code\sky'; claude --name 'night shift' --chrome --remote-control",
             Commands.NewSessionLine(@"C:\Code\sky", "night shift"));
     }
 }

@@ -13,7 +13,7 @@ public class HostLineTests
     public void NamesEverySessionTheHostMakesAfterTheProject()
     {
         Assert.Equal(
-            "claude rc --remote-control-session-name-prefix 'sky-session-claude' --no-create-session-in-dir --spawn=same-dir",
+            "claude rc --remote-control-session-name-prefix 'sky-session-claude' --no-create-session-in-dir --spawn=same-dir --chrome",
             ClaudeLaunch.Host("sky-session-claude"));
     }
 
@@ -25,15 +25,15 @@ public class HostLineTests
     [Fact]
     public void LeavesThePrefixOffWhenThereIsNone()
     {
-        Assert.Equal("claude rc --no-create-session-in-dir --spawn=same-dir", ClaudeLaunch.Host());
-        Assert.Equal("claude rc --no-create-session-in-dir --spawn=same-dir", ClaudeLaunch.Host(""));
+        Assert.Equal("claude rc --no-create-session-in-dir --spawn=same-dir --chrome", ClaudeLaunch.Host());
+        Assert.Equal("claude rc --no-create-session-in-dir --spawn=same-dir --chrome", ClaudeLaunch.Host(""));
     }
 
     [Fact]
     public void GoesIntoTheFolderFirst()
     {
         Assert.Equal(
-            @"cd 'C:\Code\sky'; claude rc --remote-control-session-name-prefix 'sky' --no-create-session-in-dir --spawn=same-dir",
+            @"cd 'C:\Code\sky'; claude rc --remote-control-session-name-prefix 'sky' --no-create-session-in-dir --spawn=same-dir --chrome",
             LaunchLine.HostIn(@"C:\Code\sky", "sky"));
     }
 
@@ -43,7 +43,7 @@ public class HostLineTests
     public void QuotesAFolderOrPrefixContainingAQuote()
     {
         Assert.Equal(
-            @"cd 'C:\Code\kk''s repo'; claude rc --remote-control-session-name-prefix 'kk''s repo' --no-create-session-in-dir --spawn=same-dir",
+            @"cd 'C:\Code\kk''s repo'; claude rc --remote-control-session-name-prefix 'kk''s repo' --no-create-session-in-dir --spawn=same-dir --chrome",
             LaunchLine.HostIn(@"C:\Code\kk's repo", "kk's repo"));
     }
 
@@ -61,5 +61,17 @@ public class HostLineTests
         Assert.DoesNotContain("--resume", line);
         Assert.DoesNotContain("--name ", line);
         Assert.Contains("--remote-control-session-name-prefix", line);
+    }
+
+    /// <summary>
+    /// The conversations a host spawns are the ones the phone types into, and they run under
+    /// <c>--print</c>, where the "Enabled by default" setting does not reach. The flag on the
+    /// host is what they inherit, so a host without it is a phone with no browser.
+    /// </summary>
+    [Fact]
+    public void HandsChromeDownToWhatItSpawns()
+    {
+        Assert.EndsWith(" --chrome", ClaudeLaunch.Host("sky"));
+        Assert.EndsWith(" --chrome", ClaudeLaunch.Host());
     }
 }

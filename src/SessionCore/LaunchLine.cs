@@ -34,20 +34,32 @@ public static class LaunchLine
     /// mid-inspection, or one not ours to inspect — does this fall back to what standby
     /// would have opened, which is the best guess available and worth saying out loud.
     ///
-    /// One flag is the exception to verbatim. Standby used to spell out
+    /// Two flags are the exception to verbatim. Standby used to spell out
     /// <c>--create-session-in-dir</c>, and every host it opened before that stopped still
     /// carries it. Putting it back would put back the empty pre-created session with it — the
     /// very thing a restart sweep is the user's only way to retire — so it comes back as the
     /// <c>--no-</c> form. This is safe to treat as standby's signature: the flag is the CLI's
     /// default, and a host typed by hand does not spell its defaults out.
+    ///
+    /// The other is <c>--chrome</c>, which standby did not always pass. A host stays up for
+    /// days and a served folder is passed over, so this is the only road by which an older
+    /// host ever gets it. Only standby's own hosts are given it, known by the name prefix
+    /// nobody types by hand, and a <c>--no-chrome</c> somebody chose is left where it is.
     /// </summary>
     public static string HostAgain(string folder, string? commandLine) =>
         ProcessCommandLine.ArgumentsOf(commandLine) is { } arguments && RemoteControlHosts.IsHostCommand(arguments)
-            ? $"cd {SessionName.Quote(folder)}; claude {WithoutPreCreation(arguments)}"
+            ? $"cd {SessionName.Quote(folder)}; claude {WithChrome(WithoutPreCreation(arguments))}"
             : HostIn(folder, Standby.ProjectOf(folder));
 
     /// <summary>The arguments with the pre-creation flag turned off, wherever it sat.</summary>
     private static string WithoutPreCreation(string arguments) =>
         System.Text.RegularExpressions.Regex.Replace(
             arguments, @"(?<![\w-])--create-session-in-dir(?![\w-])", "--no-create-session-in-dir");
+
+    /// <summary>The arguments of one of standby's hosts with Chrome on, unless they already say.</summary>
+    private static string WithChrome(string arguments) =>
+        System.Text.RegularExpressions.Regex.IsMatch(arguments, @"(?<![\w-])--remote-control-session-name-prefix(?![\w-])")
+        && !System.Text.RegularExpressions.Regex.IsMatch(arguments, @"(?<![\w-])--(no-)?chrome(?![\w-])")
+            ? $"{arguments} --chrome"
+            : arguments;
 }

@@ -23,7 +23,7 @@ public class ProcessCommandLineTests
     [Fact]
     public void TheFlagsAroundItDoNotMatter() =>
         Assert.True(ProcessCommandLine.Mentions(
-            $@"claude.exe --resume {Id} --name ""Comentality content prototypes"" --remote-control", Id));
+            $@"claude.exe --resume {Id} --name ""Comentality content prototypes"" --chrome --remote-control", Id));
 
     /// <summary>
     /// Ids differ in their last character as readily as their first. Matching on a substring

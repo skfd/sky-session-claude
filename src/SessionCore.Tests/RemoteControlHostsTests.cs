@@ -38,6 +38,7 @@ public class RemoteControlHostsTests
     [Theory]
     [InlineData(@"""C:\claude.exe"" --remote-control")]
     [InlineData(@"""C:\claude.exe"" --resume abc123 --remote-control")]
+    [InlineData(@"""C:\claude.exe"" --resume abc123 --chrome --remote-control")]
     [InlineData(@"""C:\claude.exe""")]
     [InlineData(@"""C:\claude.exe"" rcx")]
     public void AClaudeThatIsNotRunningRcIsNotAHost(string commandLine) =>

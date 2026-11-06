@@ -9,6 +9,12 @@ namespace SessionCore;
 /// nothing can be typed at it. The sessions this app starts are precisely the ones that
 /// want reaching from elsewhere — it opened them in a terminal nobody was watching.
 ///
+/// Every one of them carries <c>--chrome</c> too, and so does every host. Claude drives the
+/// browser all the time here, and a session that wakes up without its Chrome tools finds out
+/// mid-task. The "Enabled by default" setting does not cover this: the CLI ignores it for a
+/// remote session, and a <c>--print</c> child of a host starts with no Chrome tools at all
+/// unless the flag was passed. Spelled out, it stops depending on any of that.
+///
 /// The name goes in under <c>--name</c>, never as the optional argument to
 /// <c>--remote-control</c>: the two are separate flags inside the CLI and only <c>--name</c>
 /// reaches the registry (see <see cref="RestartPolicy.ResumeCommand"/>).
@@ -51,13 +57,16 @@ public static class ClaudeLaunch
     /// that never starts — seventeen of them, on a desk the user has left. <c>same-dir</c> is
     /// the CLI's own default and the one standby wants: the folder is the project, and a
     /// worktree per phone session is not something to choose on the user's behalf.
+    ///
+    /// <c>--chrome</c> is here for the conversations rather than the host: <c>rc</c> hands the
+    /// flag down to each session it spawns, and those are the ones the phone is typing into.
     /// </summary>
     public static string Host(string? namePrefix = null) =>
         "claude rc"
         + (namePrefix is { Length: > 0 }
             ? $" --remote-control-session-name-prefix {SessionName.Quote(namePrefix)}"
             : "")
-        + " --no-create-session-in-dir --spawn=same-dir";
+        + " --no-create-session-in-dir --spawn=same-dir --chrome";
 
     private static string Line(string? sessionId, string? name)
     {
@@ -69,6 +78,6 @@ public static class ClaudeLaunch
         // anything following it would have to be that name. Nothing follows it here, and
         // the one thing ever appended downstream — --fork-session — starts with a dash,
         // which the flag will not swallow.
-        return $"{line} --remote-control";
+        return $"{line} --chrome --remote-control";
     }
 }

@@ -150,7 +150,7 @@ public class RestartPolicyTests
     /// </summary>
     [Fact]
     public void ASessionWithNoTitleIsNamedForItsFolderAndId() =>
-        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9' --remote-control",
+        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9' --chrome --remote-control",
             RestartPolicy.ResumeCommand(Live()));
 
     /// <summary>
@@ -180,7 +180,7 @@ public class RestartPolicyTests
     /// </summary>
     [Fact]
     public void TheNameItIsHandedIsTheNameItWrites() =>
-        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'night shift' --remote-control",
+        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'night shift' --chrome --remote-control",
             RestartPolicy.ResumeCommand(
                 Live(bridge: "session_x", name: "demo-6c", nameSource: "derived"), "night shift"));
 
@@ -192,7 +192,7 @@ public class RestartPolicyTests
     [Fact]
     public void ANameItIsHandedOverridesTheOneItHas() =>
         Assert.Equal(
-            "claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'Add retry logic to address-vault download' --remote-control",
+            "claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'Add retry logic to address-vault download' --chrome --remote-control",
             RestartPolicy.ResumeCommand(
                 Live(name: "night shift", nameSource: null),
                 "Add retry logic to address-vault download"));
@@ -204,13 +204,13 @@ public class RestartPolicyTests
     /// </summary>
     [Fact]
     public void NoNameFallsToTheFloor() =>
-        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9' --remote-control",
+        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9' --chrome --remote-control",
             RestartPolicy.ResumeCommand(Live(name: "demo-6c", nameSource: "derived")));
 
     [Fact]
     public void RelaunchReturnsTheShellToTheSessionFolder() =>
         Assert.Equal(
-            @"cd 'C:\Users\kk\Code\demo'; claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9' --remote-control",
+            @"cd 'C:\Users\kk\Code\demo'; claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'demo-b9' --chrome --remote-control",
             RestartPolicy.RelaunchLine(Live()));
 
     [Fact]
@@ -228,6 +228,6 @@ public class RestartPolicyTests
 
     [Fact]
     public void NoRecordedFolderMeansJustResumeWhereTheShellStands() =>
-        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'session-b9' --remote-control",
+        Assert.Equal("claude --resume b9e83ad3-8742-4f86-b5e3-40e844f24da1 --name 'session-b9' --chrome --remote-control",
             RestartPolicy.RelaunchLine(Live(cwd: null)));
 }
