@@ -42,6 +42,17 @@ Of 160 repos under `~/Code`, 40 of the 80 outside any family had no commit in
 and how Sky or the mind palace shows it; then review the catalogue with the
 user.
 
+## Know whether the user is asleep (Apple Watch)
+
+The schedule in `~/.claude/CLAUDE.md` says asleep from 00:00, which is the
+aim; prompts often run to 02:00. Instead of guessing from the clock: an iOS
+Shortcuts personal automation on Sleep Focus on/off (the watch's sleep
+schedule drives it) posts `asleep`/`awake` to a small endpoint; SessionCli
+reads it, and the scheduler, `stop-check` and push notifications respect it.
+Open: where the endpoint lives (a Cloudflare Worker + KV is the obvious one;
+the PC itself is not reachable from the phone), and whether "awake" should
+also come from a late prompt.
+
 ## Elsewhere, from the same review (2026-11-08)
 
 Not Sky work; noted here so they are not lost. Each wants its own session.
