@@ -67,7 +67,6 @@ public sealed class ProjectRow : INotifyPropertyChanged
         CheckOutcome.Passed => "✓ checked",
         CheckOutcome.Failed => "✗ check failed",
         CheckOutcome.NotRun => "check not run",
-        CheckOutcome.Running => "checking…",
         _ => "",
     };
 

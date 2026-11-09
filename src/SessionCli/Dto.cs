@@ -80,7 +80,7 @@ internal sealed class ProjectDto
 
     /// <summary>
     /// The repo's check from the declaration that decided <c>State</c>, when it declared the
-    /// work done and the repo defines one: "passed", "failed", "not-run" or "running".
+    /// work done and the repo defines one: "passed", "failed" or "not-run".
     /// </summary>
     public string? Check { get; init; }
 
@@ -285,7 +285,7 @@ internal sealed class SessionDto
 
     /// <summary>
     /// What the repo's check said when this session declared its work done — "passed",
-    /// "failed", "not-run", "running" — or null when no check ran. Record only: it never
+    /// "failed", "not-run" — or null when no check ran. Record only: it never
     /// changes <see cref="Declared"/>. Kept on a stale claim too, for the measurement.
     /// </summary>
     public string? DeclaredCheck { get; init; }

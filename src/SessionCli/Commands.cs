@@ -1227,8 +1227,13 @@ internal static partial class Commands
             // definition falls back to the session's own folder.
             try
             {
-                check = (args.Has("self") ? DoneCheck.Find(Environment.CurrentDirectory) : null)
-                        ?? DoneCheck.Find(info.RealCwd);
+                // Only the same repository counts. A shell's cd carries between calls, and an
+                // agent that last looked at a sibling repo must not record that repo's tree.
+                var here = Environment.CurrentDirectory;
+                var standing = args.Has("self") && info.RealCwd is { } home && DoneCheck.SameRepo(here, home)
+                    ? DoneCheck.Find(here)
+                    : null;
+                check = standing ?? DoneCheck.Find(info.RealCwd);
             }
             catch (Exception e) { checkUnreadable = $"{DoneCheck.DefinitionPath} unreadable: {e.Message}"; }
         }
@@ -1252,7 +1257,9 @@ internal static partial class Commands
             store.Set(info.SessionId, claim = claim with { Check = DoneCheck.NotRun(checkUnreadable) });
         else if (check is not null)
         {
-            store.Set(info.SessionId, claim with { Check = DoneCheck.Started(check.Root) });
+            // Unchecked first, stamped after. A run cut short leaves a claim with no check,
+            // which reads as "not checked" — true, and in need of no clock to expire it.
+            store.Set(info.SessionId, claim);
             claim = claim with { Check = DoneCheck.Run(check) };
             store.Set(info.SessionId, claim);
             if (claim.Check.Outcome != CheckOutcome.Passed) checkWarning = claim.Check.Detail;

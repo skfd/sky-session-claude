@@ -8,8 +8,6 @@ namespace SessionCore;
 /// <summary>What became of a repo's check when a session declared it was done.</summary>
 public enum CheckOutcome
 {
-    /// <summary>Started and not yet finished — or the process running it was killed mid-way.</summary>
-    Running,
     Passed,
     Failed,
 
@@ -43,7 +41,6 @@ public sealed record CheckResult
 
     public static string ToWire(CheckOutcome o) => o switch
     {
-        CheckOutcome.Running => "running",
         CheckOutcome.Passed => "passed",
         CheckOutcome.Failed => "failed",
         _ => "not-run",
@@ -51,7 +48,6 @@ public sealed record CheckResult
 
     public static CheckOutcome FromWire(string? s) => s?.Trim().ToLowerInvariant() switch
     {
-        "running" => CheckOutcome.Running,
         "passed" => CheckOutcome.Passed,
         "failed" => CheckOutcome.Failed,
         _ => CheckOutcome.NotRun,
@@ -121,13 +117,6 @@ public static class DoneCheck
 
         return new CheckDefinition { Command = c.GetString()!, Root = root, TimeoutSeconds = timeout };
     }
-
-    public static CheckResult Started(string root) => new()
-    {
-        Outcome = CheckOutcome.Running,
-        Commit = Git(root, "rev-parse --short HEAD"),
-        At = DateTimeOffset.Now,
-    };
 
     public static CheckResult NotRun(string why, string? root = null) => new()
     {
@@ -215,6 +204,18 @@ public static class DoneCheck
             catch (Win32Exception) { /* not installed; try the next */ }
         }
         return null;
+    }
+
+    /// <summary>
+    /// Whether two folders are the same repository — the same checkout, or a worktree of it.
+    /// Git's common dir is what a checkout and its worktrees share and a stranger does not.
+    /// </summary>
+    public static bool SameRepo(string a, string b)
+    {
+        var ca = Git(a, "rev-parse --path-format=absolute --git-common-dir");
+        var cb = Git(b, "rev-parse --path-format=absolute --git-common-dir");
+        return ca is not null && cb is not null
+               && string.Equals(Path.GetFullPath(ca), Path.GetFullPath(cb), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>One line of git's answer, or null when there is no git or no repo.</summary>

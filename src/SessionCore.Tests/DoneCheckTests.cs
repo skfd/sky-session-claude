@@ -69,6 +69,30 @@ public class DoneCheckTests : IDisposable
         Assert.Null(DoneCheck.Find(inner));
     }
 
+    private string RealRepo(string name)
+    {
+        var root = Path.Combine(_dir, name);
+        Directory.CreateDirectory(root);
+        using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("git", $"init -q \"{root}\"")
+        {
+            UseShellExecute = false, CreateNoWindow = true,
+        })!;
+        p.WaitForExit();
+        return root;
+    }
+
+    [Fact]
+    public void ASubfolderIsTheSameRepoAndASiblingIsNot()
+    {
+        var a = RealRepo("a");
+        var sub = Directory.CreateDirectory(Path.Combine(a, "src")).FullName;
+        var b = RealRepo("b");
+
+        Assert.True(DoneCheck.SameRepo(sub, a));
+        Assert.False(DoneCheck.SameRepo(b, a));
+        Assert.False(DoneCheck.SameRepo(_dir, a)); // not a repo at all
+    }
+
     [Fact]
     public void ADefinitionWithoutACommandThrowsRatherThanReadingAsNone() =>
         Assert.Throws<FormatException>(() => DoneCheck.Parse("""{ "timeoutSeconds": 5 }""", _dir));
