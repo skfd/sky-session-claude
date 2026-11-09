@@ -156,6 +156,30 @@ were left out on purpose:
   carry a prompt widens what they can make a session do, so decide the limits
   first.
 
+## `new --trust` missed the trust prompt in a never-opened folder
+
+Seen 2026-11-09 from a Remote Control session (guelph-sidewalks-layer)
+starting one in guelph-bike-layer, a repo no Claude session had ever opened:
+- `new --in <bike> --prompt-file <brief>` sat on "Do you trust this folder?";
+  it reported "had not registered after 30s".
+- The same with `--trust` said "No trust prompt appeared within 30s" and
+  "had not registered after 30s". The process was alive, no registry entry,
+  no transcript, no `hasTrustDialogAccepted` in `~/.claude.json`: the
+  prompt was up and was missed. That launch had `--chrome --remote-control`,
+  so startup may run past 30 s.
+- `new --in <bike> --trust` with no prompt printed nothing at all, exit code
+  not checked, and left the prompt up again.
+- `trust <pid>` answered "No session matches": trust resolves against the
+  registry, and a session at the trust prompt has not registered, so the one
+  moment `trust` is needed is the one it cannot address.
+
+The workaround was writing `projects["C:/Users/kk/Code/guelph-bike-layer"]
+.hasTrustDialogAccepted = true` into `~/.claude.json` and launching again;
+`new --prompt-file` then registered and started. To look at: a longer or
+screen-driven wait for `--trust`, `trust` taking a pid or folder for an
+unregistered terminal, and why the no-prompt launch printed nothing. Or have
+`--trust` just set the flag before launching, since the user asked for it.
+
 ## Elsewhere, from the same review (2026-11-08)
 
 Not Sky work; noted here so they are not lost. Each wants its own session.
