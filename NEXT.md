@@ -12,33 +12,30 @@ answered without opening a session. Decide the format (plain headings, or
 something with ready/blocked like Beads' `bd ready`) and what Sky shows:
 count, first heading, or the lot.
 
-## Smoke tests: schedule the doctor, and what its first run found
+## Smoke tests: the keeper's log churn, and v1.16.0's missing slice
 
-Built 2026-11-09: the test gate in `publish.ps1`, `SharedStores` with its
-reload and footprint tests, and `SessionCli doctor` with Sky's heartbeat
-(see `Doctor`, `Heartbeat`). Checked against a live dev Sky: heartbeat,
-keeper, stores and hosts all read right, and the verdict shows first in
-Sky's status line. Nothing of it is in the installed Sky until a release.
+Shipped in v1.16.0 (2026-11-09): the test gate, `SharedStores`, `SessionCli
+doctor` with Sky's heartbeat, and `publish.ps1` relaunching Sky with
+`--standby`. The task "Sky Session Claude doctor" runs it at 06:45 and 17:30
+through `conhost --headless`. Its first run was all green, and
+thunder-bay-address-import is trusted and has a host.
 
 Left:
 
-- **Schedule.** A task running `SessionCli doctor` before 07:00 and around
-  17:30. Registering it needs the user's OK in chat (the classifier blocks
-  it otherwise). Until it runs, Sky shows no verdict; one older than a day
-  is ignored.
-- **thunder-bay-address-import never gets a host.** Its folder was never
-  trusted, and the running Sky was started without `--standby`, so its keeper
-  may not grant trust. That is how `publish.ps1` relaunches Sky: every
-  release takes the keeper's trust consent away until the next sign-in. Fix
-  the folder with the Standby button (or `SessionCli standby --in` it), and decide
-  whether `publish.ps1` should relaunch with the flags the old Sky had.
 - **The keeper's log churns.** Every minute it writes one "held" line per
-  project it is not putting back, including the no-`.git` `Code` folder and
-  the untrusted ones. At that rate (about 3 lines a minute today) the log
-  reaches its 256 KB trim within a day, and after that it holds hours of
-  history instead of a month. Log a held reason when it changes, not every look; the doctor only
-  needs a line in the last five minutes for a host the keeper is backing
-  off on, so keep those.
+  project it is not putting back (the no-`.git` `Code` folder, anything
+  untrusted). At about 3 lines a minute the log reaches its 256 KB trim
+  within a day, and after that it holds hours of history instead of a month.
+  Log a held reason when it changes, not every look. Keep the per-minute
+  line for a host the keeper is backing off on: `Doctor` needs one in the
+  last five minutes to call a missing host a warning rather than a failure.
+- **v1.16.0's changelog slice.** The status line with a doctor verdict is a
+  visible change and the notes went out without its slice: `PrintWindow`
+  returned white twice at ~10:30 with the user away (screen likely locked).
+  Capture it while someone is at the desk (a failing `doctor.json` under a
+  day old makes Sky show one), save it as
+  `docs/changelog/v1.16.0-doctor-status.png`, push, and add it to the release
+  notes with `gh release edit`.
 
 ## `/clear`: wire the hook once the verb ships
 
