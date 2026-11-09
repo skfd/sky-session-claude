@@ -10,7 +10,9 @@ namespace SessionApp;
 public partial class MainViewModel : ObservableObject
 {
     private readonly SessionScanner _scanner = new();
-    private readonly DispositionStore _dispositions = new();
+    /// <summary>The sidecars other processes write; the live tick re-reads them all in one call.</summary>
+    private readonly SharedStores _stores = new();
+    private DispositionStore _dispositions => _stores.Dispositions;
 
     /// <summary>
     /// What Ctrl+Z and Ctrl+Y walk back and forth over. Marks only, for now, and only this
@@ -24,20 +26,20 @@ public partial class MainViewModel : ObservableObject
     /// background pass reads it on every tick, and because one instance per window is what
     /// keeps its reload-merge-replace meaningful.
     /// </summary>
-    private readonly NameStore _names = new();
+    private NameStore _names => _stores.Names;
 
     /// <summary>Every live session's current name, for the collision rule.</summary>
     private IReadOnlyCollection<string> _liveNames = [];
 
     /// <summary>What agents have declared about their sessions, for the project fold.</summary>
-    private readonly DeclarationStore _declarations = new();
+    private DeclarationStore _declarations => _stores.Declarations;
 
     /// <summary>
     /// Which projects the operator set aside — parked, done, automated. Their sessions and
     /// rows leave the default views and the count by the clock: a red card on a project parked
     /// on purpose is a question nobody is going to answer. Show-all brings them back.
     /// </summary>
-    private readonly ProjectStandingStore _standings = new();
+    private ProjectStandingStore _standings => _stores.Standings;
 
     private bool SetAside(string? folder) =>
         folder is { Length: > 0 } f && _standings.Of(f) != Standing.Active;
@@ -305,19 +307,18 @@ public partial class MainViewModel : ObservableObject
 
         _liveNames = SessionNaming.LiveNamesOf(live);
 
-        // Another writer -- `SessionCli rename`, or a session renaming itself -- may have
-        // recorded a name since the last tick. Without this the pass reads that name as one
-        // the operator chose and leaves it alone forever.
-        _names.ReloadIfChanged();
+        // Every sidecar here has writers outside this process -- `SessionCli rename`, `done`,
+        // `state`, `project`, or a session renaming itself -- and none of them touches a
+        // session file, so the watcher never hears. Sky outlives those calls by days; whatever
+        // is not re-read here is frozen at launch (the 10-12 regression). Before the rename
+        // pass, which would otherwise read a name recorded elsewhere as the operator's.
+        var changed = _stores.Reload();
 
         UpdateStaleCount();
         await UpdateStandbyCountAsync();
         await RenamePassAsync(live);
 
-        // The dispositions file has another writer — `SessionCli done <id>` on an agent's
-        // behalf — and a mark made there changes no session file, so the watcher would
-        // never hear about it. One stat per tick is what makes it show up on the card.
-        if (_dispositions.ReloadIfChanged())
+        if (changed.HasFlag(StoreChange.Dispositions))
         {
             KeepingSelection(() =>
             {
@@ -327,18 +328,13 @@ public partial class MainViewModel : ObservableObject
             UpdateWindowTitle();
         }
 
-        // Same again for declarations, whose only writer is `SessionCli state` — never this
-        // process. Without it the store is whatever it held when Sky started, which went
-        // unnoticed while Sky died with every Claude window; now that it outlives them, every
-        // declaration made after launch was simply missing from the project rows.
-        if (_declarations.ReloadIfChanged())
+        if (changed.HasFlag(StoreChange.Declarations))
         {
             KeepingSelection(MergeProjects);
             UpdateStatusLine();
         }
 
-        // Standings have one writer, `SessionCli project`, and it touches no session file.
-        if (_standings.ReloadIfChanged())
+        if (changed.HasFlag(StoreChange.Standings))
         {
             KeepingSelection(() =>
             {

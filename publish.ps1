@@ -13,6 +13,11 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# Nothing ships on a red suite. Until 2026-11 no step ran the tests before a release,
+# so a test that would have caught a regression caught nothing.
+dotnet test "$root/src/SessionCore.Tests/SessionCore.Tests.csproj" --nologo
+if ($LASTEXITCODE -ne 0) { throw "Tests failed; not publishing." }
+
 dotnet publish "$root/src/SessionApp/SessionApp.csproj" `
     -c Release `
     -r $Runtime `
