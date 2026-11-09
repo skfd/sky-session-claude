@@ -365,6 +365,12 @@ public static class ProjectFold
         // Abandoned never reaches here — Roll skips it before asking.
         if (mark == Disposition.Done) return ProjectState.Quiet;
 
+        // So does /clear. The operator ended this conversation and went on in a new one, so
+        // nothing will prompt it again — and a claim nothing can expire is not one to read.
+        // Below Done because both say the same thing, above the claim because the claim is
+        // the very thing a cleared conversation leaves stranded.
+        if (session.ClearedAway) return ProjectState.Quiet;
+
         // Before the Complete check on purpose: "over, and there is a report here worth your
         // eyes" is a claim about a session that already looks finished, and it would be
         // unreachable if settled won first.

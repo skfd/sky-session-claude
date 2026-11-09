@@ -20,12 +20,15 @@ Remote Control hosts silently down after Standby (10-08), stray backup files
 in `~`. Cover status reporting, host liveness and cleanup with tests that
 would have caught those.
 
-## `/clear` leaves a stale title and state
+## `/clear`: wire the hook once the verb ships
 
-`/clear` is the most used slash command (63 times). After it, the session
-keeps a title and declared state that describe work it has moved on from. A
-`SessionStart` hook matching `clear` could reset the declared state and ask
-for a new name.
+Sky now reads a conversation that ended in `/clear` as settled, and flags a
+session still answering to the name `/clear` copied over (`TitleInherited`).
+Left: once a release ships `SessionCli clear-start`, add it to
+`~/.claude/settings.json` as a `SessionStart` hook with matcher `clear`, so
+the agent is told its name was inherited and renames if the subject changed.
+Not before: the hook points at the installed CLI, which does not know the
+verb yet. Optional later: show `TitleInherited` on the card (dimmed name).
 
 ## "Done" checked by a hook, not just declared
 

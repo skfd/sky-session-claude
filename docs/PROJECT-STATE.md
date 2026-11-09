@@ -45,6 +45,20 @@ cannot answer it.
 | any `error` / `limit` / `cut-off` | died mid-work; revivable with no decision to make |
 | all Settled | quiet |
 
+A conversation **cleared away** with `/clear` counts as settled, on the same footing as one
+marked Done. `/clear` does not end the process. It queues itself in the old transcript (a
+`queue-operation` record with `"content":"/clear"`), opens a new session id in the same
+terminal, and copies the old `custom-title` to the top of the new file. Nothing will prompt
+the old id again, so whatever it last declared would stand forever: on 2026-11-09, 56 of the
+63 cleared conversations still had a claim standing, and in sc-open-quests and skyditor such
+a claim was the blocker the project card showed. The fold reads the queued `/clear` as the
+operator's word that the conversation is over. The session's own Status is untouched (Law 1).
+
+The new conversation is flagged `TitleInherited` while it still answers to the copied name.
+Nothing renames it. `/clear` is as often "same task, fresh context" as "something else now",
+and only the session can tell which, so a `SessionStart` hook (`SessionCli clear-start`,
+matcher `clear`) tells the agent the name was inherited and leaves the call to it.
+
 Alongside it, the runtime axis from the glossary — is anything live in this folder, is it
 stale, is there a `claude rc` host — which `StandbyPlan` already computes per folder for its
 own purposes.

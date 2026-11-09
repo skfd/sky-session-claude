@@ -56,10 +56,11 @@ public sealed class SessionRow : INotifyPropertyChanged
     public bool Done => _disposition == Disposition.Done;
 
     /// <summary>
-    /// Nothing left to do here: the classifier says complete, or you said so with D.
+    /// Nothing left to do here: the classifier says complete, you said so with D, or you
+    /// cleared the conversation away with <c>/clear</c> and went on in a new one.
     /// This — not <see cref="Complete"/> — is what "Hide completed" hides.
     /// </summary>
-    public bool Settled => Complete || Done;
+    public bool Settled => Complete || Done || _info.ClearedAway;
 
     /// <summary>
     /// The interactive CLI running this session in a terminal right now, or null when none

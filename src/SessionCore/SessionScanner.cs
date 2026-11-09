@@ -168,8 +168,15 @@ public sealed class SessionScanner
             SizeKB = Math.Round(file.Length / 1024.0, 1),
             Project = LeafOf(cwd),
             Command = $"cd \"{cwd}\"; {ClaudeLaunch.Resume(sessionId)}",
-            Unfinished = openQ || noReply,
-            WaitingOn = noReply ? "agent" : openQ ? "you" : "",
+            // A conversation cleared away is over by the operator's own hand, whatever its
+            // last turn looks like.
+            Unfinished = !fields.EndedByClear && (openQ || noReply),
+            WaitingOn = fields.EndedByClear ? "" : noReply ? "agent" : openQ ? "you" : "",
+            ClearedAway = fields.EndedByClear,
+            StartedByClear = fields.StartedByClear,
+            TitleInherited = fields.StartedByClear
+                && fields.OpeningTitle is { Length: > 0 } opening
+                && string.Equals(opening, fields.CustomTitle, StringComparison.Ordinal),
         };
     }
 

@@ -84,6 +84,29 @@ public sealed record SessionFileFields
     /// its operator on purpose, not because it predates the field.
     /// </summary>
     public bool HasOperator { get; init; }
+
+    /// <summary>
+    /// The operator ended this conversation with <c>/clear</c>: the file's last operator act
+    /// is a queued <c>/clear</c>, with no prompt and no reply after it. <c>/clear</c> does not
+    /// end the process; it starts a new session id in the same terminal and leaves this
+    /// transcript behind, so nothing will ever prompt it again and whatever it last declared
+    /// would stand forever. Clearing is the operator's own word that this conversation is
+    /// over, which is why the fold reads it as settled.
+    /// </summary>
+    public bool EndedByClear { get; init; }
+
+    /// <summary>
+    /// This conversation is what a <c>/clear</c> left behind in the terminal: the
+    /// <c>/clear</c> command is the first thing in it, ahead of any prompt.
+    /// </summary>
+    public bool StartedByClear { get; init; }
+
+    /// <summary>
+    /// The <c>custom-title</c> written before anything else happened in the file — on a
+    /// session that <see cref="StartedByClear"/>, the name Claude Code copied over from the
+    /// conversation that was cleared. Null when the file opens on anything else.
+    /// </summary>
+    public string? OpeningTitle { get; init; }
 }
 
 /// <summary>
@@ -111,6 +134,8 @@ public static class SessionFileParser
         DateTime? lastTurnUtc = null, previousSittingUtc = null;
         string? lastPromptUuid = null;
         bool hasOperator = false;
+        bool endedByClear = false, startedByClear = false, sawUser = false, sawPrompt = false;
+        string? openingTitle = null;
 
         foreach (var line in lines)
         {
@@ -138,7 +163,18 @@ public static class SessionFileParser
                     if (TryGetString(o, "aiTitle", out var at) && at.Length > 0) name = at;
                     break;
                 case "custom-title":
-                    if (TryGetString(o, "customTitle", out var ct) && ct.Length > 0) custom = ct;
+                    if (TryGetString(o, "customTitle", out var ct) && ct.Length > 0)
+                    {
+                        custom = ct;
+                        if (!sawUser && openingTitle is null) openingTitle = ct;
+                    }
+                    break;
+                case "queue-operation":
+                    // A /clear is queued in the transcript it ends, then the harness moves to
+                    // a new file. The queue record is the only trace it leaves here.
+                    if (GetString(o, "operation") == "enqueue"
+                        && TryGetString(o, "content", out var queued) && IsClearCommand(queued))
+                        endedByClear = true;
                     break;
                 case "last-prompt":
                     if (TryGetString(o, "lastPrompt", out var lp) && lp.Length > 0) prompt = lp;
@@ -154,6 +190,8 @@ public static class SessionFileParser
                     // calls prompts, and one anywhere in the file is enough to settle the
                     // question for good. Nothing later can make a session unattended again.
                     if (!hasOperator && IsHumanOrigin(o)) hasOperator = true;
+                    sawUser = true;
+                    if (!sawPrompt && IsClearRecord(o)) startedByClear = true;
 
                     var turn = HandleUser(o, ref userText, ref lastRole, ref lastToolResult, ref lastInterrupt);
                     if (turn == UserTurn.Noise) break;
@@ -174,11 +212,18 @@ public static class SessionFileParser
                     if (turn == UserTurn.Prompt && !IsMeta(o)
                         && TryGetString(o, "uuid", out var uid) && uid.Length > 0)
                         lastPromptUuid = uid;
+                    if (turn == UserTurn.Prompt && !IsMeta(o))
+                    {
+                        sawPrompt = true;
+                        endedByClear = false;   // the conversation went on after all
+                    }
                     break;
                 case "assistant":
                     HandleAssistant(o, largeModelId, ref lastText, ref errText, ref lastRole, ref lastStop,
                         ref lastSynthetic, ref lastHasTool, ref lastEndsQ, ref ctxTokens, ref maxCtxTokens,
                         ref sawLargeModel);
+                    // Deliberately not a reason to forget a queued /clear: one typed while the
+                    // agent was mid-turn is queued first and run once the reply is written.
                     Advance(ref lastTurnUtc, ref previousSittingUtc, recordUtc);
                     break;
             }
@@ -218,8 +263,27 @@ public static class SessionFileParser
             PreviousSittingUtc = previousSittingUtc,
             LastPromptUuid = lastPromptUuid,
             HasOperator = hasOperator,
+            EndedByClear = endedByClear,
+            StartedByClear = startedByClear,
+            OpeningTitle = openingTitle,
         };
     }
+
+    /// <summary>The text Claude Code queues for <c>/clear</c>, with or without arguments.</summary>
+    private static bool IsClearCommand(string text)
+    {
+        var t = text.Trim();
+        return t == "/clear" || t.StartsWith("/clear ", StringComparison.Ordinal);
+    }
+
+    /// <summary>The local-command record a <c>/clear</c> writes at the top of the new transcript.</summary>
+    private static bool IsClearRecord(JsonElement o) =>
+        o.TryGetProperty("message", out var msg)
+        && msg.ValueKind == JsonValueKind.Object
+        && msg.TryGetProperty("content", out var content)
+        && content.ValueKind == JsonValueKind.String
+        && content.GetString() is { } text
+        && text.TrimStart().StartsWith("<command-name>/clear</command-name>", StringComparison.Ordinal);
 
     /// <summary>What a user record turned out to be.</summary>
     private enum UserTurn

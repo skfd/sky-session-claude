@@ -96,6 +96,24 @@ public sealed class SessionInfo
     /// </summary>
     public bool Unattended => !HasOperator;
 
+    /// <summary>
+    /// The operator cleared this conversation away with <c>/clear</c> and carried on in a new
+    /// one in the same terminal (see <see cref="SessionFileFields.EndedByClear"/>). Nothing
+    /// will prompt it again, so it counts as settled, the way a session marked Done does.
+    /// </summary>
+    public bool ClearedAway { get; init; }
+
+    /// <summary>This conversation began with <c>/clear</c> in a terminal that had another one.</summary>
+    public bool StartedByClear { get; init; }
+
+    /// <summary>
+    /// The name this session answers to was copied over by <c>/clear</c> from the conversation
+    /// before it, and nothing has renamed it since. It may still be right, since <c>/clear</c>
+    /// is often the same task with a fresh context, so this is shown, not acted on: only the
+    /// session knows whether its subject changed.
+    /// </summary>
+    public bool TitleInherited { get; init; }
+
     public double AgeDays { get; init; }
     public double SizeKB { get; init; }
 

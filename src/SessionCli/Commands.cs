@@ -1115,6 +1115,28 @@ internal static class Commands
         return 2;
     }
 
+    /// <summary>
+    /// The <c>SessionStart</c> hook for <c>/clear</c>: hands the agent a line saying its name
+    /// was inherited (see <see cref="ClearHook"/>). Like <see cref="StopCheck"/> it can never
+    /// be what stops a session starting, so every failure is swallowed and exits 0.
+    /// </summary>
+    public static int ClearStart(Args args)
+    {
+        args.RejectUnknown();
+
+        try
+        {
+            if (ClearHook.Answer(Console.In.ReadToEnd()) is { } answer)
+                Console.WriteLine(answer);
+        }
+        catch (Exception)
+        {
+            // A stand-down is not worth the operator's attention, so it goes nowhere.
+        }
+
+        return 0;
+    }
+
     public static int Declare(Args args)
     {
         args.RejectUnknown("self", "note", "dry-run");

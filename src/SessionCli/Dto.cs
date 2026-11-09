@@ -262,6 +262,18 @@ internal sealed class SessionDto
     /// </summary>
     public required bool HasOperator { get; init; }
 
+    /// <summary>
+    /// The operator ended this conversation with <c>/clear</c> and went on in a new one in
+    /// the same terminal. Counts as settled, so <c>--unfinished</c> drops it.
+    /// </summary>
+    public required bool ClearedAway { get; init; }
+
+    /// <summary>
+    /// The name was copied over by <c>/clear</c> from the conversation before, and nothing has
+    /// renamed the session since. It may still fit; only the session can say.
+    /// </summary>
+    public required bool TitleInherited { get; init; }
+
     /// <summary>Null unless the session is open in a terminal right now.</summary>
     public LiveDto? Live { get; init; }
 
@@ -287,7 +299,9 @@ internal sealed class SessionDto
         SizeKB = s.SizeKB,
         Command = s.Command,
         Disposition = DispositionStore.ToWire(disposition),
-        Settled = s.Complete || disposition == SessionCore.Disposition.Done,
+        Settled = s.Complete || s.ClearedAway || disposition == SessionCore.Disposition.Done,
+        ClearedAway = s.ClearedAway,
+        TitleInherited = s.TitleInherited,
         Declared = claim is not null && claim.StillStands(s)
             ? ProjectFold.ToWire(claim.State)
             : "none",

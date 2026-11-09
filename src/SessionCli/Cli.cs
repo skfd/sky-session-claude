@@ -176,6 +176,11 @@ internal static class Cli
                                               including on any failure, so it can never be
                                               what stops you working. --session <id> and
                                               --dry-run run the same check by hand.
+          SessionCli clear-start              for a SessionStart hook (matcher "clear"): tells
+                                              the agent its name was copied over by /clear and
+                                              to rename once it knows whether the subject
+                                              changed. Reads the hook's JSON on stdin; prints
+                                              nothing for any other start, never fails.
 
         Acting
           SessionCli fork <id> --at-prompt <n>   branch from before prompt n (no terminal)
@@ -294,6 +299,7 @@ internal static class Cli
                 "rename" => Commands.Rename(rest),
                 "state" => Commands.Declare(rest),
                 "stop-check" => Commands.StopCheck(rest),
+                "clear-start" => Commands.ClearStart(rest),
                 "restart" => Commands.Restart(rest),
                 "close" => Commands.Close(rest),
                 "resume" => Commands.Resume(rest),
