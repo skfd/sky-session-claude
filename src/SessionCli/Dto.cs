@@ -101,8 +101,25 @@ internal sealed class ProjectDto
     /// </summary>
     public required IReadOnlyList<string> SessionIds { get; init; }
 
-    public static ProjectDto From(ProjectRoll roll, int live, int stale, bool host) => new()
+    /// <summary>
+    /// "active", "parked", "done" or "automated" — the operator's word on whether this folder
+    /// is still worked on at all (see ProjectStandingStore). Independent of <see cref="State"/>:
+    /// a parked project keeps whatever its sessions last said, and a reader that wants
+    /// "what am I on the hook for" drops anything not active, as <c>--unfinished</c> does.
+    /// </summary>
+    public string Standing { get; init; } = "active";
+
+    /// <summary>Why it was set aside, and for parked what would wake it. Null when active.</summary>
+    public string? StandingNote { get; init; }
+
+    /// <summary>When the standing was set, ISO 8601. Null when active.</summary>
+    public string? StandingSince { get; init; }
+
+    public static ProjectDto From(ProjectRoll roll, int live, int stale, bool host, ProjectStanding? standing = null) => new()
     {
+        Standing = ProjectStanding.ToWire(standing?.Standing ?? SessionCore.Standing.Active),
+        StandingNote = standing?.Note,
+        StandingSince = standing?.At.ToString("o"),
         Project = roll.Project,
         Folder = roll.Folder,
         State = ProjectFold.ToWire(roll.State),

@@ -32,6 +32,16 @@ public partial class MainViewModel : ObservableObject
     /// <summary>What agents have declared about their sessions, for the project fold.</summary>
     private readonly DeclarationStore _declarations = new();
 
+    /// <summary>
+    /// Which projects the operator set aside — parked, done, automated. Their sessions and
+    /// rows leave the default views and the count by the clock: a red card on a project parked
+    /// on purpose is a question nobody is going to answer. Show-all brings them back.
+    /// </summary>
+    private readonly ProjectStandingStore _standings = new();
+
+    private bool SetAside(string? folder) =>
+        folder is { Length: > 0 } f && _standings.Of(f) != Standing.Active;
+
     /// <summary>Backing list; the grid binds to <see cref="RowsView"/> so filters apply.</summary>
     public ObservableCollection<SessionRow> Rows { get; } = new();
 
@@ -170,6 +180,7 @@ public partial class MainViewModel : ObservableObject
         if (obj is not ProjectRow p) return false;
 
         if (HideQuietProjects && !p.WantsSomething) return false;
+        if (HideQuietProjects && SetAside(p.Folder)) return false;
 
         // Search reads the project's own words: its name, the folder, and the note — which is
         // where "the thing about the bike parking" actually is.
@@ -216,6 +227,7 @@ public partial class MainViewModel : ObservableObject
         if (obj is not SessionRow r) return false;
 
         if (HideCompleted && r.Settled) return false;
+        if (HideCompleted && SetAside(r.Info.RealCwd)) return false;
         if (!ShowAbandoned && r.Abandoned) return false;
         if (StatusFilter != AllStatusesLabel && r.Status != StatusFilter) return false;
         if (ProjectFilter != AllProjectsLabel && r.Project != ProjectFilter) return false;
@@ -322,6 +334,18 @@ public partial class MainViewModel : ObservableObject
         if (_declarations.ReloadIfChanged())
         {
             KeepingSelection(MergeProjects);
+            UpdateStatusLine();
+        }
+
+        // Standings have one writer, `SessionCli project`, and it touches no session file.
+        if (_standings.ReloadIfChanged())
+        {
+            KeepingSelection(() =>
+            {
+                RowsView.Refresh();
+                ProjectsView.Refresh();
+            });
+            UpdateWindowTitle();
             UpdateStatusLine();
         }
     }
@@ -960,7 +984,7 @@ public partial class MainViewModel : ObservableObject
 
     private void UpdateWindowTitle()
     {
-        int n = Rows.Count(r => !r.Settled && !r.Abandoned);
+        int n = Rows.Count(r => !r.Settled && !r.Abandoned && !SetAside(r.Info.RealCwd));
         UnfinishedCount = n;
         WindowTitle = $"Sky {n} session{(n == 1 ? "" : "s")}";
     }

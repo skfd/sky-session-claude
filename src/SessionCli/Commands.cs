@@ -16,7 +16,7 @@ namespace SessionCli;
 ///       session kills itself mid-sentence; that needs <c>--force</c> and a good reason.</item>
 /// </list>
 /// </summary>
-internal static class Commands
+internal static partial class Commands
 {
     // --- reading ------------------------------------------------------------
 
@@ -49,6 +49,7 @@ internal static class Commands
 
         var store = new DispositionStore();
         var claims = new DeclarationStore();
+        var standingsForRows = new ProjectStandingStore();
         var live = LiveSessions.Scan();
         var installed = ClaudeInstall.InstalledVersion;
 
@@ -68,6 +69,7 @@ internal static class Commands
                 claims.Get(info.SessionId),
                 LiveFor(live, info.SessionId, info.Status, installed)))
             .Where(row => Matches(row, args))
+            .Where(row => !args.Has("unfinished") || standingsForRows.Of(row.Cwd) == Standing.Active)
             .ToList();
 
         // --limit caps rows after everything has been decided, so it caps whichever rows came
@@ -130,6 +132,7 @@ internal static class Commands
     {
         var marks = new DispositionStore();
         var claims = new DeclarationStore();
+        var standings = new ProjectStandingStore();
 
         var hosted = new HashSet<string>(
             RemoteControlHosts.Running().Select(h => FolderKey(h.Folder)),
@@ -160,6 +163,11 @@ internal static class Commands
             if (args.Has("unfinished")
                 && roll.State is ProjectState.Quiet or ProjectState.Abandoned) continue;
 
+            // Set aside on purpose is off the hook too, whatever its sessions last claimed —
+            // a blocked note on a parked project is a question nobody is going to answer.
+            var standing = standings.Get(roll.Folder);
+            if (args.Has("unfinished") && standing is { Standing: not Standing.Active }) continue;
+
             var running = roll.SessionIds
                 .SelectMany(id => live.TryGetValue(id, out var l) ? l : [])
                 .ToList();
@@ -168,7 +176,8 @@ internal static class Commands
                 roll,
                 live: running.Count,
                 stale: running.Count(r => ClaudeInstall.IsStale(r.Version, installed)),
-                host: hosted.Contains(FolderKey(roll.Folder))));
+                host: hosted.Contains(FolderKey(roll.Folder)),
+                standing: standing));
         }
 
         return rows;

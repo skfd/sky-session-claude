@@ -124,6 +124,11 @@ public static class Standby
     /// and writes no entry, so the folders standby most wants are exactly the ones with no
     /// entry at all, and they stop at the gate the same way an untrusted one does.
     /// </param>
+    /// <param name="standingOf">
+    /// The operator's standing for a folder (see <see cref="ProjectStandingStore"/>). Anything
+    /// but active is skipped. Defaults to the store on disk, the way hosts default to the live
+    /// ones.
+    /// </param>
     public static StandbyPlan Decide(
         IEnumerable<SessionInfo> sessions,
         DateTime now,
@@ -132,9 +137,11 @@ public static class Standby
         Func<string, bool>? folderExists = null,
         Func<string, bool>? isRepo = null,
         Func<string, RemoteControlHost?>? hostFor = null,
-        Func<string, bool?>? isTrusted = null)
+        Func<string, bool?>? isTrusted = null,
+        Func<string, Standing>? standingOf = null)
     {
         var since = now - (window ?? DefaultWindow);
+        var standing = standingOf ?? new ProjectStandingStore().Of;
         var exists = folderExists ?? Directory.Exists;
         var repo = isRepo ?? HasGit;
         var host = hostFor ?? LiveHostLookup();
@@ -160,6 +167,20 @@ public static class Standby
         foreach (var folder in newest.Values.OrderByDescending(e => e.LastActive))
         {
             var project = ProjectOf(folder.Folder);
+
+            // First, before anything about hosts or the disk: a project set aside on purpose
+            // is not one to keep reachable from the phone, whatever touched it this week. A
+            // sweep across thirty repos is exactly what would otherwise bring them all back.
+            if (standing(folder.Folder) is var st and not Standing.Active)
+            {
+                skipped.Add(new StandbySkip
+                {
+                    Folder = folder.Folder,
+                    Project = project,
+                    Reason = $"{ProjectStanding.ToWire(st)} — set aside on purpose",
+                });
+                continue;
+            }
 
             // The only thing that counts as already on standby, because it is the only thing
             // that does what standby is for. Launching a second host is the mistake this verb

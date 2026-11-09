@@ -240,6 +240,25 @@ scan: a project state folded over the sessions that survived `--status waiting-y
 not a smaller answer, it is a wrong one.
 
 
+## Standing (operator judgment, per project)
+
+Project state is worked out fresh on every scan. **Standing** is the operator's word on
+whether a folder is still worked on at all, and nothing works it out. Last-commit age
+can't: a sweep that adds a visit counter to thirty repos makes all thirty look fresh, and
+a scheduled job keeps a repo nobody opens committed daily.
+
+| Term | Meaning |
+|---|---|
+| **active** | Worked on, or simply never set aside. Every folder with no entry. |
+| **parked** | Set aside on purpose. Needs a note: why, and what would wake it. |
+| **done** | Finished. Kept, not worked on. |
+| **automated** | A scheduled job keeps it alive and nobody works in it. Hidden like parked, but a broken job should still be noticed. |
+
+Stored in `standings.json` beside the dispositions, keyed by folder, and written only by
+`SessionCli project <standing> <name|glob|path>...`. Standing doesn't change a project's
+state; it decides whether anyone is asked about it. Anything but active drops out of
+`--unfinished`, out of `standby`, and out of the app's default views and tray count.
+
 ## Runtime
 
 Everything above is about a session file. This is about the process that writes

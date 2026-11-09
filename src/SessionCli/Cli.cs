@@ -182,6 +182,17 @@ internal static class Cli
                                               changed. Reads the hook's JSON on stdin; prints
                                               nothing for any other start, never fails.
 
+        Standing          (yours: is a whole project still worked on at all)
+          SessionCli project                  list what has been set aside
+          SessionCli project <s> <p>...       set it; <p> is a name, a glob like
+                                              experiment-*, or a path
+            parked     set aside on purpose (--note required: why, and what wakes it)
+            done       finished; kept, not worked on
+            automated  a scheduled job keeps it alive; nobody works in it
+            active     back on the list (clears the entry)
+          Anything not active drops out of --unfinished (sessions and projects) and out
+          of `standby`; `list --projects` carries it as Standing on every row.
+
         Acting
           SessionCli fork <id> --at-prompt <n>   branch from before prompt n (no terminal)
           SessionCli fork <id> --tip             branch at the tip, in a new terminal
@@ -298,6 +309,7 @@ internal static class Cli
                 "fork" => Commands.Fork(rest),
                 "rename" => Commands.Rename(rest),
                 "state" => Commands.Declare(rest),
+                "project" => Commands.Project(rest),
                 "stop-check" => Commands.StopCheck(rest),
                 "clear-start" => Commands.ClearStart(rest),
                 "restart" => Commands.Restart(rest),
