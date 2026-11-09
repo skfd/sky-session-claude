@@ -12,31 +12,35 @@ answered without opening a session. Decide the format (plain headings, or
 something with ready/blocked like Beads' `bd ready`) and what Sky shows:
 count, first heading, or the lot.
 
-## Smoke tests for the tooling's own regressions
+## Smoke tests: `SessionCli doctor` on the live machine
 
-The tooling now causes more friction than Claude misreading the user. Recent:
-"sessions no longer report if they are blocked and other statuses" (10-12),
-Remote Control hosts silently down after Standby (10-08), stray backup files
-in `~`. Cover status reporting, host liveness and cleanup with tests that
-would have caught those.
+Left from "smoke tests for the tooling's own regressions" (decided
+2026-11-09: gate + A + C). Done: `publish.ps1` runs the tests and refuses to
+publish on a failure; the live tick reloads every shared store through
+`SharedStores`, with tests that a store written elsewhere comes back flagged
+(the 10-12 bug) and that the writers leave only their own files after many
+writes (the 10-28 backups).
 
-Decided 2026-11-09: **gate + A + C**, no sandboxed exe smoke (B).
+Left is C. Hosts dying days after a sweep is `claude rc`'s own doing, and
+no test before a release can see it. The keeper watches the hosts; doctor
+watches the keeper. The contract:
 
-- **Gate.** Nothing ran `dotnet test` before a release; `publish.ps1` now
-  must, and stop on failure.
-- **A, in `dotnet test`.** The 10-12 bug was wiring, not logic:
-  `DeclarationStore.ReloadIfChanged` was tested since 08-29, `MainViewModel`
-  never called it, and SessionApp has no tests. Move the live tick's body into
-  SessionCore with a test that a state declared after start shows on the next
-  tick. Add a temp-home fixture that fails on any file a test leaves unlisted
-  (the backups class).
-- **C, `SessionCli doctor` on the live machine.** Hosts dying days after a
-  sweep is `claude rc`'s own doing; no pre-release test sees it. The keeper
-  watches hosts; doctor watches the keeper: every standby project has a host,
-  Sky wrote a heartbeat lately (it writes none today; `standby.log` only logs
-  decisions), Sky's shown states match `declarations.json`, no stray
-  `.bak-*` in `~`. Scheduled before 07:00 and ~17:30; registering the task
-  needs the user's OK in chat.
+- **Heartbeat.** Sky writes `heartbeat.json` beside `standby.log` from the
+  same tick that calls `_stores.Reload()`: time, pid, version, and each
+  store's loaded stamp (`JsonSidecar.Stamp`, exposed through the stores).
+- **Checks.** Heartbeat fresher than ~3 min (Sky alive and ticking). Each
+  store's stamp matches its file's mtime, with a tick of slack (states in
+  sync, which has teeth; a bare timestamp only proves Sky is alive). Hosts
+  through `StandbyPlan`, as `standby --dry-run` plans them, not re-derived.
+  A missing host is a failure only when `standby.log` shows the keeper never
+  looked at it; one the keeper tried and is backing off on (up to an hour) is
+  the keeper doing its job. Not crying wolf every morning matters more than
+  catching everything. No more than three `.claude.json.bak-*` in `~`.
+- **Verdict.** `doctor.json` beside `standby.log`, plus JSON on stdout and a
+  non-zero exit. Sky reads it on the tick and puts a failure in the status
+  line, which is the smallest thing that reaches the phone.
+- **Schedule.** Before 07:00 and around 17:30. Registering the task needs
+  the user's OK in chat (the classifier blocks it otherwise).
 
 ## `/clear`: wire the hook once the verb ships
 
