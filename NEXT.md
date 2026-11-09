@@ -30,13 +30,10 @@ projects` for that view, `--search <text>` to narrow the list to one row)
 draws the window with no screen needed. The
 whole-window shot shows real session titles, so crop before publishing.
 
-## `/clear`: wire the hook once the verb ships
+## `/clear`: show an inherited name on the card
 
-Sky now reads a conversation that ended in `/clear` as settled, and flags a
-session still answering to the name `/clear` copied over (`TitleInherited`).
-`clear-start` shipped in v1.16.0. Left: add it to `~/.claude/settings.json`
-as a `SessionStart` hook with matcher `clear`. The user does this by hand: the
-classifier refuses an agent editing its own settings. Optional later: show `TitleInherited` on the card (dimmed name).
+`clear-start` is wired as a `SessionStart` hook (matcher `clear`) since
+2026-11-09. Optional later: show `TitleInherited` on the card (dimmed name).
 
 ## "Done" checked by a hook, not just declared
 
@@ -171,6 +168,5 @@ Not Sky work; noted here so they are not lost. Each wants its own session.
   to 11-08 split about half subagents (all Opus, mostly ontario-osm grading
   batches), and ~54 agents died mid-task on the 5-hour limit.
   `SessionCli spawn-gate` is built (warn 85%, refuse 95%; README "Spawn
-  gate"); shipped in v1.16.0. Left: the user adds the `PreToolUse` hook to
-  `~/.claude/settings.json` by hand (the classifier refuses an agent editing
-  its own settings).
+  gate"); shipped in v1.16.0 and wired as a `PreToolUse` hook
+  (`Agent|Workflow`) on 2026-11-09. Done.
