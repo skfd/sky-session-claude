@@ -74,6 +74,11 @@ public partial class App : Application
         // A tray start is the exception — it is Windows opening Sky rather than you, so
         // finding a window already up it leaves quietly instead of yanking that one forward.
         bool multi = e.Args.Any(a => string.Equals(a, "--multi", StringComparison.OrdinalIgnoreCase));
+
+        // --snapshot <png> [--element <name>] [--view projects]: draw the window into a file
+        // and exit (see SnapshotRequest). Always a second instance, never a sweep.
+        var snapshot = SnapshotRequest.From(e.Args);
+        if (snapshot is not null) { multi = true; standby = false; tray = false; }
         _instance = SingleInstance.Claim(allowMultiple: multi, activateExisting: !tray);
 
         if (!_instance.IsFirst)
@@ -90,9 +95,20 @@ public partial class App : Application
         // and there is no count by the clock without one. A tray start creates the handle and
         // stops there; anything else puts it on screen. This is why App.xaml no longer names a
         // StartupUri: that shows the window it builds, and one of these two must not.
-        var window = new MainWindow { StandbyOnStart = standby, KeepStandby = !multi };
+        var window = new MainWindow { StandbyOnStart = standby, KeepStandby = !multi, Snapshot = snapshot };
         MainWindow = window;
-        if (tray) window.StartHidden();
+        if (snapshot is not null)
+        {
+            // Off every screen and never activated: it is photographing your desktop's
+            // state, not joining it.
+            window.ShowActivated = false;
+            window.ShowInTaskbar = false;
+            window.WindowStartupLocation = WindowStartupLocation.Manual;
+            window.Left = -32000;
+            window.Top = -32000;
+            window.Show();
+        }
+        else if (tray) window.StartHidden();
         else window.Show();
 
         _instance.OnActivateRequested(() => Dispatcher.Invoke(ShowMainWindow));

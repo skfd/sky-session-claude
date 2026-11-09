@@ -416,7 +416,7 @@
             </ListBox.ItemTemplate>
         </ListBox>
 
-        <Border Grid.Row="2" BorderThickness="0,1,0,0"
+        <Border x:Name="StatusBar" Grid.Row="2" BorderThickness="0,1,0,0"
                 BorderBrush="{DynamicResource Brush.Bar.Border}"
                 Background="{DynamicResource Brush.Bar.Background}">
             <DockPanel Margin="10,5">
