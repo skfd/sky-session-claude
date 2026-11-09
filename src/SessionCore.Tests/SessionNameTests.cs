@@ -32,6 +32,15 @@ public class SessionNameTests
     public void AbsentSourceMeansTheOperatorChoseIt() =>
         Assert.True(SessionName.IsChosen(Live("night shift", nameSource: null)));
 
+    /// <summary>
+    /// CLI 2.1.319 marks a --name with <c>nameSource: "user"</c> where earlier builds left the
+    /// field out. Read as "invented", the app's naming pass replaced every chosen name with
+    /// its floor about two seconds after launch — watched happening on 2026-11-09.
+    /// </summary>
+    [Fact]
+    public void AUserSourceMeansTheOperatorChoseIt() =>
+        Assert.True(SessionName.IsChosen(Live("Probe name — sky-session-claude", nameSource: "user")));
+
     [Theory]
     [InlineData("derived")]
     [InlineData("collision")]

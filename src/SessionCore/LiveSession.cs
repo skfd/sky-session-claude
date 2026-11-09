@@ -37,8 +37,9 @@ public sealed record LiveSession
 
     /// <summary>
     /// Why the session answers to <see cref="Name"/>: "derived" when the CLI slugged it from
-    /// the folder, "collision" when it yielded a claimed name for a suffixed one. A name you
-    /// supplied is written with this field absent, so null means chosen — see
+    /// the folder, "collision" when it yielded a claimed name for a suffixed one, "peer" when
+    /// something renamed it over its pipe. A name you supplied is written as "user" (before CLI
+    /// 2.1.319, with this field absent), and either means chosen — see
     /// <see cref="SessionName.IsChosen"/>.
     /// </summary>
     public string? NameSource { get; init; }

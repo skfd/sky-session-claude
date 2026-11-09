@@ -29,12 +29,13 @@ public static class SessionName
     ///
     /// The registry only records <c>nameSource</c> when the CLI invented the name
     /// (<c>derived</c> from the folder, or <c>collision</c> after yielding a claimed one).
-    /// A name that came from <c>--name</c> or <c>--remote-control &lt;name&gt;</c> is written
-    /// with the field omitted, so "chosen" is the *absence* of a source, not any particular
-    /// value of it.
+    /// A name that came from <c>--name</c> or <c>--remote-control &lt;name&gt;</c> was written
+    /// with the field omitted, so "chosen" was the *absence* of a source. Since CLI 2.1.319 it
+    /// is written as <c>user</c> instead, and both mean the same thing.
     /// </summary>
     public static bool IsChosen(LiveSession live) =>
-        live.Name is { Length: > 0 } && string.IsNullOrEmpty(live.NameSource);
+        live.Name is { Length: > 0 }
+        && (string.IsNullOrEmpty(live.NameSource) || string.Equals(live.NameSource, "user", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// The name to launch <paramref name="sessionId"/> under: its title if it has earned
