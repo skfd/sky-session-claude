@@ -57,6 +57,17 @@ $fraction = if ($judged -gt 0) { [math]::Round(100.0 * $declared.Count / $judged
 ""
 "Live declaration fraction: $fraction%"
 
+# The done-check (NEXT.md, 2026-11-09): of the claims that ran a repo's check, how many said
+# done over a failing one? Stale claims count too — the check was run when they were made.
+# This is the number that decides whether the check ever starts refusing.
+$checked = @($window | Where-Object { $_.DeclaredCheck })
+if ($checked.Count -gt 0) {
+    ""
+    "Done-declarations that ran a repo check: $($checked.Count)"
+    $checked | Group-Object DeclaredCheck | Sort-Object Name |
+        ForEach-Object { "  {0,-8} : {1}" -f $_.Name, $_.Count }
+}
+
 if ($silent.Count -gt 0) {
     ""
     "Silent sessions (the rows a Stop hook would speak for):"

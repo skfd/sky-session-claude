@@ -1221,7 +1221,15 @@ internal static partial class Commands
         string? checkUnreadable = null;
         if (!clearing && DoneCheck.Applies(state))
         {
-            try { check = DoneCheck.Find(info.RealCwd); }
+            // Where the agent stands first, when it is speaking for itself: a session working
+            // in a worktree was started in the main checkout, and that is what the transcript
+            // records — but the worktree is the tree it is calling done. Anywhere without a
+            // definition falls back to the session's own folder.
+            try
+            {
+                check = (args.Has("self") ? DoneCheck.Find(Environment.CurrentDirectory) : null)
+                        ?? DoneCheck.Find(info.RealCwd);
+            }
             catch (Exception e) { checkUnreadable = $"{DoneCheck.DefinitionPath} unreadable: {e.Message}"; }
         }
 

@@ -76,6 +76,19 @@ Decided with the user 2026-11-09: **at the declaration, record only.**
 - Revisit after a few weeks of data: if "done but failing" shows up, turn on
   one refusal that names `runnable --note` as the way out.
 
+Built 2026-11-09 on main's dev build: `.claude/sky-check.json`
+(`{"command": "...", "timeoutSeconds": 600}`), found from the agent's shell
+folder first under `--self` (a worktree), then the session's folder; the
+result is on the declaration, `DeclaredCheck` on list rows,
+`Check`/`CheckCommit` on `--projects`, a "✓ checked" / "✗ check failed"
+mark on Sky's project rows, and counted by `measure-declarations.ps1`. This
+repo's check is `dotnet test` (~12 s).
+
+Left: release (the installed CLI is what agents run); add a
+`sky-check.json` to the repos worth checking; mention in the `~/.claude/CLAUDE.md`
+declare line that a done-declaration may take minutes; read the numbers on
+or after 2026-11-30.
+
 ## Park projects on purpose: design + catalogue review
 
 Of 160 repos under `~/Code`, 40 of the 80 outside any family had no commit in
