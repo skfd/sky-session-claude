@@ -49,9 +49,22 @@ aim; prompts often run to 02:00. Instead of guessing from the clock: an iOS
 Shortcuts personal automation on Sleep Focus on/off (the watch's sleep
 schedule drives it) posts `asleep`/`awake` to a small endpoint; SessionCli
 reads it, and the scheduler, `stop-check` and push notifications respect it.
-Open: where the endpoint lives (a Cloudflare Worker + KV is the obvious one;
-the PC itself is not reachable from the phone), and whether "awake" should
-also come from a late prompt.
+
+Designed with the user 2026-11-08, not started ("not yet"):
+
+- Two facts, three modes. Awake: runs and pings. Asleep away: runs, pings
+  held. Asleep at home: quiet, nothing starts and nothing pings.
+- One shortcut on Sleep Focus on/off sends both facts: asleep/awake, and
+  home = current Wi-Fi is the home network. No separate geofence needed.
+- Sleep Focus is schedule + manual toggle + alarm dismissal, not measured
+  sleep (HealthKit sleep samples land the next morning).
+- `SessionCli presence` -> `{mode, since, source, stale}`; scheduled tasks,
+  `stop-check`, push notifications and the Sky tray read it.
+- A prompt into any session on this PC counts as awake until the next
+  Sleep-on. A state older than ~20h is stale and the clock in
+  `~/.claude/CLAUDE.md` takes over.
+- Open: the transport. Worker + KV (recommended), an ntfy topic (nothing to
+  deploy), or Tailscale (if adopted, the PC becomes reachable directly).
 
 ## What `new --prompt` left for later
 
