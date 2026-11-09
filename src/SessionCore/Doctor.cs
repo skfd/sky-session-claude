@@ -155,7 +155,8 @@ public static class Doctor
         if (!inputs.PidAlive(beat.Pid))
         {
             findings.Add(F("sky", Fail,
-                $"Sky is not running: pid {beat.Pid} last beat at {Clock(beat.At)}, and nothing keeps standby up."));
+                $"The Sky that last beat (pid {beat.Pid}, at {Clock(beat.At)}) is gone and none has beaten since: "
+                + "nothing keeps standby up, or the Sky running is older than this check."));
             return false;
         }
         if (inputs.Now - beat.At > BeatStale)
