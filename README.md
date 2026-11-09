@@ -226,6 +226,15 @@ Every command runs through the very verb a person would have typed, which is the
 
 `~/.claude/skills/sky-session/` teaches an agent the surface above, and — more usefully — the distinction the tool is built on that a transcript alone won't teach: **Status** is what the classifier read from the file, **Disposition** is what you decided, and **Settled** is the two combined. Filtering on Settled is what answers "what am I still on the hook for?" without the noise of sessions that ended on a question you've long since acted on.
 
+### Spawn gate
+
+`SessionCli spawn-gate` is a `PreToolUse` hook for `Agent|Workflow`. It reads the account's 5-hour and weekly usage from the status line's `~/.claude/widget-data.json`. From 85% it lets a spawn through with a warning; from 95% it refuses, and tells the agent to work inline or stop. That way a fan-out doesn't launch into the limit and have its agents die mid-task, paid for and lost. `--warn N` and `--deny N` move the two lines. Any failure lets the spawn through.
+
+```json
+"PreToolUse": [{ "matcher": "Agent|Workflow", "hooks": [{ "type": "command",
+  "command": "\"C:/Users/kk/AppData/Local/Programs/SkySessionClaude/SessionCli.exe\" spawn-gate", "timeout": 10 }] }]
+```
+
 ## Links
 
 `publish.ps1` registers **`skysession://`**, so a link can reference a session or start one.

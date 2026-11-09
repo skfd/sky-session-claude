@@ -1146,6 +1146,35 @@ internal static partial class Commands
         return 0;
     }
 
+    /// <summary>
+    /// The <c>PreToolUse</c> hook on agent spawns (see <see cref="SpawnGate"/>). Like
+    /// <see cref="StopCheck"/> a failure of its own must never be what stops work, so every
+    /// exception is swallowed and the spawn goes through.
+    /// </summary>
+    public static int SpawnGateHook(Args args)
+    {
+        args.RejectUnknown("warn", "deny");
+        var warn = args.Int("warn", SpawnGate.DefaultWarn);
+        var deny = args.Int("deny", SpawnGate.DefaultDeny);
+
+        try
+        {
+            var widget = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "widget-data.json");
+            var widgetJson = File.Exists(widget) ? File.ReadAllText(widget) : null;
+
+            if (SpawnGate.Answer(Console.In.ReadToEnd(), widgetJson, DateTimeOffset.Now,
+                    TimeZoneInfo.Local, warn, deny) is { } answer)
+                Console.WriteLine(answer);
+        }
+        catch (Exception)
+        {
+            // Stand down: the spawn goes ahead as if the gate were not installed.
+        }
+
+        return 0;
+    }
+
     public static int Declare(Args args)
     {
         args.RejectUnknown("self", "note", "dry-run");

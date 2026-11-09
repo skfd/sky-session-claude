@@ -181,6 +181,12 @@ internal static class Cli
                                               to rename once it knows whether the subject
                                               changed. Reads the hook's JSON on stdin; prints
                                               nothing for any other start, never fails.
+          SessionCli spawn-gate               for a PreToolUse hook (matcher "Agent|Workflow"):
+                                              warns from 85% of the 5-hour or weekly limit,
+                                              refuses new agents from 95%, so a fan-out does
+                                              not die mid-task on the limit. Reads the status
+                                              line's ~/.claude/widget-data.json. --warn N and
+                                              --deny N move the lines; never fails.
 
         Standing          (yours: is a whole project still worked on at all)
           SessionCli project                  list what has been set aside
@@ -312,6 +318,7 @@ internal static class Cli
                 "project" => Commands.Project(rest),
                 "stop-check" => Commands.StopCheck(rest),
                 "clear-start" => Commands.ClearStart(rest),
+                "spawn-gate" => Commands.SpawnGateHook(rest),
                 "restart" => Commands.Restart(rest),
                 "close" => Commands.Close(rest),
                 "resume" => Commands.Resume(rest),
