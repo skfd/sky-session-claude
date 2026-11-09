@@ -1,0 +1,62 @@
+using System.Reflection;
+using SessionCore;
+
+namespace SessionCore.Tests;
+
+/// <summary>
+/// The 10-12 regression, pinned: Sky outlives the CLI calls that write its sidecars, so
+/// whatever it does not re-read on the tick is frozen at whatever it held when it started.
+/// </summary>
+public class SharedStoresTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(
+        Path.GetTempPath(), $"shared-{Guid.NewGuid():N}");
+
+    public SharedStoresTests() => Directory.CreateDirectory(_dir);
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_dir, recursive: true); } catch { /* best effort */ }
+    }
+
+    [Fact]
+    public void AStateDeclaredAfterStartShowsOnTheNextReload()
+    {
+        var sky = new SharedStores(_dir);
+        Assert.Null(sky.Declarations.Get("abc"));
+
+        // `SessionCli state blocked`, in its own process, after Sky came up.
+        new DeclarationStore(_dir).Set("abc", new Declaration
+        {
+            State = Declared.Blocked, Note = "pick test layers", AtTurn = "u1", At = DateTimeOffset.Now,
+        });
+
+        Assert.Equal(StoreChange.Declarations, sky.Reload());
+        Assert.Equal(Declared.Blocked, sky.Declarations.Get("abc")!.State);
+    }
+
+    [Fact]
+    public void NothingWrittenMeansNothingChanged()
+    {
+        var sky = new SharedStores(_dir);
+        Assert.Equal(StoreChange.None, sky.Reload());
+    }
+
+    /// <summary>
+    /// The class of bug, not just the instance: a store someone else writes, which the tick
+    /// never re-reads. Any type here that can reload itself has to be one of SharedStores'.
+    /// </summary>
+    [Fact]
+    public void EveryReloadableStoreIsShared()
+    {
+        var reloadable = typeof(SharedStores).Assembly.GetTypes()
+            .Where(t => t.IsPublic && t.GetMethod("ReloadIfChanged", Type.EmptyTypes) is not null)
+            .ToHashSet();
+        var shared = typeof(SharedStores)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Select(p => p.PropertyType)
+            .ToHashSet();
+
+        Assert.Empty(reloadable.Except(shared).Select(t => t.Name));
+    }
+}
