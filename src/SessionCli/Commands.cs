@@ -1901,9 +1901,11 @@ internal static partial class Commands
         var plan = SessionCore.Standby.Decide(
             scanner.Scan(new ScanOptions { All = true, Top = int.MaxValue }), now.LocalDateTime);
 
+        // Stamped after the scan, not before it: a scan of hundreds of sessions takes seconds,
+        // and a verdict dated before the keeper look it reports reads as a clock gone wrong.
         var report = SessionCore.Doctor.Examine(new DoctorInputs
         {
-            Now = now,
+            Now = DateTimeOffset.Now,
             Heartbeat = Heartbeat.Read(),
             PidAlive = IsSky,
             StampOf = file =>
