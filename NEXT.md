@@ -59,6 +59,23 @@ build or tests pass before a session may declare `exhausted`/`needs-read` —
 the way the Claude Code docs and Mitchell Hashimoto turn must-hold rules into
 hooks.
 
+Decided with the user 2026-11-09: **at the declaration, record only.**
+- Evidence was thin: one "build failed" prompt in all transcripts, and that
+  was CI, not a session leaving the tree broken. So measure first, as the
+  Stop hook itself was.
+- `state exhausted|needs-read` runs the repo's check, if the repo defines
+  one (opt-in by presence; most repos have none and are never checked).
+  `runnable`/`blocked` are not checked: a broken build with work queued is
+  honest.
+- The result (pass/fail, commit, when) is stamped on the declaration and Sky
+  shows "checked" vs merely declared. Nothing is refused. Not in
+  `stop-check`: a build will not fit its 15 s timeout, and a timed-out hook
+  silently never blocks.
+- A check that cannot run (missing tool, timeout) records "not run", never
+  "fail".
+- Revisit after a few weeks of data: if "done but failing" shows up, turn on
+  one refusal that names `runnable --note` as the way out.
+
 ## Park projects on purpose: design + catalogue review
 
 Of 160 repos under `~/Code`, 40 of the 80 outside any family had no commit in
