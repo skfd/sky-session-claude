@@ -142,6 +142,10 @@ Not Sky work; noted here so they are not lost. Each wants its own session.
   sit in 3–4 project memory stores and drift. Move shared facts to a doc in
   `address-importer-friend`, `@import` it from each city repo's CLAUDE.md,
   keep memory for what is local to one project.
+  **Done 2026-11-09:** `address-importer-friend/FAMILY.md` (+ `docs/knowledge/`),
+  imported by the engine and 17 city checkouts (not Oakville); duplicated
+  memories removed from the engine, Toronto and Guelph stores; the
+  out-of-tree import is approved per project in `~/.claude.json`.
 - **Fan-out cost.** Decided 2026-11-09: gate only, no model tiering. The week
   to 11-08 split about half subagents (all Opus, mostly ontario-osm grading
   batches), and ~54 agents died mid-task on the 5-hour limit.
