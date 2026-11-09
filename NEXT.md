@@ -38,9 +38,34 @@ hooks.
 
 Of 160 repos under `~/Code`, 40 of the 80 outside any family had no commit in
 30+ days, and 24 of 25 `experiment-*` repos are idle (runner paused since
-09-20). Design a status per project (active / parked / done), where it lives,
-and how Sky or the mind palace shows it; then review the catalogue with the
-user.
+09-20).
+
+Decided with the user 2026-11-08:
+- **Status is declared, not derived.** Last-commit age lies here: ~25 repos
+  look 2 weeks fresh only from cross-repo sweeps (GoatCounter, JOSM links,
+  title-casing), and 5 are fed by scheduled jobs. Age, sessions and
+  sweep/bot detection only *propose* a status during review.
+- **Vocabulary:** active / parked / done / automated (a scheduled job keeps
+  it alive; off the list, but still flagged if the job breaks). Parked and
+  done carry a note: why, and what would wake it.
+- **Store:** Sky's own, a `ProjectStatusStore` beside `declarations.json` and
+  `dispositions.json`. A CLI verb sets it, globs allowed
+  (`park experiment-* --note "runner paused"`), non-git folders too.
+  `--projects` carries a `Status` field.
+- **Consumers:** Sky's list hides parked/done by default; morning brief,
+  `rc`/recent-projects-on-phone, stale sweeps and the palace quest log skip
+  them; parking clears a lingering declared state (battle-agents,
+  obsidian-personal, historical-presence-map have sat `blocked` 47–59 days);
+  the palace draws parked fog distinct from forgotten fog.
+- **Families are tagged in the same review pass** (city `*-address-import`,
+  `guelph-*`/`toronto-*` layers are all untagged in
+  `mind-palace/families.json`); parking a family parks its members.
+
+Left: build the store, verb and `--projects` field (unattended is fine);
+then the row-by-row review with the user. Pre-fill from experiments' own
+verdicts in their last commit; raise the duplicates (`_clean-checkout-test`
+= `experiment-2026-08-31`, `skfd` = `skfd-profile`) and `obsidian`'s 97
+uncommitted files.
 
 ## Know whether the user is asleep (Apple Watch)
 
