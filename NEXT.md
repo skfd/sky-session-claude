@@ -30,7 +30,7 @@ Left:
   trusted, and the running Sky was started without `--standby`, so its keeper
   may not grant trust. That is how `publish.ps1` relaunches Sky: every
   release takes the keeper's trust consent away until the next sign-in. Fix
-  the folder with the Standby button (or `SessionCli trust`), and decide
+  the folder with the Standby button (or `SessionCli standby --in` it), and decide
   whether `publish.ps1` should relaunch with the flags the old Sky had.
 - **The keeper's log churns.** Every minute it writes one "held" line per
   project it is not putting back, including the no-`.git` `Code` folder and
