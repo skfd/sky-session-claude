@@ -12,30 +12,22 @@ answered without opening a session. Decide the format (plain headings, or
 something with ready/blocked like Beads' `bd ready`) and what Sky shows:
 count, first heading, or the lot.
 
-## Smoke tests: the keeper's log churn, and v1.16.0's missing slice
+## Smoke tests: ship the quieter keeper log
 
 Shipped in v1.16.0 (2026-11-09): the test gate, `SharedStores`, `SessionCli
-doctor` with Sky's heartbeat, and `publish.ps1` relaunching Sky with
-`--standby`. The task "Sky Session Claude doctor" runs it at 06:45 and 17:30
-through `conhost --headless`. Its first run was all green, and
-thunder-bay-address-import is trusted and has a host.
+doctor` with Sky's heartbeat, and `publish.ps1` relaunching with `--standby`.
+The task "Sky Session Claude doctor" runs at 06:45 and 17:30. The release
+notes have their slice, taken with the new `--snapshot` flag.
 
-Left:
+On main, not yet released: the keeper writes a held reason only when it
+changes (`KeeperNotes`), and `standby.log` trims at 1 MB instead of 256 KB.
+A backoff still logs every minute, because its countdown changes, so the
+doctor's five-minute rule holds. Goes out with the next release.
 
-- **The keeper's log churns.** Every minute it writes one "held" line per
-  project it is not putting back (the no-`.git` `Code` folder, anything
-  untrusted). At about 3 lines a minute the log reaches its 256 KB trim
-  within a day, and after that it holds hours of history instead of a month.
-  Log a held reason when it changes, not every look. Keep the per-minute
-  line for a host the keeper is backing off on: `Doctor` needs one in the
-  last five minutes to call a missing host a warning rather than a failure.
-- **v1.16.0's changelog slice.** The status line with a doctor verdict is a
-  visible change and the notes went out without its slice: `PrintWindow`
-  returned white twice at ~10:30 with the user away (screen likely locked).
-  Capture it while someone is at the desk (a failing `doctor.json` under a
-  day old makes Sky show one), save it as
-  `docs/changelog/v1.16.0-doctor-status.png`, push, and add it to the release
-  notes with `gh release edit`.
+Changelog slices from now on: `SkySessionClaude.exe --snapshot <png>
+--element StatusBar` (or no `--element` for the whole window, `--view
+projects` for that view) draws the window with no screen needed. The
+whole-window shot shows real session titles, so crop before publishing.
 
 ## `/clear`: wire the hook once the verb ships
 
