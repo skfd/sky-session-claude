@@ -74,6 +74,7 @@ public partial class MainWindow : Window
         {
             await _vm.RefreshLiveAsync();
             if (request.Projects) _vm.ToggleProjects();
+            if (request.Search is { Length: > 0 } q) _vm.SearchText = q;
             await Task.Delay(TimeSpan.FromSeconds(1));   // let the bindings land and lay out
             UpdateLayout();
 

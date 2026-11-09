@@ -6,7 +6,8 @@ using System.Windows.Media.Imaging;
 namespace SessionApp;
 
 /// <summary>
-/// What <c>--snapshot</c> asked for: where the picture goes, which element, which view.
+/// What <c>--snapshot</c> asked for: where the picture goes, which element, which view, and
+/// optionally a search to narrow the list to the row the slice is about.
 ///
 /// Changelog slices kept failing to get taken. Capturing the window from outside
 /// (<c>PrintWindow</c>) gets the title bar and a white client area whenever nothing is
@@ -18,7 +19,7 @@ namespace SessionApp;
 /// scans, takes one live tick, draws, and exits. No keeper, no heartbeat, no sweep — it must
 /// change nothing on the machine it is photographing.
 /// </summary>
-public sealed record SnapshotRequest(string Path, string? Element, bool Projects)
+public sealed record SnapshotRequest(string Path, string? Element, bool Projects, string? Search = null)
 {
     public static SnapshotRequest? From(string[] args)
     {
@@ -27,7 +28,8 @@ public sealed record SnapshotRequest(string Path, string? Element, bool Projects
         return new SnapshotRequest(
             System.IO.Path.GetFullPath(path),
             ValueAfter(args, "--element"),
-            string.Equals(ValueAfter(args, "--view"), "projects", StringComparison.OrdinalIgnoreCase));
+            string.Equals(ValueAfter(args, "--view"), "projects", StringComparison.OrdinalIgnoreCase),
+            ValueAfter(args, "--search"));
     }
 
     private static string? ValueAfter(string[] args, string flag)

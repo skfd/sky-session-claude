@@ -75,7 +75,7 @@ public partial class App : Application
         // finding a window already up it leaves quietly instead of yanking that one forward.
         bool multi = e.Args.Any(a => string.Equals(a, "--multi", StringComparison.OrdinalIgnoreCase));
 
-        // --snapshot <png> [--element <name>] [--view projects]: draw the window into a file
+        // --snapshot <png> [--element <name>] [--view projects] [--search <text>]: draw the window into a file
         // and exit (see SnapshotRequest). Always a second instance, never a sweep.
         var snapshot = SnapshotRequest.From(e.Args);
         if (snapshot is not null) { multi = true; standby = false; tray = false; }

@@ -26,7 +26,8 @@ doctor's five-minute rule holds. Goes out with the next release.
 
 Changelog slices from now on: `SkySessionClaude.exe --snapshot <png>
 --element StatusBar` (or no `--element` for the whole window, `--view
-projects` for that view) draws the window with no screen needed. The
+projects` for that view, `--search <text>` to narrow the list to one row)
+draws the window with no screen needed. The
 whole-window shot shows real session titles, so crop before publishing.
 
 ## `/clear`: wire the hook once the verb ships
