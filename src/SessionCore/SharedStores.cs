@@ -41,6 +41,15 @@ public sealed class SharedStores
     public ProjectStandingStore Standings { get; }
 
     /// <summary>
+    /// Each store's file, by name, with the write time this instance holds. Goes into Sky's
+    /// heartbeat, so <c>SessionCli doctor</c> can tell a reader that stopped reloading from one
+    /// that is merely between ticks.
+    /// </summary>
+    public IReadOnlyDictionary<string, DateTime> LoadedStamps =>
+        new[] { Names.Loaded, Dispositions.Loaded, Declarations.Loaded, Standings.Loaded }
+            .ToDictionary(l => Path.GetFileName(l.Path), l => l.Stamp, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Re-read whichever stores changed on disk since the last look; one stat each when none
     /// did. The answer says which ones changed, so the caller refreshes only what they feed.
     /// </summary>

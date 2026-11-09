@@ -107,6 +107,13 @@ public sealed class ProjectStandingStore
     public ProjectStanding? Get(string folder) =>
         _entries.TryGetValue(Key(folder), out var s) ? s : null;
 
+    /// <summary>
+    /// The file, and the write time of it this instance last loaded or wrote. A reader that
+    /// outlives other writers can be checked by it: <c>SessionCli doctor</c> compares it,
+    /// through Sky's heartbeat, to the file's own time.
+    /// </summary>
+    public (string Path, DateTime Stamp) Loaded => (_file.FilePath, _file.Stamp);
+
     /// <summary>The standing alone, active when nothing was ever written.</summary>
     public Standing Of(string folder) => Get(folder)?.Standing ?? Standing.Active;
 
