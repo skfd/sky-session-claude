@@ -711,6 +711,9 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public StandbyKeeper Keeper { get; } = new();
 
+    /// <summary>Which held reasons the log has already been told — see <see cref="KeeperNotes"/>.</summary>
+    private readonly KeeperNotes _keeperNotes = new();
+
     // --- heartbeat and the doctor's verdict ----------------------------------
 
     /// <summary>
@@ -793,8 +796,8 @@ public partial class MainViewModel : ObservableObject
             }
 
             var plan = Keeper.Hold(await PlanStandbyAsync(), DateTime.Now, mayGrantTrust);
-            foreach (var held in plan.Skipped.Where(s => !s.Reason.StartsWith("already on standby")))
-                StandbyLog.Write($"keeper: {held.Project} held — {held.Reason}");
+            foreach (var line in _keeperNotes.Lines(plan.Skipped.Where(s => !s.Reason.StartsWith("already on standby"))))
+                StandbyLog.Write(line);
             if (plan.Open.Count == 0 && plan.Close.Count == 0) return;
 
             StandbyLog.Write("keeper: putting back " + (plan.Open.Count > 0

@@ -7,12 +7,13 @@ namespace SessionCore;
 /// The keeper works while nobody is watching, and a host's death leaves nothing behind but a
 /// tab — so "the phone had nothing this morning" was a question with no record to answer it.
 /// This is that record: when a host was found gone, when it was put back and how, and when the
-/// keeper held off and why. It is a few lines a day on a quiet machine, and the oldest half is
-/// dropped once it passes a quarter of a megabyte.
+/// keeper held off and why. It is a few lines a day on a quiet machine — a held reason is written
+/// when it changes, not every look (see <see cref="KeeperNotes"/>) — and the oldest half is
+/// dropped once it passes a megabyte, which keeps months of that.
 /// </summary>
 public static class StandbyLog
 {
-    private const long Limit = 256 * 1024;
+    private const long Limit = 1024 * 1024;
     private static readonly object Gate = new();
 
     public static string Path { get; } =
