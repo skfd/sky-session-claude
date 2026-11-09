@@ -58,6 +58,16 @@ if (-not $SkipInstall) {
         Where-Object { $_.Path -eq $targetExe })
     $wasRunning = $stable.Count -gt 0
 
+    # Its flags, so the relaunch below puts back the same Sky: tray or window as it was.
+    $oldArgs = @()
+    if ($wasRunning) {
+        $line = (Get-CimInstance Win32_Process -Filter "ProcessId = $($stable[0].Id)").CommandLine
+        if ($line) {
+            $oldArgs = @(($line -replace '^\s*("[^"]*"|\S+)\s*', '') -split '\s+' |
+                Where-Object { $_ -match '^--(tray|standby)$' })
+        }
+    }
+
     # Ask it to leave, rather than closing its window: closing only hides Sky to the tray
     # now, so CloseMainWindow would time out and we would be killing it -- which skips the
     # tidy-up and leaves its icon behind in the tray. --quit signals the instance that holds
@@ -105,8 +115,7 @@ if (-not $SkipInstall) {
     # --standby is the other thing sign-in is for: once the first scan is in, the app runs the
     # Standby sweep unasked -- a claude rc host per project worked in this week, in one Windows
     # Terminal window -- so the phone can reach those projects from the moment the machine is
-    # up, without anyone having to click the button first. Its own flag, not implied by --tray,
-    # so the relaunch below (no flags) never puts a window of hosts on a desktop mid-day.
+    # up, without anyone having to click the button first. Its own flag, not implied by --tray.
     #
     # Rewriting this value does not undo a "no" given in Settings. Windows records that answer
     # separately, under Explorer\StartupApproved\Run keyed by this value's name, and leaves it
@@ -125,9 +134,15 @@ if (-not $SkipInstall) {
     # that session's job object, and a child started here joins it -- so quitting the Claude
     # app took the tray app down with it, and with it the keeper. Win32_Process.Create starts
     # Sky from the WMI host instead, outside any job of ours.
+    #
+    # With the flags it had, and always --standby: that flag is also the keeper's consent to
+    # grant folder trust, and a relaunch without it left every release's Sky unable to put a
+    # never-trusted project on standby until the next sign-in (thunder-bay, 2026-11-09). The
+    # sweep it also starts opens nothing the keeper would not open a minute later.
     if ($wasRunning) {
-        Invoke-CimMethod Win32_Process -MethodName Create -Arguments @{ CommandLine = "`"$targetExe`"" } | Out-Null
-        Write-Host "Relaunched: $targetExe"
+        $flags = @($oldArgs + '--standby' | Select-Object -Unique) -join ' '
+        Invoke-CimMethod Win32_Process -MethodName Create -Arguments @{ CommandLine = "`"$targetExe`" $flags" } | Out-Null
+        Write-Host "Relaunched: $targetExe $flags"
     }
 } else {
     Write-Host "Skipped install (-SkipInstall); stable Start-menu app not updated."

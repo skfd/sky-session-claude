@@ -141,6 +141,13 @@ public sealed class NameStore
         _names = MutateOrKeep(names => names.Remove(sessionId));
 
     /// <summary>
+    /// The file, and the write time of it this instance last loaded or wrote. A reader that
+    /// outlives other writers can be checked by it: <c>SessionCli doctor</c> compares it,
+    /// through Sky's heartbeat, to the file's own time.
+    /// </summary>
+    public (string Path, DateTime Stamp) Loaded => (_file.FilePath, _file.Stamp);
+
+    /// <summary>
     /// Re-read the file if another writer has touched it. One stat when nothing changed,
     /// which is what lets a name written by <c>SessionCli rename</c> reach the app's next
     /// pass instead of that pass deciding the name was the operator's and leaving it alone.

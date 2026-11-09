@@ -12,35 +12,22 @@ answered without opening a session. Decide the format (plain headings, or
 something with ready/blocked like Beads' `bd ready`) and what Sky shows:
 count, first heading, or the lot.
 
-## Smoke tests: `SessionCli doctor` on the live machine
+## Smoke tests: ship the quieter keeper log
 
-Left from "smoke tests for the tooling's own regressions" (decided
-2026-11-09: gate + A + C). Done: `publish.ps1` runs the tests and refuses to
-publish on a failure; the live tick reloads every shared store through
-`SharedStores`, with tests that a store written elsewhere comes back flagged
-(the 10-12 bug) and that the writers leave only their own files after many
-writes (the 10-28 backups).
+Shipped in v1.16.0 (2026-11-09): the test gate, `SharedStores`, `SessionCli
+doctor` with Sky's heartbeat, and `publish.ps1` relaunching with `--standby`.
+The task "Sky Session Claude doctor" runs at 06:45 and 17:30. The release
+notes have their slice, taken with the new `--snapshot` flag.
 
-Left is C. Hosts dying days after a sweep is `claude rc`'s own doing, and
-no test before a release can see it. The keeper watches the hosts; doctor
-watches the keeper. The contract:
+On main, not yet released: the keeper writes a held reason only when it
+changes (`KeeperNotes`), and `standby.log` trims at 1 MB instead of 256 KB.
+A backoff still logs every minute, because its countdown changes, so the
+doctor's five-minute rule holds. Goes out with the next release.
 
-- **Heartbeat.** Sky writes `heartbeat.json` beside `standby.log` from the
-  same tick that calls `_stores.Reload()`: time, pid, version, and each
-  store's loaded stamp (`JsonSidecar.Stamp`, exposed through the stores).
-- **Checks.** Heartbeat fresher than ~3 min (Sky alive and ticking). Each
-  store's stamp matches its file's mtime, with a tick of slack (states in
-  sync, which has teeth; a bare timestamp only proves Sky is alive). Hosts
-  through `StandbyPlan`, as `standby --dry-run` plans them, not re-derived.
-  A missing host is a failure only when `standby.log` shows the keeper never
-  looked at it; one the keeper tried and is backing off on (up to an hour) is
-  the keeper doing its job. Not crying wolf every morning matters more than
-  catching everything. No more than three `.claude.json.bak-*` in `~`.
-- **Verdict.** `doctor.json` beside `standby.log`, plus JSON on stdout and a
-  non-zero exit. Sky reads it on the tick and puts a failure in the status
-  line, which is the smallest thing that reaches the phone.
-- **Schedule.** Before 07:00 and around 17:30. Registering the task needs
-  the user's OK in chat (the classifier blocks it otherwise).
+Changelog slices from now on: `SkySessionClaude.exe --snapshot <png>
+--element StatusBar` (or no `--element` for the whole window, `--view
+projects` for that view) draws the window with no screen needed. The
+whole-window shot shows real session titles, so crop before publishing.
 
 ## `/clear`: wire the hook once the verb ships
 

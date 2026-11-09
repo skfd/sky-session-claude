@@ -83,6 +83,9 @@ internal sealed class JsonSidecar<TValue>
     /// <summary>True when someone else has written the file since we last looked.</summary>
     public bool ChangedOnDisk => StampOf(_path) != Stamp;
 
+    /// <summary>The file this sidecar reads and writes.</summary>
+    public string FilePath => _path;
+
     /// <summary>Read the file, and remember when it was written.</summary>
     public Dictionary<string, TValue> Load()
     {

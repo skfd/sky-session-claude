@@ -31,6 +31,9 @@ public partial class MainWindow : Window
     /// </summary>
     public bool KeepStandby { get; init; } = true;
 
+    /// <summary>Set for a <c>--snapshot</c> launch: draw, save and exit once the data is in.</summary>
+    public SnapshotRequest? Snapshot { get; init; }
+
     private DispatcherTimer? _keeperTimer;
 
     public MainWindow()
@@ -62,6 +65,35 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// One live tick — the dots, the stores, the doctor's verdict — then the picture, then out.
+    /// A failure is written beside the PNG rather than shown: nobody is looking at this window.
+    /// </summary>
+    private async Task TakeSnapshotAsync(SnapshotRequest request)
+    {
+        try
+        {
+            await _vm.RefreshLiveAsync();
+            if (request.Projects) _vm.ToggleProjects();
+            await Task.Delay(TimeSpan.FromSeconds(1));   // let the bindings land and lay out
+            UpdateLayout();
+
+            var target = request.Element is { } name
+                ? FindName(name) as FrameworkElement
+                    ?? throw new InvalidOperationException($"No element named '{name}' in the window.")
+                : (FrameworkElement)Content;
+            SessionApp.SnapshotRequest.Save(target, Background, request.Path);
+        }
+        catch (Exception ex)
+        {
+            System.IO.File.WriteAllText(request.Path + ".error.txt", ex.ToString());
+        }
+        finally
+        {
+            App.Quit();
+        }
+    }
+
+    /// <summary>
     /// Come up with nothing on screen — how a sign-in start arrives (see App.OnStartup).
     /// <c>EnsureHandle</c> builds the window's HWND without showing it, and that handle is
     /// all the tray icon and the themed title bar were waiting on, so the count appears by
@@ -83,6 +115,11 @@ public partial class MainWindow : Window
         _started = true;
 
         await _vm.RefreshAsync();
+        if (Snapshot is not null)
+        {
+            await TakeSnapshotAsync(Snapshot);
+            return;
+        }
         DrawTray();          // first real count: the icon appears now, not saying 0
         StartWatcher();
         StartLiveTimer();
@@ -115,6 +152,8 @@ public partial class MainWindow : Window
     private void StartKeeper()
     {
         if (!KeepStandby) return;
+        _vm.KeeperOn = true;
+        _vm.KeeperMayGrantTrust = StandbyOnStart;
 
         _keeperTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = KeeperInterval };
         _keeperTimer.Tick += async (_, _) => await _vm.KeepStandbyAsync(mayGrantTrust: StandbyOnStart);

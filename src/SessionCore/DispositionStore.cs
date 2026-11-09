@@ -87,6 +87,13 @@ public sealed class DispositionStore
     public IReadOnlyDictionary<string, Disposition> All => _marks;
 
     /// <summary>
+    /// The file, and the write time of it this instance last loaded or wrote. A reader that
+    /// outlives other writers can be checked by it: <c>SessionCli doctor</c> compares it,
+    /// through Sky's heartbeat, to the file's own time.
+    /// </summary>
+    public (string Path, DateTime Stamp) Loaded => (_file.FilePath, _file.Stamp);
+
+    /// <summary>
     /// Re-read the file if someone else has written it since we last looked. Cheap enough to
     /// call on every scan — one stat when nothing changed — and it is what lets a mark made by
     /// <c>SessionCli done</c> reach the card without restarting the app. Returns true when the

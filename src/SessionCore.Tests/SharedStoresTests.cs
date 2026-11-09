@@ -81,7 +81,9 @@ public class SharedStoresTests : IDisposable
             .ToHashSet();
         var flags = Enum.GetValues<StoreChange>().Where(f => f != StoreChange.None);
         Assert.Empty(flags.Except(covered));
-        Assert.Equal(typeof(SharedStores).GetProperties().Length, flags.Count());
+        var stores = typeof(SharedStores).GetProperties()
+            .Count(p => p.PropertyType.GetMethod("ReloadIfChanged", Type.EmptyTypes) is not null);
+        Assert.Equal(stores, flags.Count());
     }
 
     [Fact]

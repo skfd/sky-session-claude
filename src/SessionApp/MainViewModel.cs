@@ -334,6 +334,9 @@ public partial class MainViewModel : ObservableObject
             UpdateStatusLine();
         }
 
+        Beat();
+        ReadDoctor();
+
         if (changed.HasFlag(StoreChange.Standings))
         {
             KeepingSelection(() =>
@@ -708,6 +711,65 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public StandbyKeeper Keeper { get; } = new();
 
+    /// <summary>Which held reasons the log has already been told — see <see cref="KeeperNotes"/>.</summary>
+    private readonly KeeperNotes _keeperNotes = new();
+
+    // --- heartbeat and the doctor's verdict ----------------------------------
+
+    /// <summary>
+    /// Whether this window runs the keeper; set by the window before its first tick. Only that
+    /// one beats: a <c>--multi</c> window is a second look, not the Sky that keeps standby up.
+    /// </summary>
+    public bool KeeperOn { get; set; }
+
+    /// <summary>Whether the keeper may grant folder trust — a <c>--standby</c> start.</summary>
+    public bool KeeperMayGrantTrust { get; set; }
+
+    private DateTimeOffset? _keeperLookedAt;
+    private DateTime _lastBeat;
+    private static readonly TimeSpan BeatEvery = TimeSpan.FromSeconds(30);
+
+    private DoctorReport? _doctor;
+    private DateTime _doctorStamp;
+
+    /// <summary>A verdict older than this is the scheduled check not running, not news.</summary>
+    private static readonly TimeSpan DoctorFresh = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// Say, in <c>heartbeat.json</c>, that this Sky is alive, that its tick turns, when the
+    /// keeper last looked and which write of each shared store it holds. Written from the
+    /// tick that reloads the stores, after the reload, so <c>SessionCli doctor</c> comparing
+    /// the stamps to the files is checking the same thing the 10-12 regression broke.
+    /// </summary>
+    private void Beat()
+    {
+        if (!KeeperOn || DateTime.UtcNow - _lastBeat < BeatEvery) return;
+        _lastBeat = DateTime.UtcNow;
+        new Heartbeat
+        {
+            At = DateTimeOffset.Now,
+            Pid = Environment.ProcessId,
+            Version = VersionLabel,
+            KeeperOn = KeeperOn,
+            KeeperMayGrantTrust = KeeperMayGrantTrust,
+            KeeperLookedAt = _keeperLookedAt,
+            Stores = new(_stores.LoadedStamps),
+        }.Write();
+    }
+
+    /// <summary>Pick up a new verdict from the scheduled doctor; one stat when there is none.</summary>
+    private void ReadDoctor()
+    {
+        DateTime stamp;
+        try { stamp = System.IO.File.Exists(DoctorReport.DefaultPath) ? System.IO.File.GetLastWriteTimeUtc(DoctorReport.DefaultPath) : default; }
+        catch { return; }
+        if (stamp == _doctorStamp) return;
+
+        _doctorStamp = stamp;
+        _doctor = stamp == default ? null : DoctorReport.Read();
+        UpdateStatusLine();
+    }
+
     /// <summary>
     /// The keeper's turn: put back any host this week's projects have lost, and clear the
     /// tabs dead ones left, without asking. See <see cref="StandbyKeeper"/> for the restraint,
@@ -718,6 +780,7 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public async Task KeepStandbyAsync(bool mayGrantTrust)
     {
+        _keeperLookedAt = DateTimeOffset.Now;
         if (!NotSweeping)
         {
             StandbyLog.Write($"keeper: waiting on a sweep already running (restart {IsRestarting}, standby {IsStandingBy}, planning {IsPlanningStandby})");
@@ -733,8 +796,8 @@ public partial class MainViewModel : ObservableObject
             }
 
             var plan = Keeper.Hold(await PlanStandbyAsync(), DateTime.Now, mayGrantTrust);
-            foreach (var held in plan.Skipped.Where(s => !s.Reason.StartsWith("already on standby")))
-                StandbyLog.Write($"keeper: {held.Project} held — {held.Reason}");
+            foreach (var line in _keeperNotes.Lines(plan.Skipped.Where(s => !s.Reason.StartsWith("already on standby"))))
+                StandbyLog.Write(line);
             if (plan.Open.Count == 0 && plan.Close.Count == 0) return;
 
             StandbyLog.Write("keeper: putting back " + (plan.Open.Count > 0
@@ -820,6 +883,14 @@ public partial class MainViewModel : ObservableObject
 
         if (_dispositions.LoadWarning is { Length: > 0 } warning)
             StatusLine = $"Dispositions: {warning}.  ·  {StatusLine}";
+
+        // First, because it is the one thing here that says the tooling itself is broken.
+        if (_doctor is { Ok: false } verdict && DateTimeOffset.Now - verdict.At < DoctorFresh)
+        {
+            var failures = verdict.Failures.ToList();
+            StatusLine = $"Doctor ({verdict.At.ToLocalTime():ddd HH:mm}): {failures.Count} problem(s) — "
+                + $"{failures[0].Message}  ·  {StatusLine}";
+        }
     }
 
     /// <summary>
