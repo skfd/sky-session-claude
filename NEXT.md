@@ -64,8 +64,14 @@ Decided with the user 2026-11-08:
   `guelph-*`/`toronto-*` layers are all untagged in
   `mind-palace/families.json`); parking a family parks its members.
 
-Left: build the store, verb and `--projects` field (unattended is fine);
-then the row-by-row review with the user. Pre-fill from experiments' own
+Built 2026-11-09 (`5a13350`): `SessionCli project <standing> <names>`,
+`standings.json`, `Standing` on `--projects` rows; `--unfinished`, standby and
+the app's default views and tray count skip set-aside projects. Reaches the
+installed CLI at the next release.
+
+Left: the palace (draw parked fog apart from forgotten fog, read `Standing`;
+tag the missing families in `families.json`), automated projects whose job
+breaks still surfacing, then the row-by-row review with the user. Pre-fill from experiments' own
 verdicts in their last commit; raise the duplicates (`_clean-checkout-test`
 = `experiment-2026-08-31`, `skfd` = `skfd-profile`) and `obsidian`'s 97
 uncommitted files.
