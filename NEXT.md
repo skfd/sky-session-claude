@@ -53,30 +53,18 @@ Open: where the endpoint lives (a Cloudflare Worker + KV is the obvious one;
 the PC itself is not reachable from the phone), and whether "awake" should
 also come from a late prompt.
 
-## `new --prompt`: start a session that already knows its task
+## What `new --prompt` left for later
 
-A session that spots work belonging elsewhere has no clean way to start it.
-`new` opens an empty prompt; Claude Code's own "start a task Claude suggests"
-cards are a desktop-app feature, and `claude --bg` lands in a worktree in
-agent view, not a terminal tab Sky tracks. On 2026-11-08 the review session
-launched six follow-ups by hand, and it took three tries: WMI will not start
-the `wt.exe` alias (error 8), and the line that worked was
-`Win32_Process.Create` → `cmd /c start "" wt.exe -w <window> new-tab ...
-powershell -Command "claude '<prompt>' --name '<n>' --chrome --remote-control"`.
-
-What the verb needs to get right, all learned that night:
-- the prompt goes before the flags (`--remote-control` would swallow it as
-  its name);
-- quoting: a `;` is a Windows Terminal tab separator, quotes end the
-  `-Command` string — pass the prompt via a file or `-EncodedCommand`;
-- launch outside the caller's job object, or the session dies with it;
-- `--window <name>` so a batch lands in one window of its own;
-- confirm by pid in `~/.claude/sessions/`, not by name: one of the six
-  registered under its derived name (`sky-session-claude-6f`) first and was
-  missing from `live` by name until it renamed itself;
-- return the session id — with a prompt there is one at once.
-Then `inbox` `new` and `link --new` can carry a prompt too, so the morning
-brief can queue a session with its task.
+`new --prompt` and `--window` shipped in v1.15.3-dev (2026-11-09). Two pieces
+were left out on purpose:
+- **Job objects.** Every launch (`new`, `resume`, `fork`) goes through
+  `Process.Start`, so a session started from the desktop app is in the app's
+  job and dies when the app quits. Launching outside the job (as publish.ps1
+  now does for Sky itself) would fix all of them at once.
+- **Prompts from the inbox and from links.** The morning brief writes its queue
+  from a sandbox, and a link can be clicked from anywhere; letting either
+  carry a prompt widens what they can make a session do, so decide the limits
+  first.
 
 ## Elsewhere, from the same review (2026-11-08)
 
