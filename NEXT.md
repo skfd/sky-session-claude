@@ -20,6 +20,24 @@ Remote Control hosts silently down after Standby (10-08), stray backup files
 in `~`. Cover status reporting, host liveness and cleanup with tests that
 would have caught those.
 
+Decided 2026-11-09: **gate + A + C**, no sandboxed exe smoke (B).
+
+- **Gate.** Nothing ran `dotnet test` before a release; `publish.ps1` now
+  must, and stop on failure.
+- **A, in `dotnet test`.** The 10-12 bug was wiring, not logic:
+  `DeclarationStore.ReloadIfChanged` was tested since 08-29, `MainViewModel`
+  never called it, and SessionApp has no tests. Move the live tick's body into
+  SessionCore with a test that a state declared after start shows on the next
+  tick. Add a temp-home fixture that fails on any file a test leaves unlisted
+  (the backups class).
+- **C, `SessionCli doctor` on the live machine.** Hosts dying days after a
+  sweep is `claude rc`'s own doing; no pre-release test sees it. The keeper
+  watches hosts; doctor watches the keeper: every standby project has a host,
+  Sky wrote a heartbeat lately (it writes none today; `standby.log` only logs
+  decisions), Sky's shown states match `declarations.json`, no stray
+  `.bak-*` in `~`. Scheduled before 07:00 and ~17:30; registering the task
+  needs the user's OK in chat.
+
 ## `/clear`: wire the hook once the verb ships
 
 Sky now reads a conversation that ended in `/clear` as settled, and flags a
