@@ -187,7 +187,17 @@ public static class TerminalLauncher
         if (pending.Count > 0) yield return TabArguments(pending, window);
     }
 
-    private static void Run(string arguments) =>
+    /// <summary>
+    /// Start <c>cmd</c> with <paramref name="arguments"/>. Under the desktop app it goes through
+    /// WMI so the terminal outlives the app (see <see cref="OutsideJob"/>); everywhere else,
+    /// and whenever WMI will not do it, straight from here.
+    /// </summary>
+    private static void Run(string arguments)
+    {
+        if (OutsideJob.Needed
+            && OutsideJob.Start($"\"{Cmd}\" {arguments}", Environment.CurrentDirectory, hidden: true) is not null)
+            return;
+
         Process.Start(new ProcessStartInfo
         {
             FileName = "cmd.exe",
@@ -195,6 +205,16 @@ public static class TerminalLauncher
             UseShellExecute = true,
             WindowStyle = ProcessWindowStyle.Hidden,   // cmd's own window; `start` still gives a terminal one
         })?.Dispose();
+    }
+
+    /// <summary>
+    /// <c>cmd</c> by its full path, so a launch through WMI does not depend on the WMI host's
+    /// PATH, which is not ours.
+    /// </summary>
+    private static string Cmd =>
+        Environment.GetEnvironmentVariable("ComSpec") is { Length: > 0 } comspec
+            ? comspec
+            : Path.Combine(Environment.SystemDirectory, "cmd.exe");
 
     /// <summary>The environment edit, written as commands because the launch inherits nothing.</summary>
     private static string Clear() =>

@@ -7,6 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Win32_Process.Create, for launches that must outlive the desktop app (OutsideJob). -->
+    <PackageReference Include="System.Management" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Same reason SessionCli does it: a rule worth locking is not always a rule worth
          publishing. SessionUri.Under decides whether a link may open a session in a folder,
          which wants tests more than it wants callers. -->
