@@ -6,14 +6,16 @@ namespace SessionCore;
 /// <summary>
 /// Start a process that does not die with whatever started us.
 ///
-/// A process started from an agent's shell under the Claude desktop app (an MSIX package)
-/// joins the app's job, and quitting the app takes the job down: that is what killed the
-/// dev-build Sky and its keeper on 2026-10-08. The same held for every terminal that
-/// <c>SessionCli new</c>, <c>resume</c> or <c>fork</c> opened from such a shell.
+/// A process started from an agent's shell under the Claude desktop app died when the app
+/// quit: that is what killed the dev-build Sky and its keeper on 2026-10-08. The same would
+/// hold for every terminal that <c>SessionCli new</c>, <c>resume</c> or <c>fork</c> opens from
+/// such a shell. The app's own job is not what holds them: it is a broad one shared with
+/// browsers and terminal sessions (looked at 2026-11-09). Whatever holds them hangs off the
+/// session the app starts, the agent's process tree or a job of its own.
 ///
 /// <c>Win32_Process.Create</c> starts the process from the WMI host instead. It is the
-/// host's child, not ours, and inherits neither our job nor our package, which is what
-/// <c>publish.ps1</c> already does when it relaunches Sky.
+/// host's child, not ours, so it is in neither our process tree nor any job of ours, which
+/// is what <c>publish.ps1</c> already does when it relaunches Sky.
 ///
 /// The switch is the desktop app, not job membership. Explorer, Windows Terminal and Sky all
 /// sit in a job of some kind (<c>IsProcessInJob</c> says yes for every one of them), and
@@ -47,11 +49,11 @@ public static class OutsideJob
     public static bool Needed => Reason is not null;
 
     /// <summary>
-    /// Two ways to be held, either one enough. Package identity is what a packaged app hands
-    /// its children by default, and it is checked first because it costs nothing. But Windows
-    /// Terminal is packaged too, and its children have none, so inheritance is not a given:
-    /// a session the desktop app starts may opt out of the package and still be in the app's
-    /// job. Descending from the app's own <c>claude.exe</c> covers that case.
+    /// Two ways to be held, either one enough. Package identity is checked first because it
+    /// costs nothing, but it does not carry far: a process started in the Claude package has
+    /// it, and that process's own children (through <c>cmd</c> or PowerShell) do not. An
+    /// agent's <c>SessionCli</c> is several generations down, so descending from the app's own
+    /// <c>claude.exe</c> is the check that actually fires there.
     /// </summary>
     private static string? FindReason()
     {

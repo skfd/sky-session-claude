@@ -147,19 +147,34 @@ were left out on purpose:
   the launcher has package identity, or descends from the desktop app's own
   `claude.exe` (under `WindowsApps\Claude_`), every terminal goes through
   `Win32_Process.Create` and is the WMI host's child. Everywhere else the
-  launch is unchanged. Both switches are there because it is **unverified**
-  whether a session the app starts inherits the package: Windows Terminal is
-  packaged and its children have none, and no desktop-app session was running
-  to look at. Tests prove the WMI path (parent is WmiPrvSE, folder honoured)
-  and the ancestry walk. A WMI-opened terminal is visible with `claude`/`wt`
-  on PATH, and a single-file published `SessionCli` starts processes through
-  WMI. `SessionCli doctor` now has a `launch` line saying which way and why.
-  Left, for the user, in a desktop-app session:
-  1. Run `src\SessionCli\bin\Debug\net10.0\SessionCli.exe doctor --no-write`.
-     The `launch` line must say "go through WMI, because …". If it says
-     "the ordinary way", the switch misses the app and needs another look.
-  2. Run the dev `SessionCli new` there, quit the app, and see the terminal
-     survive.
+  launch is unchanged. Tests prove the WMI path (parent is WmiPrvSE, folder
+  honoured) and the ancestry walk. A WMI-opened terminal is visible with
+  `claude`/`wt` on PATH, and a single-file published `SessionCli` starts
+  processes through WMI. `SessionCli doctor` has a `launch` line saying
+  which way and why.
+
+  Checked on the live machine 2026-11-09, with no desktop-app session
+  running:
+  - Package identity does not carry. A process `Invoke-CommandInDesktopPackage`
+    starts has it, and its children (via cmd or PowerShell) do not. So the
+    ancestry check is the one that fires.
+  - A process started with the app's main `claude.exe` as its parent
+    (`PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`) ran the dev `doctor`, which said
+    "go through WMI, because it was started by the Claude desktop app". `new`
+    from there opened its terminal.
+  - The app's own job is not the killer. It holds 347 processes, among them
+    Chrome, Firefox, Discord and terminal Claude sessions, and its main
+    process's children inherit it. So what killed Sky in October hangs off
+    the CLI process the app starts per session (its tree or its own job),
+    which only a real desktop-app session has.
+  - Quitting the app to watch was refused by the auto-mode classifier.
+
+  Left: with a Code session open in the desktop app (one message sent so its
+  CLI runs), an agent can do the rest from outside. Start a process parented
+  to *that session's* CLI `claude.exe`, which inherits its job. Read that
+  job's limit flags (kill on close? breakaway?), run the dev `SessionCli new`
+  from it, and check the new terminal is not a member of the job. Quitting
+  the app is the final proof, if the user allows it.
 - **Prompts from the inbox and from links.** The morning brief writes its queue
   from a sandbox, and a link can be clicked from anywhere; letting either
   carry a prompt widens what they can make a session do, so decide the limits
