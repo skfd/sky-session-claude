@@ -121,5 +121,10 @@ Not Sky work; noted here so they are not lost. Each wants its own session.
   sit in 3–4 project memory stores and drift. Move shared facts to a doc in
   `address-importer-friend`, `@import` it from each city repo's CLAUDE.md,
   keep memory for what is local to one project.
-- **Fan-out cost.** The user likes fanning out and will pay for it; discuss
-  how to keep it from eating the weekly limit (it hit the limit 2026-11-08).
+- **Fan-out cost.** Decided 2026-11-09: gate only, no model tiering. The week
+  to 11-08 split about half subagents (all Opus, mostly ontario-osm grading
+  batches), and ~54 agents died mid-task on the 5-hour limit.
+  `SessionCli spawn-gate` is built (warn 85%, refuse 95%; README "Spawn
+  gate"). Left: release it, then add the `PreToolUse` hook to
+  `~/.claude/settings.json`. Not before: the installed build exits 2 on an
+  unknown verb, which would block every spawn.
