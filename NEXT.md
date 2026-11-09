@@ -19,10 +19,10 @@ doctor` with Sky's heartbeat, and `publish.ps1` relaunching with `--standby`.
 The task "Sky Session Claude doctor" runs at 06:45 and 17:30. The release
 notes have their slice, taken with the new `--snapshot` flag.
 
-On main, not yet released: the keeper writes a held reason only when it
-changes (`KeeperNotes`), and `standby.log` trims at 1 MB instead of 256 KB.
-A backoff still logs every minute, because its countdown changes, so the
-doctor's five-minute rule holds. Goes out with the next release.
+Shipped in v1.17.0: the keeper writes a held reason only when it changes
+(`KeeperNotes`), and `standby.log` trims at 1 MB instead of 256 KB. A backoff
+still logs every minute, because its countdown changes, so the doctor's
+five-minute rule holds.
 
 Changelog slices from now on: `SkySessionClaude.exe --snapshot <png>
 --element StatusBar` (or no `--element` for the whole window, `--view
@@ -34,11 +34,9 @@ whole-window shot shows real session titles, so crop before publishing.
 
 Sky now reads a conversation that ended in `/clear` as settled, and flags a
 session still answering to the name `/clear` copied over (`TitleInherited`).
-Left: once a release ships `SessionCli clear-start`, add it to
-`~/.claude/settings.json` as a `SessionStart` hook with matcher `clear`, so
-the agent is told its name was inherited and renames if the subject changed.
-Not before: the hook points at the installed CLI, which does not know the
-verb yet. Optional later: show `TitleInherited` on the card (dimmed name).
+`clear-start` shipped in v1.16.0. Left: add it to `~/.claude/settings.json`
+as a `SessionStart` hook with matcher `clear`. The user does this by hand: the
+classifier refuses an agent editing its own settings. Optional later: show `TitleInherited` on the card (dimmed name).
 
 ## "Done" checked by a hook, not just declared
 
@@ -72,9 +70,7 @@ result is on the declaration, `DeclaredCheck` on list rows,
 mark on Sky's project rows, and counted by `measure-declarations.ps1`. This
 repo's check is `dotnet test` (~12 s).
 
-v1.17.0 is built, installed and tagged locally (`22bd317`). Pushing the
-tag and creating the GitHub release need the user (the classifier blocks
-public publishing). `~/.claude/CLAUDE.md` now says a done-declaration may take
+v1.17.0 is installed and published on GitHub (2026-11-09). `~/.claude/CLAUDE.md` now says a done-declaration may take
 minutes and what to do with FAILED. Active repos with tests got their own
 `sky-check.json` where the check passed today.
 
@@ -111,7 +107,7 @@ Decided with the user 2026-11-08:
 Built 2026-11-09 (`5a13350`): `SessionCli project <standing> <names>`,
 `standings.json`, `Standing` on `--projects` rows; `--unfinished`, standby and
 the app's default views and tray count skip set-aside projects. Reaches the
-installed CLI at the next release.
+installed CLI in v1.16.0.
 
 Reviewed with the user 2026-11-09: 106 of ~156 repos set aside (40 parked,
 47 done, 19 automated; `SessionCli project` lists them with notes). The
@@ -119,8 +115,7 @@ Reviewed with the user 2026-11-09: 106 of ~156 repos set aside (40 parked,
 `skfd-profile`), `obsidian`'s notes were committed (it stays active), and
 `families.json` gained `address` and `layers` (mind-palace `45cda09`).
 
-Left: release, so the installed CLI and tray have `project`; the palace
-reading `Standing` and drawing parked fog apart from forgotten fog;
+Left: the palace reading `Standing` and drawing parked fog apart from forgotten fog;
 automated projects whose job breaks still surfacing.
 
 ## Know whether the user is asleep (Apple Watch)
@@ -176,6 +171,6 @@ Not Sky work; noted here so they are not lost. Each wants its own session.
   to 11-08 split about half subagents (all Opus, mostly ontario-osm grading
   batches), and ~54 agents died mid-task on the 5-hour limit.
   `SessionCli spawn-gate` is built (warn 85%, refuse 95%; README "Spawn
-  gate"). Left: release it, then add the `PreToolUse` hook to
-  `~/.claude/settings.json`. Not before: the installed build exits 2 on an
-  unknown verb, which would block every spawn.
+  gate"); shipped in v1.16.0. Left: the user adds the `PreToolUse` hook to
+  `~/.claude/settings.json` by hand (the classifier refuses an agent editing
+  its own settings).
