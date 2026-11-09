@@ -52,6 +52,13 @@ public sealed record Declaration
     public DateTimeOffset At { get; init; }
 
     /// <summary>
+    /// The repo's check, run when this declared the work done (<see cref="DoneCheck"/>). Null
+    /// when nothing was run: a state that says work is still owed, or a repo with no check.
+    /// Recorded beside the claim, never instead of it.
+    /// </summary>
+    public CheckResult? Check { get; init; }
+
+    /// <summary>
     /// Whether this claim still stands over <paramref name="session"/>. Two nulls count as a
     /// match — a session with no operator prompt at all, a <c>-p</c> run say, has nothing that
     /// could have moved. A null anchor against a file that does have a prompt does not: a
@@ -133,6 +140,12 @@ public sealed record ProjectRoll
 
     /// <summary>The session the state came from, so a card can point at it.</summary>
     public string? StateFrom { get; init; }
+
+    /// <summary>
+    /// The repo's check, as run when the declaration that decided <see cref="State"/> said
+    /// the work was done. Null when no check ran for it.
+    /// </summary>
+    public CheckResult? Check { get; init; }
 
     /// <summary>Sessions that counted. Abandoned ones are not among them.</summary>
     public required int Sessions { get; init; }
@@ -283,6 +296,7 @@ public static class ProjectFold
         var state = ProjectState.Abandoned;
         string? note = null;
         string? from = null;
+        CheckResult? check = null;
         DateTime? lastActive = null;
         int counted = 0, unfinished = 0, abandoned = 0, declared = 0;
 
@@ -308,6 +322,7 @@ public static class ProjectFold
             {
                 state = one;
                 note = live?.Note;
+                check = live?.Check;
                 from = session.SessionId;
             }
         }
@@ -319,6 +334,7 @@ public static class ProjectFold
             State = state,
             Note = note,
             StateFrom = from,
+            Check = check,
             Sessions = counted,
             Unfinished = unfinished,
             Abandoned = abandoned,

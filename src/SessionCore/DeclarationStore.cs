@@ -118,6 +118,18 @@ public sealed class DeclarationStore
         public string? Note { get; init; }
         public string? AtTurn { get; init; }
         public DateTimeOffset At { get; init; }
+        public CheckEntry? Check { get; init; }
+    }
+
+    /// <summary>A <see cref="CheckResult"/> on disk, with the outcome as its wire word.</summary>
+    private sealed record CheckEntry
+    {
+        public string Outcome { get; init; } = "not-run";
+        public string? Commit { get; init; }
+        public bool Dirty { get; init; }
+        public DateTimeOffset At { get; init; }
+        public double Seconds { get; init; }
+        public string? Detail { get; init; }
     }
 
     private static readonly JsonSerializerOptions Options = new()
@@ -138,6 +150,17 @@ public sealed class DeclarationStore
                     Note = kv.Value.Note,
                     AtTurn = kv.Value.AtTurn,
                     At = kv.Value.At,
+                    Check = kv.Value.Check is { } c
+                        ? new CheckEntry
+                        {
+                            Outcome = CheckResult.ToWire(c.Outcome),
+                            Commit = c.Commit,
+                            Dirty = c.Dirty,
+                            At = c.At,
+                            Seconds = c.Seconds,
+                            Detail = c.Detail,
+                        }
+                        : null,
                 }),
             Options);
 
@@ -161,6 +184,17 @@ public sealed class DeclarationStore
                 Note = string.IsNullOrWhiteSpace(kv.Value.Note) ? null : kv.Value.Note,
                 AtTurn = string.IsNullOrWhiteSpace(kv.Value.AtTurn) ? null : kv.Value.AtTurn,
                 At = kv.Value.At,
+                Check = kv.Value.Check is { } c
+                    ? new CheckResult
+                    {
+                        Outcome = CheckResult.FromWire(c.Outcome),
+                        Commit = c.Commit,
+                        Dirty = c.Dirty,
+                        At = c.At,
+                        Seconds = c.Seconds,
+                        Detail = c.Detail,
+                    }
+                    : null,
             };
         }
         return claims;

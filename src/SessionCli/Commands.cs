@@ -1213,6 +1213,18 @@ internal static partial class Commands
             At = DateTimeOffset.Now,
         };
 
+        // Saying the work is done runs the repo's check, if it has one, and records what it
+        // said beside the claim. Record only (decided 2026-11-09, NEXT.md): the claim is
+        // written whatever the check says, and written before it runs, so a shell that
+        // gives up on a long build still leaves the declaration standing.
+        CheckDefinition? check = null;
+        string? checkUnreadable = null;
+        if (!clearing && DoneCheck.Applies(state))
+        {
+            try { check = DoneCheck.Find(info.RealCwd); }
+            catch (Exception e) { checkUnreadable = $"{DoneCheck.DefinitionPath} unreadable: {e.Message}"; }
+        }
+
         var name = info.Title ?? info.SessionId;
         if (args.Has("dry-run"))
             return Cli.EmitResult(new ActionResult
@@ -1221,10 +1233,22 @@ internal static partial class Commands
                 Action = "state",
                 Message = clearing
                     ? $"would take back what was declared about \"{name}\"."
-                    : $"would declare \"{name}\" {ProjectFold.ToWire(state)}{Because(claim)}.",
+                    : $"would declare \"{name}\" {ProjectFold.ToWire(state)}{Because(claim)}."
+                      + (check is not null ? $" Would run the repo's check: {check.Command}" : ""),
+                Warning = checkUnreadable,
             });
 
+        string? checkWarning = checkUnreadable;
         if (clearing) store.Clear(info.SessionId);
+        else if (checkUnreadable is not null)
+            store.Set(info.SessionId, claim = claim with { Check = DoneCheck.NotRun(checkUnreadable) });
+        else if (check is not null)
+        {
+            store.Set(info.SessionId, claim with { Check = DoneCheck.Started(check.Root) });
+            claim = claim with { Check = DoneCheck.Run(check) };
+            store.Set(info.SessionId, claim);
+            if (claim.Check.Outcome != CheckOutcome.Passed) checkWarning = claim.Check.Detail;
+        }
         else store.Set(info.SessionId, claim);
 
         return Cli.EmitResult(new ActionResult
@@ -1236,7 +1260,8 @@ internal static partial class Commands
                 : $"declared \"{name}\" {ProjectFold.ToWire(state)}{Because(claim)}."
                   + (claim.AtTurn is null
                       ? " Nothing has prompted this session, so the claim stands until one does."
-                      : " It expires the next time you say something here."),
+                      : " It expires the next time you say something here.")
+                  + CheckSentence(claim.Check),
             Items =
             [
                 new ActionItem
@@ -1248,9 +1273,28 @@ internal static partial class Commands
                     Folder = info.RealCwd,
                 },
             ],
-            Warning = store.LoadWarning,
+            Warning = string.Join("\n",new[] { store.LoadWarning, checkWarning }.Where(w => w is not null))
+                is { Length: > 0 } w ? w : null,
         });
     }
+
+    /// <summary>
+    /// What the check said, for the agent that just declared. Recorded, not enforced — so a
+    /// failure is worded as news, with the way to be honest about it named.
+    /// </summary>
+    private static string CheckSentence(CheckResult? c) => c switch
+    {
+        null => "",
+        { Outcome: CheckOutcome.Passed } =>
+            $" The repo's check passed at {c.Commit ?? "?"}{(c.Dirty ? " (uncommitted changes)" : "")} in {c.Seconds:0.#}s.",
+        { Outcome: CheckOutcome.Failed } =>
+            $" The repo's check FAILED at {c.Commit ?? "?"} — recorded beside the claim, which still stands. "
+            + "If the work is not actually done, fix it or declare runnable with a --note saying what is left.",
+        _ => $" The repo's check did not run ({FirstLine(c.Detail)}); recorded as not-run.",
+    };
+
+    private static string FirstLine(string? s) =>
+        s is null ? "no reason given" : s.Split('\n', 2)[0];
 
     private static string Because(Declaration claim) =>
         claim.Note is { Length: > 0 } note ? $" — {note}" : "";

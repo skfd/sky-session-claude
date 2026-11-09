@@ -400,6 +400,13 @@
                                            FontWeight="SemiBold"
                                            Foreground="{DynamicResource Brush.Text.Emphasis}"
                                            Margin="0,0,7,0"/>
+                                <!-- The repo's check, when a done-declaration ran one. Recorded, not enforced. -->
+                                <TextBlock DockPanel.Dock="Left"
+                                           Text="{Binding CheckBadge}"
+                                           ToolTip="{Binding CheckTooltip}"
+                                           Visibility="{Binding HasCheck, Converter={StaticResource BoolToVis}}"
+                                           Foreground="{DynamicResource Brush.Text.Disabled}"
+                                           Margin="0,0,7,0"/>
                                 <TextBlock Text="{Binding Note}"
                                            Foreground="{DynamicResource Brush.Text.Secondary}"
                                            TextTrimming="CharacterEllipsis">

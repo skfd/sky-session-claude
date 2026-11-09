@@ -79,6 +79,15 @@ internal sealed class ProjectDto
     public required int Declared { get; init; }
 
     /// <summary>
+    /// The repo's check from the declaration that decided <c>State</c>, when it declared the
+    /// work done and the repo defines one: "passed", "failed", "not-run" or "running".
+    /// </summary>
+    public string? Check { get; init; }
+
+    /// <summary>The commit that check ran against, with "+dirty" when the tree had changes.</summary>
+    public string? CheckCommit { get; init; }
+
+    /// <summary>
     /// When anything here last moved — the newest counted session's <c>LastActive</c>.
     /// Crossed-out sessions do not set it, except on a project of nothing but crosses.
     /// Serialized the same way the session rows' timestamp is.
@@ -130,6 +139,8 @@ internal sealed class ProjectDto
         Abandoned = roll.Abandoned,
         Unattended = roll.Unattended,
         Declared = roll.Declared,
+        Check = roll.Check is { } c ? CheckResult.ToWire(c.Outcome) : null,
+        CheckCommit = roll.Check is { Commit: { } commit } cc ? commit + (cc.Dirty ? "+dirty" : "") : null,
         LastActive = roll.LastActive,
         Live = live,
         Stale = stale,
@@ -273,6 +284,13 @@ internal sealed class SessionDto
     public required bool DeclaredStale { get; init; }
 
     /// <summary>
+    /// What the repo's check said when this session declared its work done — "passed",
+    /// "failed", "not-run", "running" — or null when no check ran. Record only: it never
+    /// changes <see cref="Declared"/>. Kept on a stale claim too, for the measurement.
+    /// </summary>
+    public string? DeclaredCheck { get; init; }
+
+    /// <summary>
     /// False when nobody ever spoke in this session — see <c>SessionFileFields.HasOperator</c>.
     /// Additive, like <c>Declared</c>: the default dump keeps meaning what it always did, and
     /// anything counting operator behaviour (measure-declarations.ps1) filters on it.
@@ -323,6 +341,7 @@ internal sealed class SessionDto
             ? ProjectFold.ToWire(claim.State)
             : "none",
         DeclaredStale = claim is not null && !claim.StillStands(s),
+        DeclaredCheck = claim?.Check is { } c ? CheckResult.ToWire(c.Outcome) : null,
         HasOperator = s.HasOperator,
         Live = live,
     };

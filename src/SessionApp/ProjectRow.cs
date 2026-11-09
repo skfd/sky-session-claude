@@ -57,6 +57,28 @@ public sealed class ProjectRow : INotifyPropertyChanged
         _ => "",
     };
 
+    /// <summary>
+    /// What the repo's check said when the deciding session declared the work done:
+    /// "✓ checked", "✗ check failed", "check not run". Empty when no check ran, which is the
+    /// ordinary case — most repos define none, and only done-states run one.
+    /// </summary>
+    public string CheckBadge => _roll.Check?.Outcome switch
+    {
+        CheckOutcome.Passed => "✓ checked",
+        CheckOutcome.Failed => "✗ check failed",
+        CheckOutcome.NotRun => "check not run",
+        CheckOutcome.Running => "checking…",
+        _ => "",
+    };
+
+    public bool HasCheck => _roll.Check is not null;
+
+    public string CheckTooltip => _roll.Check is not { } c
+        ? ""
+        : $"{c.Commit ?? "no commit"}{(c.Dirty ? " + uncommitted changes" : "")}, "
+          + $"{c.At:d MMM HH:mm}, {c.Seconds:0.#}s"
+          + (c.Detail is { Length: > 0 } d && c.Outcome != CheckOutcome.Passed ? "\n" + d : "");
+
     /// <summary>Whether this project wants anything at all — what the list shows by default.</summary>
     public bool WantsSomething => _roll.State
         is ProjectState.Broken or ProjectState.Blocked
