@@ -69,12 +69,15 @@ Built 2026-11-09 (`5a13350`): `SessionCli project <standing> <names>`,
 the app's default views and tray count skip set-aside projects. Reaches the
 installed CLI at the next release.
 
-Left: the palace (draw parked fog apart from forgotten fog, read `Standing`;
-tag the missing families in `families.json`), automated projects whose job
-breaks still surfacing, then the row-by-row review with the user. Pre-fill from experiments' own
-verdicts in their last commit; raise the duplicates (`_clean-checkout-test`
-= `experiment-2026-08-31`, `skfd` = `skfd-profile`) and `obsidian`'s 97
-uncommitted files.
+Reviewed with the user 2026-11-09: 106 of ~156 repos set aside (40 parked,
+47 done, 19 automated; `SessionCli project` lists them with notes). The
+`skfd` duplicate went to the Recycle Bin (its one unmerged branch is in
+`skfd-profile`), `obsidian`'s notes were committed (it stays active), and
+`families.json` gained `address` and `layers` (mind-palace `45cda09`).
+
+Left: release, so the installed CLI and tray have `project`; the palace
+reading `Standing` and drawing parked fog apart from forgotten fog;
+automated projects whose job breaks still surfacing.
 
 ## Know whether the user is asleep (Apple Watch)
 
