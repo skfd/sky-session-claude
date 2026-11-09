@@ -1879,6 +1879,72 @@ internal static partial class Commands
     /// something it just made — so the second telling is about the terminals about to appear on
     /// your desktop, not about anything at risk.
     /// </summary>
+    /// <summary>
+    /// The live machine's own smoke test: is Sky up and ticking, is its keeper looking, does
+    /// it still re-read what other processes write, has every project this week a host or a
+    /// keeper visibly on it, and are the trust backups pruned. See <see cref="Doctor"/>.
+    ///
+    /// The verdict goes three places: stdout, the exit code (1 on any failure), and
+    /// <c>doctor.json</c> beside Sky's other files, which Sky reads on its tick and puts in
+    /// its status line. Meant to run on a schedule, before the day starts and before the
+    /// evening, so a problem is waiting when the operator gets to the desk.
+    /// </summary>
+    public static int Doctor(Args args)
+    {
+        args.RejectUnknown("no-write");
+        if (args.Positional.Count > 0)
+            throw new UsageException($"'doctor' takes no arguments (got '{args.Positional[0]}').");
+
+        var now = DateTimeOffset.Now;
+        var dir = DispositionStore.DefaultDir();
+        var scanner = RequireScanner();
+        var plan = SessionCore.Standby.Decide(
+            scanner.Scan(new ScanOptions { All = true, Top = int.MaxValue }), now.LocalDateTime);
+
+        var report = SessionCore.Doctor.Examine(new DoctorInputs
+        {
+            Now = now,
+            Heartbeat = Heartbeat.Read(),
+            PidAlive = IsSky,
+            StampOf = file =>
+            {
+                var path = Path.Combine(dir, file);
+                try { return File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue; }
+                catch { return DateTime.MinValue; }
+            },
+            Plan = plan,
+            LogLines = TailOf(StandbyLog.Path, 400),
+            BackupCount = ClaudeTrust.Backups().Count,
+        });
+
+        if (!args.Has("no-write")) report.Write();
+        Console.WriteLine(report.ToJson());
+        return report.Ok ? 0 : 1;
+
+        // A pid alone could be anything by now; it has to be a Sky.
+        static bool IsSky(int pid)
+        {
+            try
+            {
+                using var p = System.Diagnostics.Process.GetProcessById(pid);
+                return !p.HasExited && p.ProcessName.StartsWith("SkySessionClaude", StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+
+        static IReadOnlyList<string> TailOf(string path, int lines)
+        {
+            try
+            {
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var reader = new StreamReader(stream);
+                var all = reader.ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                return all.Skip(Math.Max(0, all.Length - lines)).Select(l => l.TrimEnd('\r')).ToList();
+            }
+            catch { return []; }
+        }
+    }
+
     public static int Standby(Args args)
     {
         args.RejectUnknown("in", "since", "recent", "yes", "dry-run", "no-trust");

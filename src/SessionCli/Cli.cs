@@ -216,6 +216,7 @@ internal static class Cli
           SessionCli new --in <p> --prompt <t>   ...one that starts already working on <t>
           SessionCli standby                     a Remote Control host per recent project
           SessionCli trust <id>                  answer the trust prompt it is sitting on
+          SessionCli doctor [--no-write]         is Sky up, its keeper looking, every host there?
           SessionCli inbox --run <path>          run the commands the brief queued in a file
 
         Flags for `inbox`
@@ -324,6 +325,7 @@ internal static class Cli
                 "resume" => Commands.Resume(rest),
                 "new" => Commands.New(rest),
                 "standby" => Commands.Standby(rest),
+                "doctor" => Commands.Doctor(rest),
                 "trust" => Commands.Trust(rest),
                 "inbox" => Commands.Inbox(rest),
                 "link" => Commands.Link(rest),

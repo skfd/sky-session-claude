@@ -115,6 +115,8 @@ public partial class MainWindow : Window
     private void StartKeeper()
     {
         if (!KeepStandby) return;
+        _vm.KeeperOn = true;
+        _vm.KeeperMayGrantTrust = StandbyOnStart;
 
         _keeperTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = KeeperInterval };
         _keeperTimer.Tick += async (_, _) => await _vm.KeepStandbyAsync(mayGrantTrust: StandbyOnStart);

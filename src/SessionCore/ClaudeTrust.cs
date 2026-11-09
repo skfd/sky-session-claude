@@ -129,10 +129,7 @@ public static class ClaudeTrust
     {
         try
         {
-            var dir = Path.GetDirectoryName(Path.GetFullPath(configPath))!;
-            var prefix = Path.GetFileName(configPath) + ".bak-";
-            var stale = Directory.EnumerateFiles(dir, prefix + "*")
-                .Where(f => IsStamp(Path.GetFileName(f)[prefix.Length..]))
+            var stale = Backups(configPath)
                 .OrderByDescending(f => f, StringComparer.Ordinal)
                 .Skip(keep);
 
@@ -143,6 +140,26 @@ public static class ClaudeTrust
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
+    }
+
+    /// <summary>
+    /// This tool's own backups of the config — the <c>.bak-yyyyMMdd-HHmmss</c> copies beside
+    /// it, nothing else. What <see cref="PruneBackups"/> trims, and what <c>SessionCli
+    /// doctor</c> counts to catch them piling up again.
+    /// </summary>
+    public static IReadOnlyList<string> Backups(string? configPath = null)
+    {
+        configPath ??= DefaultConfigPath();
+        try
+        {
+            var dir = Path.GetDirectoryName(Path.GetFullPath(configPath))!;
+            var prefix = Path.GetFileName(configPath) + ".bak-";
+            return Directory.EnumerateFiles(dir, prefix + "*")
+                .Where(f => IsStamp(Path.GetFileName(f)[prefix.Length..]))
+                .ToList();
+        }
+        catch (IOException) { return []; }
+        catch (UnauthorizedAccessException) { return []; }
     }
 
     private static bool IsStamp(string s) =>

@@ -33,6 +33,7 @@ public sealed record DoctorReport
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
     public string ToJson() => JsonSerializer.Serialize(this, Json);
@@ -117,7 +118,7 @@ public static class Doctor
     /// <summary>A write this close before the beat may simply not have been ticked yet.</summary>
     public static readonly TimeSpan StoreSlack = TimeSpan.FromSeconds(10);
 
-    public const int MaxBackups = 3;
+    public const int MaxBackups = ClaudeTrust.BackupsKept;
 
     public static DoctorReport Examine(DoctorInputs inputs)
     {
