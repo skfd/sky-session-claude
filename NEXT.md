@@ -72,10 +72,14 @@ result is on the declaration, `DeclaredCheck` on list rows,
 mark on Sky's project rows, and counted by `measure-declarations.ps1`. This
 repo's check is `dotnet test` (~12 s).
 
-Left: release (the installed CLI is what agents run); add a
-`sky-check.json` to the repos worth checking; mention in the `~/.claude/CLAUDE.md`
-declare line that a done-declaration may take minutes; read the numbers on
-or after 2026-11-30.
+v1.17.0 is built, installed and tagged locally (`22bd317`). Pushing the
+tag and creating the GitHub release need the user (the classifier blocks
+public publishing). `~/.claude/CLAUDE.md` now says a done-declaration may take
+minutes and what to do with FAILED. Active repos with tests got their own
+`sky-check.json` where the check passed today.
+
+Left: read the numbers with `measure-declarations.ps1` on or after
+2026-11-30 and decide whether a failing check should refuse once.
 
 ## Park projects on purpose: design + catalogue review
 
