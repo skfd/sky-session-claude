@@ -195,7 +195,7 @@ public static class TerminalLauncher
     private static void Run(string arguments)
     {
         if (OutsideJob.Needed
-            && OutsideJob.Start($"\"{Cmd}\" {arguments}", Environment.CurrentDirectory, hidden: true) is not null)
+            && OutsideJob.Start($"\"{OutsideJob.CommandShell}\" {arguments}", Environment.CurrentDirectory, hidden: true) is not null)
             return;
 
         Process.Start(new ProcessStartInfo
@@ -206,15 +206,6 @@ public static class TerminalLauncher
             WindowStyle = ProcessWindowStyle.Hidden,   // cmd's own window; `start` still gives a terminal one
         })?.Dispose();
     }
-
-    /// <summary>
-    /// <c>cmd</c> by its full path, so a launch through WMI does not depend on the WMI host's
-    /// PATH, which is not ours.
-    /// </summary>
-    private static string Cmd =>
-        Environment.GetEnvironmentVariable("ComSpec") is { Length: > 0 } comspec
-            ? comspec
-            : Path.Combine(Environment.SystemDirectory, "cmd.exe");
 
     /// <summary>The environment edit, written as commands because the launch inherits nothing.</summary>
     private static string Clear() =>

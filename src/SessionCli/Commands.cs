@@ -1976,6 +1976,8 @@ internal static partial class Commands
             Plan = plan,
             LogLines = TailOf(StandbyLog.Path, 400),
             BackupCount = ClaudeTrust.Backups().Count,
+            LaunchReason = OutsideJob.Reason,
+            WmiStarts = OutsideJob.Probe(),
         });
 
         if (!args.Has("no-write")) report.Write();

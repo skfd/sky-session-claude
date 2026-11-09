@@ -190,4 +190,33 @@ public class DoctorTests
         }
         finally { File.Delete(path); }
     }
+
+    private static DoctorReport Launch(bool? starts, string? reason) =>
+        Doctor.Examine(new DoctorInputs
+        {
+            Now = Now, Heartbeat = Beat(), PidAlive = _ => true, StampOf = _ => Written,
+            Plan = new StandbyPlan { Open = [], Skipped = [] }, LogLines = [], BackupCount = 0,
+            LaunchReason = reason, WmiStarts = starts,
+        });
+
+    [Fact]
+    public void UnderTheDesktopAppTheLaunchLineSaysWhy()
+    {
+        var line = Only(Launch(true, "it was started by the Claude desktop app (x)"), "launch");
+        Assert.Equal(Doctor.OkLevel, line.Level);
+        Assert.Contains("go through WMI, because it was started by the Claude desktop app", line.Message);
+    }
+
+    /// <summary>The one case that loses a session: held by the app, and no way out of it.</summary>
+    [Fact]
+    public void AWmiThatWillNotStartFailsOnlyWhereLaunchesNeedIt()
+    {
+        Assert.Equal(Doctor.Fail, Only(Launch(false, "it runs as the package p"), "launch").Level);
+        Assert.Equal(Doctor.Warn, Only(Launch(false, null), "launch").Level);
+        Assert.True(Launch(false, null).Ok);
+    }
+
+    [Fact]
+    public void NoProbeNoLaunchLine() =>
+        Assert.DoesNotContain(Launch(null, null).Findings, f => f.Check == "launch");
 }

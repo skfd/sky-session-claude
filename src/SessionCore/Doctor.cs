@@ -76,6 +76,12 @@ public sealed record DoctorInputs
 
     /// <summary>How many <c>.claude.json.bak-*</c> sit in the home folder.</summary>
     public required int BackupCount { get; init; }
+
+    /// <summary>Why this process's launches go through WMI (<see cref="OutsideJob.Reason"/>), or null.</summary>
+    public string? LaunchReason { get; init; }
+
+    /// <summary>Whether WMI started a test process just now; null when nobody tried.</summary>
+    public bool? WmiStarts { get; init; }
 }
 
 /// <summary>
@@ -98,6 +104,9 @@ public sealed record DoctorInputs
 /// never trusted, is a failure. Crying wolf every morning would cost the verdict its reader,
 /// so the line is drawn at what needs a person.</item>
 /// <item><b>home</b> — the trust grant's backups stay pruned (10-28).</item>
+/// <item><b>launch</b> — whether terminals opened from this process go through WMI, and
+/// whether WMI starts a process at all (see <see cref="OutsideJob"/>). Run from a session in
+/// the desktop app, this is the line that says a session opened there will outlive the app.</item>
 /// </list>
 /// </summary>
 public static class Doctor
@@ -134,6 +143,7 @@ public static class Doctor
 
         CheckHosts(inputs, skyUp, findings);
         CheckHome(inputs, findings);
+        CheckLaunch(inputs, findings);
 
         return new DoctorReport
         {
@@ -231,6 +241,27 @@ public static class Doctor
             ? F("home", Fail,
                 $"{inputs.BackupCount} .claude.json.bak-* copies in the home folder; trust grants should keep {MaxBackups}.")
             : F("home", OkLevel, $"{inputs.BackupCount} .claude.json backup(s) in the home folder."));
+
+    /// <summary>
+    /// A WMI that will not start a process only matters where launches need it: under the
+    /// desktop app that is a session that dies with the app, and anywhere else a warning that
+    /// it would.
+    /// </summary>
+    private static void CheckLaunch(DoctorInputs inputs, List<DoctorFinding> findings)
+    {
+        if (inputs.WmiStarts is not { } starts) return;
+        var reason = inputs.LaunchReason;
+        findings.Add((starts, reason) switch
+        {
+            (true, { }) => F("launch", OkLevel, $"Terminals opened from here go through WMI, because {reason}."),
+            (true, null) => F("launch", OkLevel,
+                "Terminals open the ordinary way here (no package, not under the desktop app); WMI starts processes."),
+            (false, { }) => F("launch", Fail,
+                $"WMI would not start a process, and {reason}: terminals opened from here die when the app quits."),
+            (false, null) => F("launch", Warn,
+                "WMI would not start a process. Nothing needs it here, but a session opened from the desktop app would die with it."),
+        });
+    }
 
     /// <summary>The keeper's lines from the last few minutes, without their time stamps.</summary>
     private static List<string> RecentKeeperLines(DoctorInputs inputs)

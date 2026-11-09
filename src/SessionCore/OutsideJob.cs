@@ -6,44 +6,122 @@ namespace SessionCore;
 /// <summary>
 /// Start a process that does not die with whatever started us.
 ///
-/// The Claude desktop app is an MSIX package, and everything it starts inherits the
-/// package's identity and its job: an agent's shell, the <c>SessionCli</c> that shell runs,
-/// and every terminal that <c>SessionCli new</c>, <c>resume</c> or <c>fork</c> opens. Quitting
-/// the app closes the job and Windows takes the lot down with it, so a session opened from
-/// the desktop app lasted exactly as long as the app did (the same thing that took the
-/// dev-build Sky and its keeper down on 2026-10-08).
+/// A process started from an agent's shell under the Claude desktop app (an MSIX package)
+/// joins the app's job, and quitting the app takes the job down: that is what killed the
+/// dev-build Sky and its keeper on 2026-10-08. The same held for every terminal that
+/// <c>SessionCli new</c>, <c>resume</c> or <c>fork</c> opened from such a shell.
 ///
 /// <c>Win32_Process.Create</c> starts the process from the WMI host instead. It is the
 /// host's child, not ours, and inherits neither our job nor our package, which is what
 /// <c>publish.ps1</c> already does when it relaunches Sky.
 ///
-/// The switch is package identity, not job membership. Explorer, Windows Terminal and Sky
-/// all sit in a job of some kind (<c>IsProcessInJob</c> says yes for every one of them),
-/// and those jobs let children go. Only a packaged parent holds on, and a process can ask
-/// whether it has one. Everywhere else the launch stays a plain <c>Process.Start</c>,
-/// because a process WMI creates may open behind the window you are looking at, and a
-/// double-click in Sky should bring its terminal to the front.
+/// The switch is the desktop app, not job membership. Explorer, Windows Terminal and Sky all
+/// sit in a job of some kind (<c>IsProcessInJob</c> says yes for every one of them), and
+/// those jobs let children go. So WMI is used only when this process has a package identity
+/// or descends from the app (see <see cref="Reason"/>). Everywhere else the launch stays a
+/// plain <c>Process.Start</c>, because a process WMI creates may open behind the window you
+/// are looking at, and a double-click in Sky should bring its terminal to the front.
+///
+/// <c>SessionCli doctor</c> reports which way this process would launch, and starts one
+/// windowless process through WMI to prove the published exe still can.
 /// </summary>
 public static class OutsideJob
 {
     private const int NoPackage = 15700;   // APPMODEL_ERROR_NO_PACKAGE
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetCurrentPackageFullName(ref uint length, IntPtr name);
+    private static extern int GetCurrentPackageFullName(ref uint length, char[]? name);
+
+    /// <summary>Where the desktop app's own executable lives, as a fragment of its path.</summary>
+    private const string ClaudeAppFolder = @"\WindowsApps\Claude_";
+
+    private static readonly Lazy<string?> reason = new(FindReason);
 
     /// <summary>
-    /// Whether this process runs with a package's identity, so that its children die with the
-    /// package's app. True under the Claude desktop app, false in a terminal and in Sky.
+    /// Why a launch from this process has to go through WMI, or null when it does not. Asked
+    /// once per process: neither a package nor a line of ancestors changes while it runs.
     /// </summary>
-    public static bool Needed
+    public static string? Reason => reason.Value;
+
+    /// <summary>Whether a launch from this process must go through WMI to outlive its starter.</summary>
+    public static bool Needed => Reason is not null;
+
+    /// <summary>
+    /// Two ways to be held, either one enough. Package identity is what a packaged app hands
+    /// its children by default, and it is checked first because it costs nothing. But Windows
+    /// Terminal is packaged too, and its children have none, so inheritance is not a given:
+    /// a session the desktop app starts may opt out of the package and still be in the app's
+    /// job. Descending from the app's own <c>claude.exe</c> covers that case.
+    /// </summary>
+    private static string? FindReason()
     {
-        get
+        if (!OperatingSystem.IsWindows()) return null;
+        try
         {
-            if (!OperatingSystem.IsWindows()) return false;
-            uint length = 0;
-            try { return GetCurrentPackageFullName(ref length, IntPtr.Zero) != NoPackage; }
-            catch (EntryPointNotFoundException) { return false; }   // no package model at all
+            if (PackageName() is { } package) return $"it runs as the package {package}";
+            return ClaudeAppAncestor(ProcessTable(), Environment.ProcessId) is { } app
+                ? $"it was started by the Claude desktop app ({app})"
+                : null;
         }
+        catch (Exception e) when (e is ManagementException or COMException or UnauthorizedAccessException
+                                      or EntryPointNotFoundException or TypeInitializationException)
+        {
+            return null;   // a WMI that cannot list processes cannot start them either
+        }
+    }
+
+    private static string? PackageName()
+    {
+        uint length = 0;
+        if (GetCurrentPackageFullName(ref length, null) == NoPackage) return null;
+        var name = new char[Math.Max(length, 1)];
+        return GetCurrentPackageFullName(ref length, name) == 0
+            ? new string(name, 0, (int)Math.Max(length, 1) - 1)
+            : "(unnamed)";
+    }
+
+    /// <summary>One process as the ancestry walk needs it.</summary>
+    internal readonly record struct ProcessEntry(int Parent, string? Path, DateTime Created);
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static Dictionary<int, ProcessEntry> ProcessTable()
+    {
+        var table = new Dictionary<int, ProcessEntry>();
+        using var search = new ManagementObjectSearcher(
+            @"root\cimv2", "SELECT ProcessId, ParentProcessId, ExecutablePath, CreationDate FROM Win32_Process");
+        using var results = search.Get();
+        foreach (var row in results)
+            using (row)
+            {
+                var created = row["CreationDate"] is string stamp
+                    ? ManagementDateTimeConverter.ToDateTime(stamp)
+                    : DateTime.MinValue;
+                table[(int)Convert.ToUInt32(row["ProcessId"])] = new ProcessEntry(
+                    (int)Convert.ToUInt32(row["ParentProcessId"]), row["ExecutablePath"] as string, created);
+            }
+        return table;
+    }
+
+    /// <summary>
+    /// The desktop app's executable among <paramref name="pid"/>'s ancestors, or null. A
+    /// parent id outlives its process and can be handed to a stranger, so a "parent" started
+    /// after its child is not one, and the walk stops there — as it does at a loop.
+    /// </summary>
+    internal static string? ClaudeAppAncestor(IReadOnlyDictionary<int, ProcessEntry> table, int pid)
+    {
+        var seen = new HashSet<int> { pid };
+        if (!table.TryGetValue(pid, out var child)) return null;
+
+        while (table.TryGetValue(child.Parent, out var parent) && seen.Add(child.Parent))
+        {
+            if (parent.Created > child.Created) return null;
+            if (parent.Path is { } path
+                && path.Contains(ClaudeAppFolder, StringComparison.OrdinalIgnoreCase)
+                && Path.GetFileName(path).Equals("claude.exe", StringComparison.OrdinalIgnoreCase))
+                return path;
+            child = parent;
+        }
+        return null;
     }
 
     /// <summary>
@@ -82,6 +160,21 @@ public static class OutsideJob
             return null;
         }
     }
+
+    /// <summary>
+    /// <c>cmd</c> by its full path, so a launch through WMI does not depend on the WMI host's
+    /// PATH, which is not ours.
+    /// </summary>
+    public static string CommandShell =>
+        Environment.GetEnvironmentVariable("ComSpec") is { Length: > 0 } comspec
+            ? comspec
+            : Path.Combine(Environment.SystemDirectory, "cmd.exe");
+
+    /// <summary>
+    /// Whether WMI will start a process right now: one windowless <c>cmd /c exit</c>, for the
+    /// doctor, which runs the published exe the agents run.
+    /// </summary>
+    public static bool Probe() => Start($"\"{CommandShell}\" /c exit", null, hidden: true) is not null;
 
     /// <summary>
     /// The id of the process that started <paramref name="pid"/>, or null if it is gone or
