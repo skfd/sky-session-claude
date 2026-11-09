@@ -145,6 +145,40 @@ public static class LiveSessionRegistry
         return found;
     }
 
+    /// <summary>The pids with an entry right now — taken before a launch, to tell its session from the rest.</summary>
+    public static HashSet<int> Pids(string? dir = null) =>
+        Read(dir ?? DefaultDir()).Select(s => s.Pid).ToHashSet();
+
+    /// <summary>
+    /// The sessions that started in <paramref name="folder"/> since <paramref name="before"/>
+    /// was taken: entries whose pid was not there then.
+    ///
+    /// By pid and folder, never by name. A session launched with <c>--name</c> can write its
+    /// first entry under the name the CLI derives from the folder and only take the chosen
+    /// one a moment later — one of six launched on 2026-11-08 did exactly that — so a search
+    /// by name misses it for the few seconds anyone is looking.
+    /// </summary>
+    public static IReadOnlyList<LiveSession> StartedSince(IReadOnlySet<int> before, string folder, string? dir = null) =>
+        Read(dir ?? DefaultDir())
+            .Where(s => !before.Contains(s.Pid) && SameFolder(s.Cwd, folder))
+            .ToList();
+
+    private static bool SameFolder(string? a, string b)
+    {
+        if (a is not { Length: > 0 }) return false;
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(a).TrimEnd(Path.DirectorySeparatorChar),
+                Path.GetFullPath(b).TrimEnd(Path.DirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// One registry file's JSON, or null when it names no session or no process.
     /// Unknown fields are ignored, so a future CLI can add them without breaking us.

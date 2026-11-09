@@ -191,6 +191,7 @@ internal static class Cli
           SessionCli resume <id>                 open a terminal and resume it
           SessionCli resume <id> --force         end whatever holds it, then resume
           SessionCli new [--in <path>]           open a terminal on a brand-new session
+          SessionCli new --in <p> --prompt <t>   ...one that starts already working on <t>
           SessionCli standby                     a Remote Control host per recent project
           SessionCli trust <id>                  answer the trust prompt it is sitting on
           SessionCli inbox --run <path>          run the commands the brief queued in a file
@@ -239,6 +240,11 @@ internal static class Cli
           --host <p>   on `restart`: the one Remote Control host to restart, named by
                        its folder or its project (a host has no session id)
           --trust      on `new`: wait for the trust prompt in that folder and accept it
+          --prompt <t> on `new`: the first prompt, sent as the session starts (any text;
+                       it is encoded past cmd and Windows Terminal, up to ~2,500 chars)
+          --prompt-file <path>  on `new`: the same, read from a UTF-8 file
+          --window <w> on `new`: open as a tab of the Windows Terminal window named <w>,
+                       made if none has the name -- how a batch lands together
           --yes        actually do it; the sweeps only report their plan without it
           --force      act on the session this command is running inside (refused otherwise)
           --self       on `rename` and `state`: the session this command is running in

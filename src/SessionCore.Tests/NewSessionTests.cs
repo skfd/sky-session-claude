@@ -74,7 +74,7 @@ public class NewSessionTests
     [Fact]
     public void RefusesAFlagItDoesNotKnow()
     {
-        Assert.Throws<UsageException>(() => Commands.New(Parse("--prompt", "hello", "--dry-run")));
+        Assert.Throws<UsageException>(() => Commands.New(Parse("--bogus", "hello", "--dry-run")));
     }
 
     // The name goes in under --name, never as the argument to --remote-control, because only

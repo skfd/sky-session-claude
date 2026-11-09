@@ -220,8 +220,15 @@ public static class SessionName
         return null;
     }
 
-    /// <summary>Single-quoted for the PowerShell line the name is typed into.</summary>
-    public static string Quote(string value) => $"'{value.Replace("'", "''")}'";
+    /// <summary>
+    /// Single-quoted for the PowerShell line the name is typed into.
+    ///
+    /// PowerShell takes the curly apostrophes as quote marks too, so "don’t" in a
+    /// model-written title or a prompt would end the string as surely as "don't". Each of
+    /// them is doubled, which PowerShell reads back as the one character.
+    /// </summary>
+    public static string Quote(string value) =>
+        "'" + System.Text.RegularExpressions.Regex.Replace(value, "['‘’‚‛]", m => m.Value + m.Value) + "'";
 
     /// <summary>
     /// A title as a name: one line, no runaway length. Kept in the words the model chose

@@ -2,8 +2,12 @@ using System.Diagnostics;
 
 namespace SessionCore;
 
-/// <summary>One tab standby wants in the window: where it opens, what it is called, what it runs.</summary>
-public sealed record TerminalTab(string Folder, string Title, string Command);
+/// <summary>
+/// One tab wanted in a window: where it opens, what it is called, what it runs. A null title
+/// leaves the tab to whatever the program paints there — what a session's tab wants, since
+/// the app finds a session by the title the CLI writes.
+/// </summary>
+public sealed record TerminalTab(string Folder, string? Title, string Command);
 
 /// <summary>
 /// Open a terminal and run a command in it — the one way this app starts a session, whether
@@ -98,7 +102,7 @@ public static class TerminalLauncher
 
     /// <summary>The <c>cmd</c> line that opens one command in a window of its own.</summary>
     public static string WindowArguments(string command) =>
-        $"/c {Clear()}start \"\" powershell.exe -NoExit -Command \"{Escape(command)}\"";
+        $"/c {Clear()}start \"\" powershell.exe -NoExit {Shell(command, CmdHazards)}";
 
     /// <summary>
     /// The <c>cmd</c> line that opens a run of tabs in the named window.
@@ -110,14 +114,45 @@ public static class TerminalLauncher
     ///
     /// The <c>;</c> between tabs is Windows Terminal's own argument separator, and it passes
     /// through <c>cmd</c> untouched — unlike <c>&amp;</c>, it means nothing to the shell. It is
-    /// also why nothing composed into a tab may carry one: the folder arrives quoted, and the
-    /// command is <see cref="ClaudeLaunch.Host"/>, which has none.
+    /// also why a command that carries one goes in encoded (see <see cref="Shell"/>): the folder
+    /// arrives quoted, and a host's command has none, but a prompt can have anything.
     /// </summary>
     public static string TabArguments(IEnumerable<TerminalTab> tabs, string window) =>
-        $"/c {Clear()}start \"\" wt.exe -w \"{window}\" "
+        $"/c {Clear()}start \"\" wt.exe -w \"{Escape(window)}\" "
         + string.Join(" ; ", tabs.Select(tab =>
-            $"new-tab --title \"{Escape(tab.Title)}\" -d \"{Folder(tab.Folder)}\""
-            + $" powershell.exe -NoExit -Command \"{Escape(tab.Command)}\""));
+            "new-tab"
+            + (tab.Title is { Length: > 0 } title ? $" --title \"{Escape(title)}\"" : "")
+            + $" -d \"{Folder(tab.Folder)}\""
+            + $" powershell.exe -NoExit {Shell(tab.Command, TabHazards)}"));
+
+    /// <summary>Characters <c>cmd</c> acts on even inside the quotes we wrap a command in.</summary>
+    private const string CmdHazards = "\"%&|<>^\r\n";
+
+    /// <summary>The same, plus Windows Terminal's own argument separator.</summary>
+    private const string TabHazards = CmdHazards + ";";
+
+    /// <summary>
+    /// The command as PowerShell is handed it: plainly where nothing in it means anything to
+    /// the programs in between, and encoded where something does.
+    ///
+    /// A command crosses <c>cmd</c> — and for a tab, Windows Terminal — before PowerShell sees
+    /// it. Plain is what every host and resume has always used, and stays the form for them,
+    /// because a readable command line is worth having in a process list. But a prompt is
+    /// text somebody wrote, and <c>cmd</c> expands <c>%VAR%</c> inside quotes, takes the
+    /// first <c>"</c> of its own as the end of the quoted command and anything after it as
+    /// commands, and Windows Terminal splits a tab at every <c>;</c>. <c>-EncodedCommand</c>
+    /// is base64 of the UTF-16 text, which none of them can read into.
+    /// </summary>
+    private static string Shell(string command, string hazards) =>
+        command.IndexOfAny(hazards.ToCharArray()) < 0
+            ? $"-Command \"{Escape(command)}\""
+            : "-EncodedCommand " + Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(command));
+
+    /// <summary>
+    /// The longest <c>cmd</c> line this launches, under the 8191 characters <c>cmd</c> stops at.
+    /// It truncates rather than complains, and a truncated encoded command is no command at all.
+    /// </summary>
+    public const int LineBudget = 8000;
 
     /// <summary>
     /// Command lines short enough for <c>cmd</c>, which stops at 8191 characters and truncates

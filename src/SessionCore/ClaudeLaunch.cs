@@ -21,8 +21,39 @@ namespace SessionCore;
 /// </summary>
 public static class ClaudeLaunch
 {
-    /// <summary>A session that does not exist yet, started in whatever folder the shell is in.</summary>
-    public static string New(string? name = null) => Line(null, name);
+    /// <summary>
+    /// A session that does not exist yet, started in whatever folder the shell is in — at an
+    /// empty prompt, or already working on <paramref name="prompt"/>.
+    ///
+    /// The prompt goes first, ahead of every flag. <c>--remote-control</c> takes an optional
+    /// name, so a prompt after it would be swallowed as that name and the session would start
+    /// at an empty box with a very long title.
+    /// </summary>
+    public static string New(string? name = null, string? prompt = null) =>
+        prompt is { Length: > 0 }
+            ? "claude " + PromptArgument(prompt) + Line(null, name)["claude".Length..]
+            : Line(null, name);
+
+    /// <summary>
+    /// A prompt as one PowerShell argument that reaches <c>claude.exe</c> unchanged.
+    ///
+    /// Apostrophes are doubled, which is all a single-quoted PowerShell string needs. The
+    /// double quotes are for the next hop: Windows PowerShell 5.1 hands a native program its
+    /// arguments by wrapping any that contain a space in quotes and escaping nothing inside,
+    /// so a <c>"</c> of the prompt's own would end the argument there and the rest of the
+    /// brief would arrive as stray words. Escaped the way the program's own parser reads them
+    /// back — <c>\"</c>, with any backslashes in front of it doubled, and the backslashes at
+    /// the very end doubled too since a closing quote is about to follow them — it survives.
+    /// Sky always launches through <c>powershell.exe</c>, never PowerShell 7, whose native
+    /// argument passing does this itself and would pass the backslashes on.
+    /// </summary>
+    internal static string PromptArgument(string prompt)
+    {
+        var escaped = System.Text.RegularExpressions.Regex.Replace(prompt, @"(\\*)""", m => m.Groups[1].Value + m.Groups[1].Value + "\\\"");
+        if (escaped.Any(char.IsWhiteSpace))
+            escaped = System.Text.RegularExpressions.Regex.Replace(escaped, @"(\\+)$", m => m.Groups[1].Value + m.Groups[1].Value);
+        return SessionName.Quote(escaped);
+    }
 
     /// <summary>The command that brings <paramref name="sessionId"/> back.</summary>
     public static string Resume(string sessionId, string? name = null) => Line(sessionId, name);

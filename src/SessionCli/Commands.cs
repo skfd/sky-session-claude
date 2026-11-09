@@ -1519,10 +1519,17 @@ internal static class Commands
     /// The name is left to the CLI unless the caller supplies one. A new session has no
     /// title to be called by yet, so the folder-derived name is genuinely the best there is;
     /// the churn <see cref="SessionName"/> exists to prevent is a restart problem.
+    ///
+    /// <c>--prompt</c> (or <c>--prompt-file</c>) starts it already working: the way a session
+    /// that spots work belonging elsewhere hands it over, rather than asking the operator to
+    /// open a terminal and retype the brief. <c>--window</c> puts it in a tab of a named
+    /// Windows Terminal window, so a batch of them lands together rather than as loose
+    /// windows. Either way the verb then waits for the CLI to register and reports the
+    /// session's id and pid — found by the pid that was not there before, never by name.
     /// </summary>
     public static int New(Args args)
     {
-        args.RejectUnknown("in", "name", "trust", "dry-run", "remote-control", "rc");
+        args.RejectUnknown("in", "name", "prompt", "prompt-file", "window", "trust", "dry-run", "remote-control", "rc");
 
         // The only positional this verb could plausibly be given is a session id, which
         // would mean the caller wanted `resume`. An unquoted multi-word --name lands here
@@ -1537,26 +1544,36 @@ internal static class Commands
         if (!Directory.Exists(folder))
             throw new UsageException($"No such folder: {folder}");
 
-        var command = NewSessionLine(folder, args.Has("name") ? args.Require("name") : null);
+        var name = args.Has("name") ? args.Require("name") : null;
+        var prompt = NewPrompt(args);
+        var window = args.Has("window") ? args.Require("window") : null;
+
+        var command = NewSessionLine(folder, name, prompt);
+        var tab = window is null ? null : new TerminalTab(folder, null, ClaudeLaunch.New(name, prompt));
+        var line = tab is null ? TerminalLauncher.WindowArguments(command) : TerminalLauncher.TabArguments([tab], window!);
+        if (line.Length > TerminalLauncher.LineBudget)
+            throw new UsageException(
+                $"That prompt is too long to start a session with ({prompt?.Length ?? 0} characters; a launch line holds "
+                + $"about {TerminalLauncher.LineBudget} once encoded, so roughly 2,500 of prompt). Put the brief in a file "
+                + "in the repo and give a short prompt that points at it.");
+
+        var where = window is null ? "a terminal" : $"a tab of the \"{window}\" window";
         if (args.Has("dry-run"))
             return Cli.EmitResult(new ActionResult
             {
                 Ok = true,
                 Action = "new",
-                Message = $"Would run: {command}",
+                Message = $"Would open {where} running: {command}",
             });
 
+        var before = LiveSessionRegistry.Pids();
         var launchedAt = DateTime.Now;
-        StartTerminal(command);
+        if (tab is null) StartTerminal(command);
+        else TerminalLauncher.StartTabs([tab], window!);
 
-        var opened = $"Opened a terminal running: {command}.";
+        var opened = $"Opened {where} running: {command}.";
         if (!args.Has("trust"))
-            return Cli.EmitResult(new ActionResult
-            {
-                Ok = true,
-                Action = "new",
-                Message = $"{opened} Its session id exists once you type something in it.",
-            });
+            return Registered(opened, folder, before, prompt is not null, answered: null);
 
         // A folder Claude Code has not seen before stops on its trust prompt before it will
         // start a session at all, and nothing outside that terminal can see it happen: the
@@ -1565,23 +1582,95 @@ internal static class Commands
         // the answer goes only to a process where all three hold.
         var waiting = TrustPrompt.FindWaiting(folder, launchedAt, TrustWait, TrustPoll);
         if (waiting is null)
+            return Registered(
+                $"{opened} No trust prompt appeared within {TrustWait.TotalSeconds:0}s — either "
+                + "the folder was already trusted, or the terminal is showing something else.",
+                folder, before, prompt is not null, answered: null);
+
+        var answered = Answer(waiting.Value, Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar)), dry: false);
+        if (!answered.Ok)
+            return Cli.EmitResult(new ActionResult
+            {
+                Ok = false,
+                Action = "new",
+                Message = $"{opened} {answered.Message}",
+                Screen = answered.Screen,
+            });
+        return Registered($"{opened} {answered.Message}", folder, before, prompt is not null, answered.Screen);
+    }
+
+    /// <summary>
+    /// The prompt a new session starts on, from <c>--prompt</c> or <c>--prompt-file</c>, or
+    /// null for an empty box. The file is read as UTF-8 and trimmed, so a brief written by an
+    /// editor that ends every file in a newline does not start with one.
+    /// </summary>
+    private static string? NewPrompt(Args args)
+    {
+        if (args.Has("prompt") && args.Has("prompt-file"))
+            throw new UsageException("Give the prompt as --prompt <text> or --prompt-file <path>, not both.");
+
+        var prompt = args.Has("prompt") ? args.Require("prompt")
+            : args.Has("prompt-file") ? ReadPromptFile(args.Require("prompt-file"))
+            : null;
+        if (prompt is not null && prompt.Trim().Length == 0)
+            throw new UsageException("The prompt is empty. Leave --prompt off to open a session at an empty box.");
+        return prompt?.Trim();
+    }
+
+    private static string ReadPromptFile(string path)
+    {
+        try { return File.ReadAllText(Path.GetFullPath(path)); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            throw new UsageException($"Could not read the prompt file {path}: {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Wait for the launched session to show up in the registry and report it.
+    ///
+    /// Not finding it is still Ok: the terminal was opened, which is what was asked, and the
+    /// usual reason is one the operator can see and this cannot answer — a folder-trust
+    /// prompt, a login, a slow first start. The message says which to look for.
+    /// </summary>
+    private static int Registered(string opened, string folder, IReadOnlySet<int> before, bool prompted, string? answered)
+    {
+        LiveSession? found = null;
+        var seen = 0;
+        var deadline = DateTime.UtcNow + RegisterWait;
+        while (DateTime.UtcNow < deadline)
+        {
+            var started = LiveSessionRegistry.StartedSince(before, folder);
+            seen = started.Count;
+            if (seen > 0) { found = started[0]; break; }
+            Thread.Sleep(RegisterPoll);
+        }
+
+        if (found is null)
             return Cli.EmitResult(new ActionResult
             {
                 Ok = true,
                 Action = "new",
-                Message = $"{opened} No trust prompt appeared within {TrustWait.TotalSeconds:0}s — either "
-                    + "the folder was already trusted, or the terminal is showing something else.",
+                Message = $"{opened} It had not registered after {RegisterWait.TotalSeconds:0}s — it may be waiting on the "
+                    + "folder-trust prompt (add --trust) or still starting; `SessionCli live` will show it once it is up.",
+                Screen = answered,
             });
 
-        var answered = Answer(waiting.Value, Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar)), dry: false);
         return Cli.EmitResult(new ActionResult
         {
-            Ok = answered.Ok,
+            Ok = true,
             Action = "new",
-            Message = $"{opened} {answered.Message}",
-            Screen = answered.Screen,
+            Message = $"{opened} It registered as {found.SessionId} (pid {found.Pid})"
+                + (prompted ? " and is working on the prompt." : "; `list` and `show` find it once something is typed in it.")
+                + (seen > 1 ? $" {seen - 1} other session(s) started in that folder at the same moment; this is the first of them." : ""),
+            Items = [new ActionItem { SessionId = found.SessionId, Ok = true, Message = "registered", Name = found.Name, Folder = folder }],
+            Screen = answered,
         });
     }
+
+    /// <summary>How long `new` waits for the session it opened to register. A cold start is a few seconds.</summary>
+    private static readonly TimeSpan RegisterWait = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan RegisterPoll = TimeSpan.FromMilliseconds(500);
 
     /// <summary>
     /// How long <c>new --trust</c> waits for the dialog. Long enough for a cold start on a
@@ -1608,8 +1697,8 @@ internal static class Commands
     /// see <see cref="RestartPolicy.ResumeCommand"/>, which learned the same thing on the way
     /// back up from a restart.
     /// </summary>
-    internal static string NewSessionLine(string folder, string? name) =>
-        LaunchLine.NewIn(folder, name);
+    internal static string NewSessionLine(string folder, string? name, string? prompt = null) =>
+        LaunchLine.NewIn(folder, name, prompt);
 
     // --- links --------------------------------------------------------------
 

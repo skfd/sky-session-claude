@@ -12,8 +12,8 @@ namespace SessionCore;
 /// </summary>
 public static class LaunchLine
 {
-    public static string NewIn(string folder, string? name = null) =>
-        $"cd {SessionName.Quote(folder)}; {ClaudeLaunch.New(name)}";
+    public static string NewIn(string folder, string? name = null, string? prompt = null) =>
+        $"cd {SessionName.Quote(folder)}; {ClaudeLaunch.New(name, prompt)}";
 
     /// <summary>
     /// A Remote Control host for a folder — what <c>standby</c> leaves running. The sessions
