@@ -143,8 +143,7 @@ Designed with the user 2026-11-08, not started ("not yet"):
 
 `new --prompt` and `--window` shipped in v1.15.3-dev (2026-11-09). Two pieces
 were left out on purpose:
-- **Job objects.** Done on the dev build 2026-11-09 (`OutsideJob`), reaches
-  agents with the next release. A desktop-app Code session's CLI sits in a
+- **Job objects.** Shipped in v1.17.1 (2026-11-09, `OutsideJob`). A desktop-app Code session's CLI sits in a
   private job (flags `0x800`) that the app ends on quit. When the launcher
   descends from the app, terminals go through `Win32_Process.Create` instead.
   Proven live: after the app restarted, the terminal opened by the dev `new`
