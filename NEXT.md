@@ -168,6 +168,10 @@ were left out on purpose:
     the CLI process the app starts per session (its tree or its own job),
     which only a real desktop-app session has.
   - Quitting the app to watch was refused by the auto-mode classifier.
+  - A Cowork session is not the case: it runs in a Hyper-V VM (`vmmem`,
+    via `cowork-svc`), with no Windows process under the app, so it cannot
+    run `SessionCli` or open a terminal. Only the Code tab, run locally,
+    starts a `claude.exe` under the app.
 
   Left: with a Code session open in the desktop app (one message sent so its
   CLI runs), an agent can do the rest from outside. Start a process parented
