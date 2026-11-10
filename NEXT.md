@@ -173,12 +173,18 @@ were left out on purpose:
     run `SessionCli` or open a terminal. Only the Code tab, run locally,
     starts a `claude.exe` under the app.
 
-  Left: with a Code session open in the desktop app (one message sent so its
-  CLI runs), an agent can do the rest from outside. Start a process parented
-  to *that session's* CLI `claude.exe`, which inherits its job. Read that
-  job's limit flags (kill on close? breakaway?), run the dev `SessionCli new`
-  from it, and check the new terminal is not a member of the job. Quitting
-  the app is the final proof, if the user allows it.
+  With a real Code-tab session (19:52), checked from outside:
+  - The session's CLI (`%APPDATA%\Claude\claude-code\<ver>\…\claude.exe`,
+    a child of the app) sits in a private job: a handful of members, flags
+    `0x800`, so children may leave only on request and stay by default.
+    The app presumably ends that job on quit, as it did to Sky in October.
+  - From a process parented to that CLI, the dev `doctor` said "go through
+    WMI, because it was started by the Claude desktop app", and the dev
+    `new` opened a terminal. Ordinary children (cmd, ping) are job members;
+    the new terminal's powershell and claude are not.
+
+  Left: the final proof, by quitting the app: the terminal should live and
+  the in-job control (a ping) should die.
 - **Prompts from the inbox and from links.** The morning brief writes its queue
   from a sandbox, and a link can be clicked from anywhere; letting either
   carry a prompt widens what they can make a session do, so decide the limits
