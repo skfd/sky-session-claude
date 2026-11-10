@@ -143,48 +143,15 @@ Designed with the user 2026-11-08, not started ("not yet"):
 
 `new --prompt` and `--window` shipped in v1.15.3-dev (2026-11-09). Two pieces
 were left out on purpose:
-- **Job objects.** Built 2026-11-09 on the dev build (`OutsideJob`). When
-  the launcher has package identity, or descends from the desktop app's own
-  `claude.exe` (under `WindowsApps\Claude_`), every terminal goes through
-  `Win32_Process.Create` and is the WMI host's child. Everywhere else the
-  launch is unchanged. Tests prove the WMI path (parent is WmiPrvSE, folder
-  honoured) and the ancestry walk. A WMI-opened terminal is visible with
-  `claude`/`wt` on PATH, and a single-file published `SessionCli` starts
-  processes through WMI. `SessionCli doctor` has a `launch` line saying
-  which way and why.
-
-  Checked on the live machine 2026-11-09, with no desktop-app session
-  running:
-  - Package identity does not carry. A process `Invoke-CommandInDesktopPackage`
-    starts has it, and its children (via cmd or PowerShell) do not. So the
-    ancestry check is the one that fires.
-  - A process started with the app's main `claude.exe` as its parent
-    (`PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`) ran the dev `doctor`, which said
-    "go through WMI, because it was started by the Claude desktop app". `new`
-    from there opened its terminal.
-  - The app's own job is not the killer. It holds 347 processes, among them
-    Chrome, Firefox, Discord and terminal Claude sessions, and its main
-    process's children inherit it. So what killed Sky in October hangs off
-    the CLI process the app starts per session (its tree or its own job),
-    which only a real desktop-app session has.
-  - Quitting the app to watch was refused by the auto-mode classifier.
-  - A Cowork session is not the case: it runs in a Hyper-V VM (`vmmem`,
-    via `cowork-svc`), with no Windows process under the app, so it cannot
-    run `SessionCli` or open a terminal. Only the Code tab, run locally,
-    starts a `claude.exe` under the app.
-
-  With a real Code-tab session (19:52), checked from outside:
-  - The session's CLI (`%APPDATA%\Claude\claude-code\<ver>\…\claude.exe`,
-    a child of the app) sits in a private job: a handful of members, flags
-    `0x800`, so children may leave only on request and stay by default.
-    The app presumably ends that job on quit, as it did to Sky in October.
-  - From a process parented to that CLI, the dev `doctor` said "go through
-    WMI, because it was started by the Claude desktop app", and the dev
-    `new` opened a terminal. Ordinary children (cmd, ping) are job members;
-    the new terminal's powershell and claude are not.
-
-  Left: the final proof, by quitting the app: the terminal should live and
-  the in-job control (a ping) should die.
+- **Job objects.** Done on the dev build 2026-11-09 (`OutsideJob`), reaches
+  agents with the next release. A desktop-app Code session's CLI sits in a
+  private job (flags `0x800`) that the app ends on quit. When the launcher
+  descends from the app, terminals go through `Win32_Process.Create` instead.
+  Proven live: after the app restarted, the terminal opened by the dev `new`
+  from inside that job survived, and the in-job controls died. Package
+  identity does not reach an agent's shell, so the ancestry check is what
+  fires. Cowork runs in a VM and is not affected. `SessionCli doctor` has a
+  `launch` line saying which way and why.
 - **Prompts from the inbox and from links.** The morning brief writes its queue
   from a sandbox, and a link can be clicked from anywhere; letting either
   carry a prompt widens what they can make a session do, so decide the limits

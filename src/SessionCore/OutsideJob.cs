@@ -10,8 +10,9 @@ namespace SessionCore;
 /// quit: that is what killed the dev-build Sky and its keeper on 2026-10-08. The same would
 /// hold for every terminal that <c>SessionCli new</c>, <c>resume</c> or <c>fork</c> opens from
 /// such a shell. The app's own job is not what holds them: it is a broad one shared with
-/// browsers and terminal sessions (looked at 2026-11-09). Whatever holds them hangs off the
-/// session the app starts, the agent's process tree or a job of its own.
+/// browsers and terminal sessions. Each Code session's CLI sits in a private job of its own
+/// (limit flags <c>0x800</c>: children may break away on request, and stay by default), and
+/// the app ends that job when it quits (both seen 2026-11-09).
 ///
 /// <c>Win32_Process.Create</c> starts the process from the WMI host instead. It is the
 /// host's child, not ours, so it is in neither our process tree nor any job of ours, which
