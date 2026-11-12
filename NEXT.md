@@ -198,3 +198,18 @@ Not Sky work; noted here so they are not lost. Each wants its own session.
   `SessionCli spawn-gate` is built (warn 85%, refuse 95%; README "Spawn
   gate"); shipped in v1.16.0 and wired as a `PreToolUse` hook
   (`Agent|Workflow`) on 2026-11-09. Done.
+
+## `new --trust`: record the trust up front, as standby does
+
+Seen 2026-11-11: kk-init ran `SessionCli new --in <fresh ~/Code folder>
+--trust --name ...`. It opened the terminal, then reported "No trust prompt
+appeared within 30s" and "It had not registered after 30s". The session
+never came up, presumably stuck on the trust dialog. `rc.ps1` (standby) on
+the same folder then worked first time, with `TrustRecorded: true`.
+
+The reason: `new --trust` still watches the terminal for the dialog and
+answers it (the helper shared with `trust`, Commands.cs ~2276). Standby has
+written `hasTrustDialogAccepted` through `SessionCore/ClaudeTrust.cs` since
+v1.11.0. Make `new --trust` call `ClaudeTrust` before launching (same backup,
+same one-property text edit), and keep watching the screen only as a
+fallback if anything. kk-init depends on it for every new project.
