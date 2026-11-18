@@ -222,3 +222,19 @@ recorded trust and registered on the first poll. Two loose ends from the
 2026-11-09 item above are still open: `trust` cannot address an unregistered
 pid, and the old binary's run printed nothing at all. The registered name
 also came back `task-beholder-0f` despite `--name 'Task Beholder'`.
+
+Followed up the same evening:
+- **The name is a race, not a bug.** A minute later `~/.claude/sessions/44076.json`
+  read `"name": "Task Beholder", "nameSource": "user"`. `new` caught the
+  first registry write, which still had the derived name, before the CLI
+  applied `--name`. It's cosmetic and fixes itself. If it ever matters,
+  `Registered` could re-read once when `nameSource` is `derived` and a name
+  was asked for.
+- **"Printed nothing" was most likely the caller timing out.** The old slow
+  path is a 30 s trust wait plus a 30 s register wait. The 2026-11-17 caller
+  gave up at 60 s and its captured output came back empty, though the
+  process later exited 0. With trust recorded up front, that path is now
+  only the fallback.
+- **`trust` on an unregistered pid** matters much less now that
+  `new --trust` never meets the dialog. Leave it unless something else
+  starts sessions in untrusted folders.
