@@ -213,3 +213,12 @@ written `hasTrustDialogAccepted` through `SessionCore/ClaudeTrust.cs` since
 v1.11.0. Make `new --trust` call `ClaudeTrust` before launching (same backup,
 same one-property text edit), and keep watching the screen only as a
 fallback if anything. kk-init depends on it for every new project.
+
+**Done 2026-11-17:** `new --trust` now calls `ClaudeTrust.Grant` before the
+terminal opens and reports "Folder trust: ..." in its message. The screen
+watch runs only if the grant fails. Proven live: kk-init's task-beholder
+launch had sat at the dialog from 21:40. The rebuilt CLI on the same folder
+recorded trust and registered on the first poll. Two loose ends from the
+2026-11-09 item above are still open: `trust` cannot address an unregistered
+pid, and the old binary's run printed nothing at all. The registered name
+also came back `task-beholder-0f` despite `--name 'Task Beholder'`.

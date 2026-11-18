@@ -1677,13 +1677,23 @@ internal static partial class Commands
                 + "in the repo and give a short prompt that points at it.");
 
         var where = window is null ? "a terminal" : $"a tab of the \"{window}\" window";
+        var trust = args.Has("trust");
         if (args.Has("dry-run"))
             return Cli.EmitResult(new ActionResult
             {
                 Ok = true,
                 Action = "new",
-                Message = $"Would open {where} running: {command}",
+                Message = $"Would open {where} running: {command}"
+                    + (trust && ClaudeTrust.IsTrusted(folder) is not true
+                        ? " — recording folder trust in ~/.claude.json first (backed up)."
+                        : ""),
             });
+
+        // --trust records the trust before the terminal opens, the way standby has since
+        // v1.11.0, so the session never reaches the dialog at all. Watching the screen for it
+        // used to be the only way, and it kept missing: kk-init's launches into fresh repos sat
+        // on "Do you trust this folder?" while this reported no prompt seen (NEXT.md, 2026-11-11).
+        var grant = trust ? ClaudeTrust.Grant(folder) : null;
 
         var before = LiveSessionRegistry.Pids();
         var launchedAt = DateTime.Now;
@@ -1691,14 +1701,18 @@ internal static partial class Commands
         else TerminalLauncher.StartTabs([tab], window!);
 
         var opened = $"Opened {where} running: {command}.";
-        if (!args.Has("trust"))
+        if (!trust)
             return Registered(opened, folder, before, prompt is not null, answered: null);
+        if (grant is { Ok: true })
+            return Registered($"{opened} Folder trust: {grant.Message}.", folder, before, prompt is not null, answered: null);
 
-        // A folder Claude Code has not seen before stops on its trust prompt before it will
-        // start a session at all, and nothing outside that terminal can see it happen: the
-        // session is in no registry and has no file yet. So the wait is for a claude process
-        // younger than this launch whose screen shows that dialog naming this folder, and
-        // the answer goes only to a process where all three hold.
+        // The grant failed (no config, unreadable JSON), so fall back to the screen. A folder
+        // Claude Code has not seen before stops on its trust prompt before it will start a
+        // session at all, and nothing outside that terminal can see it happen: the session is
+        // in no registry and has no file yet. So the wait is for a claude process younger
+        // than this launch whose screen shows that dialog naming this folder, and the answer
+        // goes only to a process where all three hold.
+        opened = $"{opened} Could not record folder trust ({grant!.Message}), so watching for the dialog instead.";
         var waiting = TrustPrompt.FindWaiting(folder, launchedAt, TrustWait, TrustPoll);
         if (waiting is null)
             return Registered(
