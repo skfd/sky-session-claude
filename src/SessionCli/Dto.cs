@@ -297,6 +297,8 @@ internal sealed class SessionDto
     /// False when nobody ever spoke in this session — see <c>SessionFileFields.HasOperator</c>.
     /// Additive, like <c>Declared</c>: the default dump keeps meaning what it always did, and
     /// anything counting operator behaviour (measure-declarations.ps1) filters on it.
+    /// <c>--unfinished</c> drops the false ones, as the project fold always has: a scheduled
+    /// run reports through its own channel or its parent session, never here.
     /// </summary>
     public required bool HasOperator { get; init; }
 

@@ -230,6 +230,10 @@ public partial class MainViewModel : ObservableObject
 
         if (HideCompleted && r.Settled) return false;
         if (HideCompleted && SetAside(r.Info.RealCwd)) return false;
+        // Nobody sat in it, so nobody is on the hook for it: a scheduled run reports through
+        // its own channel or its parent session. Hidden with the settled rather than always,
+        // so turning Hide completed off still shows everything that is on disk.
+        if (HideCompleted && r.Info.Unattended) return false;
         if (!ShowAbandoned && r.Abandoned) return false;
         if (StatusFilter != AllStatusesLabel && r.Status != StatusFilter) return false;
         if (ProjectFilter != AllProjectsLabel && r.Project != ProjectFilter) return false;
@@ -1070,7 +1074,8 @@ public partial class MainViewModel : ObservableObject
 
     private void UpdateWindowTitle()
     {
-        int n = Rows.Count(r => !r.Settled && !r.Abandoned && !SetAside(r.Info.RealCwd));
+        int n = Rows.Count(r =>
+            !r.Settled && !r.Abandoned && !SetAside(r.Info.RealCwd) && !r.Info.Unattended);
         UnfinishedCount = n;
         WindowTitle = $"Sky {n} session{(n == 1 ? "" : "s")}";
     }

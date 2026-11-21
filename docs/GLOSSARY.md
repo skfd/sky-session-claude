@@ -29,7 +29,13 @@ the desktop app unattended. Measured across 730 session files on 2026-09-13; the
 Unattended matters because it is the one kind of session nothing in this app is *for*. There
 is no operator to be waiting on, nothing to resume into, and no state anyone would declare —
 so the project fold passes them over entirely, and a folder holding nothing else produces no
-project row. See *Project state* below.
+project row. See *Project state* below. `list --unfinished`, the app's Hide completed view
+and the title's open count skip them for the same reason: a scheduled run has its own
+reporting, or its parent session reports, so it is never what you are on the hook for. A
+plain `list`, `--status` and the other filters still reach them. One deliberate consequence:
+a session another session started — a card, a brief — reads unattended until the operator
+first speaks in it, then flips. That matches the policy (the parent session reports), so it
+is not special-cased.
 
 ## Structure
 

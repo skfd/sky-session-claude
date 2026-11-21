@@ -244,10 +244,13 @@ internal static class Cli
           --disposition <d>     none, done or abandoned
           --unfinished          only what is still on the hook: drops complete, done,
                                 abandoned (--disposition abandoned brings those back),
-                                and sessions whose standing declaration says it is over
-                                (needs-read or exhausted, unless its check failed).
-                                A needs-read project still shows under --projects
-                                until you have read it and ticked the session off
+                                sessions whose standing declaration says it is over
+                                (needs-read or exhausted, unless its check failed),
+                                and unattended sessions -- nobody ever spoke in them,
+                                so a scheduled run reports through its own channel or
+                                its parent session, never here. A needs-read project
+                                still shows under --projects until you have read it
+                                and ticked the session off
           --live                only sessions open in a terminal right now
           --stale               only live sessions behind the installed build, and the
                                 Remote Control hosts that are, in their own `Hosts` array

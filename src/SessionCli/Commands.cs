@@ -234,7 +234,8 @@ internal static partial class Commands
         return found;
     }
 
-    private static bool Matches(SessionDto row, Args args)
+    // Internal for the tests: the --unfinished drops are policy, not plumbing.
+    internal static bool Matches(SessionDto row, Args args)
     {
         if (args.Value("status") is { } status
             && !row.Status.Equals(status, StringComparison.OrdinalIgnoreCase)) return false;
@@ -248,8 +249,12 @@ internal static partial class Commands
         // "Still on the hook" is the question --unfinished answers, so an abandoned session
         // is out even though it is not Settled: the operator already said they are not going
         // back, and the app's list hides it for the same reason. Its Status stays whatever it
-        // earned — --disposition abandoned is how you ask for those back.
-        if (args.Has("unfinished") && (row.Settled || row.Disposition == "abandoned")) return false;
+        // earned — --disposition abandoned is how you ask for those back. Unattended sessions
+        // are out too, as they are from the project fold: a scheduled run reports through its
+        // own channel or its parent session, and nobody is on the hook for a conversation
+        // nobody had. A plain `list`, --status and the other filters still reach them.
+        if (args.Has("unfinished")
+            && (row.Settled || row.Disposition == "abandoned" || !row.HasOperator)) return false;
         if (args.Has("live") && row.Live is null) return false;
         if (args.Has("stale") && row.Live is not { Stale: true }) return false;
 
