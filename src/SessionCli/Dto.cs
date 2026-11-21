@@ -267,7 +267,8 @@ internal sealed class SessionDto
     /// (<see cref="Declared"/> exhausted or needs-read, check not failed — see
     /// <see cref="Declaration.Settles"/>). This is what "hide completed" hides. It is not
     /// by itself the answer to "what is still outstanding" — an abandoned session is not
-    /// settled and is still off the hook, which is why <c>--unfinished</c> drops both.
+    /// settled and is still off the hook, and so is an unattended one, which is why
+    /// <c>--unfinished</c> drops all three.
     /// </summary>
     public required bool Settled { get; init; }
 

@@ -120,8 +120,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _windowTitle = "Sky sessions";
 
     /// <summary>
-    /// How many sessions are still on the hook — unfinished and not crossed out. The window
-    /// title says it in words and the tray icon <em>is</em> it, so both read the one number.
+    /// How many sessions are still on the hook — not settled, not crossed out, not in a
+    /// set-aside project, and somebody actually sat in them (an unattended run reports
+    /// through its own channel or its parent session). The window title says it in words
+    /// and the tray icon <em>is</em> it, so both read the one number.
     /// </summary>
     [ObservableProperty] private int _unfinishedCount;
 

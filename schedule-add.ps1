@@ -12,7 +12,9 @@
     because the brief asks three different questions:
 
       sessions.json             a recency window, for "what happened yesterday".
-      sessions-unfinished.json  every session still on the hook, however old.
+      sessions-unfinished.json  every session still on the hook, however old. Settled
+                                (incl. declared-over), abandoned and unattended sessions
+                                are not on it; list --status reaches those.
       projects.json             every project folder, rolled up to one state each.
 
     The second file exists because a recency cap silently loses work. A single

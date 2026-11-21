@@ -180,7 +180,7 @@
                     <CheckBox Content="Hide completed" VerticalAlignment="Center" Margin="0,0,10,0"
                               IsChecked="{Binding HideCompleted}"
                               Visibility="{Binding ShowProjects, Converter={StaticResource InverseBoolToVis}}"
-                              ToolTip="Hides sessions the classifier called complete, and the ones you ticked done with D"/>
+                              ToolTip="Hides what is settled — complete, ticked done with D, cleared away, or declared over by the session itself — plus set-aside projects and unattended runs nobody ever spoke in"/>
                     <CheckBox Content="Show abandoned" VerticalAlignment="Center" Margin="0,0,10,0"
                               IsChecked="{Binding ShowAbandoned}"
                               Visibility="{Binding ShowProjects, Converter={StaticResource InverseBoolToVis}}"

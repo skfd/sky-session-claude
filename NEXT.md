@@ -74,6 +74,26 @@ minutes and what to do with FAILED. Active repos with tests got their own
 Left: read the numbers with `measure-declarations.ps1` on or after
 2026-11-30 and decide whether a failing check should refuse once.
 
+Amended 2026-11-20 (`400b7c1`): record-only still holds at the declaration —
+the claim is written whatever the check says — but a standing `exhausted` /
+`needs-read` now settles its session out of `--unfinished` and the app's
+default views, and a FAILED outcome blocks that settling (the claim stands,
+the session stays on the hook). One narrow read of the record as a hold,
+reversible in `Declaration.Settles` if the measurement says otherwise.
+
+## Loose ends from settle-by-declaration (2026-11-20)
+
+- `close --finished` (`ClosePolicy`) still judges by Status + disposition
+  only: a live terminal whose session declared exhausted reads "idle, but
+  unfinished (cut-off)" — offered, never swept. Teaching it
+  `Declaration.Settles` means threading the declaration into its callers.
+- A needs-read project card opened via `OpenProject` with Hide completed on
+  now hides the very session that holds the report (it is settled). Maybe
+  OpenProject should drop the filter, or the card should link `StateFrom`.
+- Both settle rules (declared-over, unattended — `0df1e6b`) reach the
+  installed CLI, the Stop hook and the scheduled export only at the next
+  release; until then the installed exe still lists ~129.
+
 ## Park projects on purpose: design + catalogue review
 
 Of 160 repos under `~/Code`, 40 of the 80 outside any family had no commit in
