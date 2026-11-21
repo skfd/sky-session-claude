@@ -224,7 +224,7 @@ Every command runs through the very verb a person would have typed, which is the
 
 ### From an agent
 
-`~/.claude/skills/sky-session/` teaches an agent the surface above, and — more usefully — the distinction the tool is built on that a transcript alone won't teach: **Status** is what the classifier read from the file, **Disposition** is what you decided, and **Settled** is the two combined. Filtering on Settled is what answers "what am I still on the hook for?" without the noise of sessions that ended on a question you've long since acted on.
+`~/.claude/skills/sky-session/` teaches an agent the surface above, and — more usefully — the distinction the tool is built on that a transcript alone won't teach: **Status** is what the classifier read from the file, **Disposition** is what you decided, **Declared** is what the session itself said happens next, and **Settled** is the three combined — complete, Done, cleared away, or a standing `needs-read`/`exhausted` declaration whose check didn't fail. Filtering on Settled is what answers "what am I still on the hook for?" without the noise of sessions that ended on a question you've long since acted on, or that declared themselves over as their last act and have read `cut-off` ever since.
 
 ### Spawn gate
 

@@ -168,8 +168,10 @@ internal static class Cli
             needs-read  over, but there is a report here worth your eyes
             exhausted   over, and there is nothing here -- however the file ends
             none        take back what was declared
-          Never changes the session's Status; it moves what the project reads as. Expires
-          the next time you prompt that session, so re-declare before you stop.
+          Never changes the session's Status; it moves what the project reads as, and a
+          standing needs-read or exhausted settles the session -- it drops out of
+          --unfinished like a `done` mark, unless its check failed. Expires the next
+          time you prompt that session, so re-declare before you stop.
           needs-read and exhausted also run the repo's check, when it has a
           .claude/sky-check.json ({"command": "...", "timeoutSeconds": 600}), and record
           passed / failed / not-run beside the claim. Recorded only: the claim stands
@@ -238,8 +240,12 @@ internal static class Cli
           --project <name>      substring match on the project
           --search <text>       substring match on name, prompt or recap
           --disposition <d>     none, done or abandoned
-          --unfinished          only what is still on the hook: drops complete, done
-                                and abandoned (--disposition abandoned brings those back)
+          --unfinished          only what is still on the hook: drops complete, done,
+                                abandoned (--disposition abandoned brings those back),
+                                and sessions whose standing declaration says it is over
+                                (needs-read or exhausted, unless its check failed).
+                                A needs-read project still shows under --projects
+                                until you have read it and ticked the session off
           --live                only sessions open in a terminal right now
           --stale               only live sessions behind the installed build, and the
                                 Remote Control hosts that are, in their own `Hosts` array

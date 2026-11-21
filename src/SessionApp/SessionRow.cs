@@ -49,6 +49,26 @@ public sealed class SessionRow : INotifyPropertyChanged
 
     private Disposition _disposition;
 
+    /// <summary>
+    /// The session's own standing claim about what happens next, straight from the store —
+    /// see <see cref="SessionCore.Declaration"/>. Held raw, stale or not: whether it still
+    /// stands is a fact about <see cref="Info"/> too, so it is judged on read, where a swap
+    /// of either half re-asks the question.
+    /// </summary>
+    public Declaration? Declaration
+    {
+        get => _declaration;
+        set
+        {
+            if (Equals(_declaration, value)) return;
+            _declaration = value;
+            // Settled depends on it, and Settled is what the filter and title read.
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Settled)));
+        }
+    }
+
+    private Declaration? _declaration;
+
     /// <summary>"Unfinished, and I'm not going back to it" (X). Crossed out on the card.</summary>
     public bool Abandoned => _disposition == Disposition.Abandoned;
 
@@ -56,11 +76,14 @@ public sealed class SessionRow : INotifyPropertyChanged
     public bool Done => _disposition == Disposition.Done;
 
     /// <summary>
-    /// Nothing left to do here: the classifier says complete, you said so with D, or you
-    /// cleared the conversation away with <c>/clear</c> and went on in a new one.
+    /// Nothing left to do here: the classifier says complete, you said so with D, you
+    /// cleared the conversation away with <c>/clear</c> and went on in a new one, or the
+    /// session's own standing claim says it is over (exhausted or needs-read, check not
+    /// failed — <see cref="SessionCore.Declaration.Settles"/>).
     /// This — not <see cref="Complete"/> — is what "Hide completed" hides.
     /// </summary>
-    public bool Settled => Complete || Done || _info.ClearedAway;
+    public bool Settled => Complete || Done || _info.ClearedAway
+        || _declaration?.Settles(_info) == true;
 
     /// <summary>
     /// The interactive CLI running this session in a terminal right now, or null when none

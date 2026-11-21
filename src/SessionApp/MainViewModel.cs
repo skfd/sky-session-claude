@@ -264,6 +264,7 @@ public partial class MainViewModel : ObservableObject
             {
                 Merge(infos);
                 SyncDispositions();
+                SyncDeclarations();
                 RebuildFilterOptions();
                 RowsView.Refresh();
             });
@@ -330,7 +331,15 @@ public partial class MainViewModel : ObservableObject
 
         if (changed.HasFlag(StoreChange.Declarations))
         {
-            KeepingSelection(MergeProjects);
+            // A declaration can settle its session now, so the rows, the filter and the
+            // title all have to re-read, not just the project fold.
+            KeepingSelection(() =>
+            {
+                SyncDeclarations();
+                RowsView.Refresh();
+                MergeProjects();
+            });
+            UpdateWindowTitle();
             UpdateStatusLine();
         }
 
@@ -447,6 +456,16 @@ public partial class MainViewModel : ObservableObject
     {
         foreach (var row in Rows)
             row.Disposition = _dispositions.Get(row.Info.SessionId);
+    }
+
+    /// <summary>
+    /// Push what agents have declared onto every row, the same way. A standing exhausted or
+    /// needs-read claim settles its session, so the filter and the title read these too.
+    /// </summary>
+    private void SyncDeclarations()
+    {
+        foreach (var row in Rows)
+            row.Declaration = _declarations.Get(row.Info.SessionId);
     }
 
     // --- restarting ---------------------------------------------------------

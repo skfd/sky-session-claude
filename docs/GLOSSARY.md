@@ -83,7 +83,7 @@ session, and the scanner never sets it. A session carries at most one.
 | **Disposition** | | What the operator decided to do about a session. Independent of Status. |
 | **Abandoned** | **X** | "This session is genuinely unfinished, and I'm not going back to it." |
 | **Done** | **D** | "This session is finished — whatever the classifier says." |
-| **Settled** | | Collective term for a session with nothing left to do: Status `complete` *or* disposition Done. This, not `complete` alone, is what **Hide completed** hides. It is not the same as *off the hook*: the title's open count and `list --unfinished` skip the Abandoned too, which are unfinished by Status and still not coming back. |
+| **Settled** | | Collective term for a session with nothing left to do: Status `complete`, disposition Done, cleared away with `/clear`, *or* a standing declaration of `exhausted` / `needs-read` whose check did not fail (see Declaration below). This, not `complete` alone, is what **Hide completed** hides and what `list --unfinished` drops. It is not the same as *off the hook*: the title's open count and `list --unfinished` skip the Abandoned too, which are unfinished by Status and still not coming back. |
 
 The rule that keeps the two axes honest: **a disposition never changes Status.**
 An abandoned `cut-off` session stays `cut-off`; a Done `waiting-you` session
@@ -145,8 +145,16 @@ The two laws, in the same shape as the disposition law above:
 
 1. **A declaration never changes Status.** A session declared `exhausted` that ends on
    a question stays `waiting-you`, and its card still says so. The classifier's verdict
-   about the *file* was correct; the agent is only reporting what happens next. Only the
-   project's state moves.
+   about the *file* was correct; the agent is only reporting what happens next. What
+   moves is the project's state — and, for a standing `exhausted` or `needs-read`,
+   whether the session counts as **Settled**: both say it is over, so the session drops
+   out of `list --unfinished`, Hide completed and the title's count, Status untouched.
+   This is also what finishes a session whose last act *was* the declaration: that call
+   is a dangling `tool_use`, so the file honestly reads `cut-off` forever, and the claim
+   is the only thing that knows the session ended on purpose. One exception — a claim
+   whose recorded check **failed** settles nothing. "Over" on top of a repo whose own
+   check says broken is a claim the operator has to see, not one that may hide the work
+   it sits on. `runnable` and `blocked` never settle; both say work remains.
 2. **A declaration expires when the operator says something new.** It records the uuid
    of the last operator prompt at the moment it was written, and the claim is dead once
    the session has moved past it. Agents forget to re-declare, and a confident wrong
@@ -189,7 +197,7 @@ as its most urgent session:
 | **Fold** | The roll-up itself: sessions in, one project row out (`ProjectFold`). Pure — the caller supplies the scan, the marks and the declarations. |
 | **broken** | Something died mid-work. Revive it; there is no decision to make. |
 | **undeclared** | Something is unfinished and nobody said what it needs. Not a missing value — its own answer, and the common one until agents declare. |
-| **quiet** | Nothing was pending to begin with: every session here is Settled. |
+| **quiet** | Nothing was pending to begin with: every session here is complete, Done or cleared away, with nothing ever declared. A project settled *by declaration* reads `exhausted` or `needs-read` instead — same count of zero unfinished, different route, and the route is kept visible on purpose. |
 | **exhausted** | An agent looked at unfinished-looking work and said it is over. |
 | **abandoned** | Every session here is crossed out. The operator said no. |
 

@@ -67,6 +67,27 @@ public sealed record Declaration
     /// </summary>
     public bool StillStands(SessionInfo session) =>
         string.Equals(AtTurn, session.LastPromptUuid, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether this claim settles <paramref name="session"/> — leaves nothing to do there,
+    /// the way <c>complete</c> or a Done mark does. True for a standing "it is over" claim
+    /// (<see cref="Declared.Exhausted"/> or <see cref="Declared.NeedsRead"/>) whose check,
+    /// if one ran, did not fail.
+    ///
+    /// This is what lets "declare state as your last act before stopping" actually finish a
+    /// session: that last act is a dangling <c>tool_use</c>, so the classifier honestly reads
+    /// the file as <c>cut-off</c> and no sharpening of it will ever say otherwise. The claim
+    /// is the only thing that knows, exactly as with the project fold. Law 1 still holds —
+    /// Status is untouched; only what counts as settled moves.
+    ///
+    /// A failed check does not settle, deliberately: "over" on top of a repo whose own check
+    /// says broken is a claim the operator has to see, not one that may hide itself.
+    /// <c>runnable</c> and <c>blocked</c> never settle — both say work remains.
+    /// </summary>
+    public bool Settles(SessionInfo session) =>
+        State is Declared.Exhausted or Declared.NeedsRead
+        && StillStands(session)
+        && Check is not { Outcome: CheckOutcome.Failed };
 }
 
 /// <summary>
@@ -316,7 +337,11 @@ public static class ProjectFold
             if (live is not null) declared++;
 
             var one = Of(session, disposition, live, liveness(session.SessionId));
-            if (one != ProjectState.Quiet) unfinished++;
+            // "Not settled", with one meaning of settled everywhere: a standing "it is over"
+            // claim finishes a session here just as it does on the session rows, even though
+            // the project still reads exhausted or needs-read rather than quiet — the state
+            // says what kind of over it is, the count says nothing is owed.
+            if (one != ProjectState.Quiet && live?.Settles(session) != true) unfinished++;
 
             if (one < state)
             {

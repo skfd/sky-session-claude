@@ -125,7 +125,11 @@ internal static partial class Commands
     /// <c>--project</c> and <c>--search</c>. The session filters do not, and must not — a
     /// project folded over the sessions that survived <c>--status waiting-you</c> would report
     /// on a folder that does not exist. <c>--unfinished</c> is the exception, because it means
-    /// the same thing one level up: drop the projects with nothing outstanding.
+    /// the same thing one level up: drop the projects with nothing outstanding. One asymmetry
+    /// is kept on purpose — a project settled *by declaration* reads exhausted or needs-read
+    /// rather than quiet and stays in this listing, even though its sessions have dropped out
+    /// of the session rows: "an agent said it is over" is an answer the operator still gets
+    /// to see once, where a session row saying the same thing is just an undone chore.
     /// </summary>
     private static List<ProjectDto> ProjectRows(
         List<SessionInfo> scanned, Dictionary<string, List<LiveSession>> live, string? installed, Args args)
