@@ -124,10 +124,11 @@ Status stays `waiting-you` and its card still says so; only the project's state 
 one transition is most of what this whole document is for.
 
 **`quiet` and `exhausted` are not the same answer.** `quiet` is derived — every session in
-the folder is Settled, so nothing is pending and nothing was ever declared. `exhausted` is
-declared — an agent looked at unfinished-looking work and said it is over. They land the
-operator in the same place and arrive by opposite routes, and the day one of them is wrong
-you will want to know which one you were reading.
+the folder is complete, Done or cleared away, and nothing was ever declared. `exhausted` is
+declared — an agent looked at unfinished-looking work and said it is over, which settles
+those sessions too (zero unfinished), by the opposite route. They land the operator in the
+same place, and the day one of them is wrong you will want to know which one you were
+reading.
 
 **`undeclared` is a state, not a missing value.** It is the project with something unfinished
 by Status and no declaration to explain it — the fold knows the ball is not `nobody` and
@@ -200,7 +201,11 @@ Mirroring the law that keeps Status and disposition honest:
 
 1. **A declaration never changes Status.** A session declared `exhausted` that ends on a
    question stays `waiting-you`, and its card still says so. The classifier's verdict about
-   the *file* was correct; the agent is only reporting what happens next.
+   the *file* was correct; the agent is only reporting what happens next. What moves is the
+   project's state — and, for a standing `exhausted` or `needs-read` whose check did not
+   fail, whether the session counts as Settled: both say it is over, so the session drops
+   out of `--unfinished` and the app's default views the way a `done` mark does, its Status
+   untouched (see GLOSSARY, Settled).
 2. **A declaration expires at the next real turn.** It records the uuid of the turn it was
    made at. If the session has moved past that turn, the claim is stale and the project falls
    back to the derived fold — and to `undeclared` where the fold cannot answer. Agents forget

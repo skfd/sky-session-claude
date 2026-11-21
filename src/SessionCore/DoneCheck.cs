@@ -19,8 +19,11 @@ public enum CheckOutcome
 }
 
 /// <summary>
-/// One run of a repo's check, stamped on the declaration it was run for. Record only: it
-/// never changes the state that was declared, and nothing reads it as a refusal.
+/// One run of a repo's check, stamped on the declaration it was run for. It never changes
+/// the state that was declared, and nothing reads it as a refusal — but one thing reads it
+/// as a hold: a <see cref="CheckOutcome.Failed"/> outcome stops the claim settling its
+/// session (<see cref="Declaration.Settles"/>), so declared-over work whose own check says
+/// broken stays in <c>--unfinished</c> where the operator will see it.
 /// </summary>
 public sealed record CheckResult
 {

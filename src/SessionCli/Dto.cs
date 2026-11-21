@@ -287,8 +287,9 @@ internal sealed class SessionDto
 
     /// <summary>
     /// What the repo's check said when this session declared its work done — "passed",
-    /// "failed", "not-run" — or null when no check ran. Record only: it never
-    /// changes <see cref="Declared"/>. Kept on a stale claim too, for the measurement.
+    /// "failed", "not-run" — or null when no check ran. It never changes
+    /// <see cref="Declared"/>, but "failed" keeps the claim from settling the session
+    /// (<see cref="Settled"/>). Kept on a stale claim too, for the measurement.
     /// </summary>
     public string? DeclaredCheck { get; init; }
 

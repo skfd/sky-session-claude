@@ -127,9 +127,10 @@ internal static partial class Commands
     /// on a folder that does not exist. <c>--unfinished</c> is the exception, because it means
     /// the same thing one level up: drop the projects with nothing outstanding. One asymmetry
     /// is kept on purpose — a project settled *by declaration* reads exhausted or needs-read
-    /// rather than quiet and stays in this listing, even though its sessions have dropped out
-    /// of the session rows: "an agent said it is over" is an answer the operator still gets
-    /// to see once, where a session row saying the same thing is just an undone chore.
+    /// rather than quiet and stays in this listing (until the sessions are ticked off or the
+    /// claim goes stale), even though its sessions have dropped out of the session rows: "an
+    /// agent said it is over" is an answer the operator still gets shown at project level,
+    /// where a session row saying the same thing is just an undone chore.
     /// </summary>
     private static List<ProjectDto> ProjectRows(
         List<SessionInfo> scanned, Dictionary<string, List<LiveSession>> live, string? installed, Args args)
@@ -1113,7 +1114,8 @@ internal static partial class Commands
         var reason = claim is null
             ? "Before you stop: say what the operator should do with this session, with "
               + "SessionCli state <runnable|blocked|needs-read|exhausted> --self --note \"...\". "
-              + "It never changes the session's status, only what the project reads as."
+              + "It never changes the session's status; it moves what the project reads as, "
+              + "and needs-read or exhausted settles the session off the unfinished list."
             : "Before you stop: what you declared about this session expired when the operator "
               + "prompted you again. Declare it once more with SessionCli state "
               + "<runnable|blocked|needs-read|exhausted> --self --note \"...\".";
@@ -1218,9 +1220,11 @@ internal static partial class Commands
         };
 
         // Saying the work is done runs the repo's check, if it has one, and records what it
-        // said beside the claim. Record only (decided 2026-11-09, NEXT.md): the claim is
-        // written whatever the check says, and written before it runs, so a shell that
-        // gives up on a long build still leaves the declaration standing.
+        // said beside the claim. The claim is written whatever the check says (decided
+        // 2026-11-09, NEXT.md), and written before it runs, so a shell that gives up on a
+        // long build still leaves the declaration standing. One consequence is read later
+        // rather than enforced here: a FAILED outcome stops the claim settling the session
+        // out of --unfinished (Declaration.Settles).
         CheckDefinition? check = null;
         string? checkUnreadable = null;
         if (!clearing && DoneCheck.Applies(state))

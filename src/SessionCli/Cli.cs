@@ -174,8 +174,10 @@ internal static class Cli
           time you prompt that session, so re-declare before you stop.
           needs-read and exhausted also run the repo's check, when it has a
           .claude/sky-check.json ({"command": "...", "timeoutSeconds": 600}), and record
-          passed / failed / not-run beside the claim. Recorded only: the claim stands
-          either way. A build can take minutes; give the shell a long enough timeout.
+          passed / failed / not-run beside the claim. The claim stands either way, but
+          a failed check keeps the session in --unfinished: "over" on a repo whose own
+          check says broken is not allowed to hide itself. A build can take minutes;
+          give the shell a long enough timeout.
           SessionCli stop-check               for a Stop hook: asks for a declaration when
                                               one is missing or has expired. Reads the hook's
                                               JSON on stdin; exits 2 to ask, 0 otherwise --
