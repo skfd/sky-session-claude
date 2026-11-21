@@ -93,6 +93,12 @@ reversible in `Declaration.Settles` if the measurement says otherwise.
 - Both settle rules (declared-over, unattended — `0df1e6b`) reach the
   installed CLI, the Stop hook and the scheduled export only at the next
   release; until then the installed exe still lists ~129.
+- Seen 2026-11-20: `state --self` run from the repo's own dev-built
+  SessionCli.exe records a false FAILED when the CLI is stale — the check's
+  `dotnet test` tries to rebuild SessionCli and the running exe locks its
+  own SessionCore.dll (MSB3021). With a FAILED check now blocking settling,
+  that false fail keeps the session on the hook. Rebuild first, or run the
+  installed exe; maybe the check should build with a different output path.
 
 ## Park projects on purpose: design + catalogue review
 
