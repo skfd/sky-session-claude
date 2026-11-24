@@ -52,13 +52,6 @@ public sealed record Declaration
     public DateTimeOffset At { get; init; }
 
     /// <summary>
-    /// The repo's check, run when this declared the work done (<see cref="DoneCheck"/>). Null
-    /// when nothing was run: a state that says work is still owed, or a repo with no check.
-    /// Recorded beside the claim, never instead of it.
-    /// </summary>
-    public CheckResult? Check { get; init; }
-
-    /// <summary>
     /// Whether this claim still stands over <paramref name="session"/>. Two nulls count as a
     /// match — a session with no operator prompt at all, a <c>-p</c> run say, has nothing that
     /// could have moved. A null anchor against a file that does have a prompt does not: a
@@ -71,8 +64,7 @@ public sealed record Declaration
     /// <summary>
     /// Whether this claim settles <paramref name="session"/> — leaves nothing to do there,
     /// the way <c>complete</c> or a Done mark does. True for a standing "it is over" claim
-    /// (<see cref="Declared.Exhausted"/> or <see cref="Declared.NeedsRead"/>) whose check,
-    /// if one ran, did not fail.
+    /// (<see cref="Declared.Exhausted"/> or <see cref="Declared.NeedsRead"/>).
     ///
     /// This is what lets "declare state as your last act before stopping" actually finish a
     /// session: that last act is a dangling <c>tool_use</c>, so the classifier honestly reads
@@ -80,14 +72,11 @@ public sealed record Declaration
     /// is the only thing that knows, exactly as with the project fold. Law 1 still holds —
     /// Status is untouched; only what counts as settled moves.
     ///
-    /// A failed check does not settle, deliberately: "over" on top of a repo whose own check
-    /// says broken is a claim the operator has to see, not one that may hide itself.
     /// <c>runnable</c> and <c>blocked</c> never settle — both say work remains.
     /// </summary>
     public bool Settles(SessionInfo session) =>
         State is Declared.Exhausted or Declared.NeedsRead
-        && StillStands(session)
-        && Check is not { Outcome: CheckOutcome.Failed };
+        && StillStands(session);
 }
 
 /// <summary>
@@ -161,12 +150,6 @@ public sealed record ProjectRoll
 
     /// <summary>The session the state came from, so a card can point at it.</summary>
     public string? StateFrom { get; init; }
-
-    /// <summary>
-    /// The repo's check, as run when the declaration that decided <see cref="State"/> said
-    /// the work was done. Null when no check ran for it.
-    /// </summary>
-    public CheckResult? Check { get; init; }
 
     /// <summary>Sessions that counted. Abandoned ones are not among them.</summary>
     public required int Sessions { get; init; }
@@ -317,7 +300,6 @@ public static class ProjectFold
         var state = ProjectState.Abandoned;
         string? note = null;
         string? from = null;
-        CheckResult? check = null;
         DateTime? lastActive = null;
         int counted = 0, unfinished = 0, abandoned = 0, declared = 0;
 
@@ -347,7 +329,6 @@ public static class ProjectFold
             {
                 state = one;
                 note = live?.Note;
-                check = live?.Check;
                 from = session.SessionId;
             }
         }
@@ -359,7 +340,6 @@ public static class ProjectFold
             State = state,
             Note = note,
             StateFrom = from,
-            Check = check,
             Sessions = counted,
             Unfinished = unfinished,
             Abandoned = abandoned,

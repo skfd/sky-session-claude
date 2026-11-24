@@ -89,7 +89,7 @@ session, and the scanner never sets it. A session carries at most one.
 | **Disposition** | | What the operator decided to do about a session. Independent of Status. |
 | **Abandoned** | **X** | "This session is genuinely unfinished, and I'm not going back to it." |
 | **Done** | **D** | "This session is finished — whatever the classifier says." |
-| **Settled** | | Collective term for a session with nothing left to do: Status `complete`, disposition Done, cleared away with `/clear`, *or* a standing declaration of `exhausted` / `needs-read` whose check did not fail (see Declaration below). This, not `complete` alone, is what **Hide completed** hides and what `list --unfinished` drops. It is not the same as *off the hook*: the title's open count and `list --unfinished` also skip the Abandoned, which are unfinished by Status and still not coming back, and the Unattended, which nobody was ever in. |
+| **Settled** | | Collective term for a session with nothing left to do: Status `complete`, disposition Done, cleared away with `/clear`, *or* a standing declaration of `exhausted` / `needs-read` (see Declaration below). This, not `complete` alone, is what **Hide completed** hides and what `list --unfinished` drops. It is not the same as *off the hook*: the title's open count and `list --unfinished` also skip the Abandoned, which are unfinished by Status and still not coming back, and the Unattended, which nobody was ever in. |
 
 The rule that keeps the two axes honest: **a disposition never changes Status.**
 An abandoned `cut-off` session stays `cut-off`; a Done `waiting-you` session
@@ -157,10 +157,8 @@ The two laws, in the same shape as the disposition law above:
    out of `list --unfinished`, Hide completed and the title's count, Status untouched.
    This is also what finishes a session whose last act *was* the declaration: that call
    is a dangling `tool_use`, so the file honestly reads `cut-off` forever, and the claim
-   is the only thing that knows the session ended on purpose. One exception — a claim
-   whose recorded check **failed** settles nothing. "Over" on top of a repo whose own
-   check says broken is a claim the operator has to see, not one that may hide the work
-   it sits on. `runnable` and `blocked` never settle; both say work remains.
+   is the only thing that knows the session ended on purpose. `runnable` and
+   `blocked` never settle; both say work remains.
 2. **A declaration expires when the operator says something new.** It records the uuid
    of the last operator prompt at the moment it was written, and the claim is dead once
    the session has moved past it. Agents forget to re-declare, and a confident wrong

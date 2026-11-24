@@ -252,25 +252,6 @@ public class ProjectFoldTests
         Assert.Equal(0, roll.Unfinished);
     }
 
-    // Unless its own check failed: "over" on top of a repo whose check says broken is a
-    // claim the operator has to see, not one that may hide the work it sits on.
-    [Fact]
-    public void AFailedCheckKeepsTheSessionUnfinished()
-    {
-        var roll = Roll(
-            [S("a", SessionStatus.CutOff)],
-            claims: new()
-            {
-                ["a"] = D(Declared.Exhausted) with
-                {
-                    Check = new CheckResult { Outcome = CheckOutcome.Failed },
-                },
-            });
-
-        Assert.Equal(ProjectState.Exhausted, roll.State);
-        Assert.Equal(1, roll.Unfinished);
-    }
-
     // needs-read is a claim about a session that already looks finished, so the settled
     // check must not get there first.
     [Fact]

@@ -202,8 +202,8 @@ Mirroring the law that keeps Status and disposition honest:
 1. **A declaration never changes Status.** A session declared `exhausted` that ends on a
    question stays `waiting-you`, and its card still says so. The classifier's verdict about
    the *file* was correct; the agent is only reporting what happens next. What moves is the
-   project's state — and, for a standing `exhausted` or `needs-read` whose check did not
-   fail, whether the session counts as Settled: both say it is over, so the session drops
+   project's state — and, for a standing `exhausted` or `needs-read`,
+   whether the session counts as Settled: both say it is over, so the session drops
    out of `--unfinished` and the app's default views the way a `done` mark does, its Status
    untouched (see GLOSSARY, Settled).
 2. **A declaration expires at the next real turn.** It records the uuid of the turn it was

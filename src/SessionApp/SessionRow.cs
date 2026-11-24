@@ -78,8 +78,8 @@ public sealed class SessionRow : INotifyPropertyChanged
     /// <summary>
     /// Nothing left to do here: the classifier says complete, you said so with D, you
     /// cleared the conversation away with <c>/clear</c> and went on in a new one, or the
-    /// session's own standing claim says it is over (exhausted or needs-read, check not
-    /// failed — <see cref="SessionCore.Declaration.Settles"/>).
+    /// session's own standing claim says it is over (exhausted or needs-read —
+    /// <see cref="SessionCore.Declaration.Settles"/>).
     /// This — not <see cref="Complete"/> — is what "Hide completed" hides.
     /// </summary>
     public bool Settled => Complete || Done || _info.ClearedAway

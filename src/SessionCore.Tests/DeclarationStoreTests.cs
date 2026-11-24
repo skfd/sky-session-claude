@@ -37,6 +37,20 @@ public class DeclarationStoreTests : IDisposable
         Assert.Equal("u7", read.AtTurn);
     }
 
+    // Builds from 2026-11 recorded a repo check beside the claim. Those files are still on disk.
+    [Fact]
+    public void AnEntryWithAnOldCheckStillLoads()
+    {
+        File.WriteAllText(Path_("declarations.json"), """
+            { "abc": { "state": "exhausted", "atTurn": "u7", "at": "2026-11-20T21:20:00-05:00",
+                       "check": { "outcome": "failed", "commit": "43a9045", "dirty": false } } }
+            """);
+
+        var read = new DeclarationStore(_dir).Get("abc");
+        Assert.Equal(Declared.Exhausted, read!.State);
+        Assert.Equal("u7", read.AtTurn);
+    }
+
     [Fact]
     public void ClearingRemovesIt()
     {

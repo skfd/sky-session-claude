@@ -79,15 +79,6 @@ internal sealed class ProjectDto
     public required int Declared { get; init; }
 
     /// <summary>
-    /// The repo's check from the declaration that decided <c>State</c>, when it declared the
-    /// work done and the repo defines one: "passed", "failed" or "not-run".
-    /// </summary>
-    public string? Check { get; init; }
-
-    /// <summary>The commit that check ran against, with "+dirty" when the tree had changes.</summary>
-    public string? CheckCommit { get; init; }
-
-    /// <summary>
     /// When anything here last moved — the newest counted session's <c>LastActive</c>.
     /// Crossed-out sessions do not set it, except on a project of nothing but crosses.
     /// Serialized the same way the session rows' timestamp is.
@@ -139,8 +130,6 @@ internal sealed class ProjectDto
         Abandoned = roll.Abandoned,
         Unattended = roll.Unattended,
         Declared = roll.Declared,
-        Check = roll.Check is { } c ? CheckResult.ToWire(c.Outcome) : null,
-        CheckCommit = roll.Check is { Commit: { } commit } cc ? commit + (cc.Dirty ? "+dirty" : "") : null,
         LastActive = roll.LastActive,
         Live = live,
         Stale = stale,
@@ -264,7 +253,7 @@ internal sealed class SessionDto
     /// <summary>
     /// Nothing left to do here: the classifier said complete, someone marked it done, the
     /// conversation was cleared away, or the session's own standing claim says it is over
-    /// (<see cref="Declared"/> exhausted or needs-read, check not failed — see
+    /// (<see cref="Declared"/> exhausted or needs-read — see
     /// <see cref="Declaration.Settles"/>). This is what "hide completed" hides. It is not
     /// by itself the answer to "what is still outstanding" — an abandoned session is not
     /// settled and is still off the hook, and so is an unattended one, which is why
@@ -285,14 +274,6 @@ internal sealed class SessionDto
     /// and "this agent never reports" are different failures of the convention.
     /// </summary>
     public required bool DeclaredStale { get; init; }
-
-    /// <summary>
-    /// What the repo's check said when this session declared its work done — "passed",
-    /// "failed", "not-run" — or null when no check ran. It never changes
-    /// <see cref="Declared"/>, but "failed" keeps the claim from settling the session
-    /// (<see cref="Settled"/>). Kept on a stale claim too, for the measurement.
-    /// </summary>
-    public string? DeclaredCheck { get; init; }
 
     /// <summary>
     /// False when nobody ever spoke in this session — see <c>SessionFileFields.HasOperator</c>.
@@ -348,7 +329,6 @@ internal sealed class SessionDto
             ? ProjectFold.ToWire(claim.State)
             : "none",
         DeclaredStale = claim is not null && !claim.StillStands(s),
-        DeclaredCheck = claim?.Check is { } c ? CheckResult.ToWire(c.Outcome) : null,
         HasOperator = s.HasOperator,
         Live = live,
     };

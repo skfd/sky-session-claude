@@ -1,4 +1,0 @@
-{
-  "command": "dotnet test -v q -nologo",
-  "timeoutSeconds": 300
-}

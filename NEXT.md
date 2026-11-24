@@ -35,51 +35,18 @@ whole-window shot shows real session titles, so crop before publishing.
 `clear-start` is wired as a `SessionStart` hook (matcher `clear`) since
 2026-11-09. Optional later: show `TitleInherited` on the card (dimmed name).
 
-## "Done" checked by a hook, not just declared
+## Dropped: the done-check (2026-11-09 to 2026-11-24)
 
-`stop-check` only checks that a state was declared. Discuss a per-repo check —
-build or tests pass before a session may declare `exhausted`/`needs-read` —
-the way the Claude Code docs and Mitchell Hashimoto turn must-hold rules into
-hooks.
+`state exhausted|needs-read` ran the repo's `.claude/sky-check.json` and
+recorded the result. Dropped with the user: about 95 checks in 15 days, and
+the only failure was false (the dev exe locking its own dll). Whether a
+conversation is over says nothing about whether the code works, so tests
+belong with merges. It also pushed one session to declare `blocked` to avoid
+the run. `DeclarationStore` ignores the old `check` entries in
+`declarations.json`.
 
-Decided with the user 2026-11-09: **at the declaration, record only.**
-- Evidence was thin: one "build failed" prompt in all transcripts, and that
-  was CI, not a session leaving the tree broken. So measure first, as the
-  Stop hook itself was.
-- `state exhausted|needs-read` runs the repo's check, if the repo defines
-  one (opt-in by presence; most repos have none and are never checked).
-  `runnable`/`blocked` are not checked: a broken build with work queued is
-  honest.
-- The result (pass/fail, commit, when) is stamped on the declaration and Sky
-  shows "checked" vs merely declared. Nothing is refused. Not in
-  `stop-check`: a build will not fit its 15 s timeout, and a timed-out hook
-  silently never blocks.
-- A check that cannot run (missing tool, timeout) records "not run", never
-  "fail".
-- Revisit after a few weeks of data: if "done but failing" shows up, turn on
-  one refusal that names `runnable --note` as the way out.
-
-Built 2026-11-09 on main's dev build: `.claude/sky-check.json`
-(`{"command": "...", "timeoutSeconds": 600}`), found from the agent's shell
-folder first under `--self` (a worktree), then the session's folder; the
-result is on the declaration, `DeclaredCheck` on list rows,
-`Check`/`CheckCommit` on `--projects`, a "✓ checked" / "✗ check failed"
-mark on Sky's project rows, and counted by `measure-declarations.ps1`. This
-repo's check is `dotnet test` (~12 s).
-
-v1.17.0 is installed and published on GitHub (2026-11-09). `~/.claude/CLAUDE.md` now says a done-declaration may take
-minutes and what to do with FAILED. Active repos with tests got their own
-`sky-check.json` where the check passed today.
-
-Left: read the numbers with `measure-declarations.ps1` on or after
-2026-11-30 and decide whether a failing check should refuse once.
-
-Amended 2026-11-20 (`400b7c1`): record-only still holds at the declaration —
-the claim is written whatever the check says — but a standing `exhausted` /
-`needs-read` now settles its session out of `--unfinished` and the app's
-default views, and a FAILED outcome blocks that settling (the claim stands,
-the session stays on the hook). One narrow read of the record as a hold,
-reversible in `Declaration.Settles` if the measurement says otherwise.
+Left: the installed CLI still has the code until the next release. It runs
+nothing now that the repos' `sky-check.json` files are gone.
 
 ## Loose ends from settle-by-declaration (2026-11-20)
 
@@ -93,12 +60,6 @@ reversible in `Declaration.Settles` if the measurement says otherwise.
 - Both settle rules (declared-over, unattended — `0df1e6b`) reach the
   installed CLI, the Stop hook and the scheduled export only at the next
   release; until then the installed exe still lists ~129.
-- Seen 2026-11-20: `state --self` run from the repo's own dev-built
-  SessionCli.exe records a false FAILED when the CLI is stale — the check's
-  `dotnet test` tries to rebuild SessionCli and the running exe locks its
-  own SessionCore.dll (MSB3021). With a FAILED check now blocking settling,
-  that false fail keeps the session on the hook. Rebuild first, or run the
-  installed exe; maybe the check should build with a different output path.
 
 ## Park projects on purpose: design + catalogue review
 

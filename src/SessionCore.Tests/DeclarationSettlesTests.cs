@@ -9,9 +9,8 @@ namespace SessionCore.Tests;
 /// only thing that knows the session is over, so it is what settles it out of
 /// <c>list --unfinished</c> and the app's on-the-hook views.
 ///
-/// Two edges are worth more than the rest: a stale claim settles nothing, or "exhausted" from
-/// three prompts ago would quietly hide live work; and a failed check settles nothing, because
-/// "over" on top of a repo whose own check says broken is a claim the operator has to see.
+/// The edge worth most: a stale claim settles nothing, or "exhausted" from three prompts ago
+/// would quietly hide live work.
 /// </summary>
 public class DeclarationSettlesTests
 {
@@ -30,13 +29,11 @@ public class DeclarationSettlesTests
             HasOperator = true,
         };
 
-    private static Declaration D(
-        Declared state, string? atTurn = "u1", CheckOutcome? check = null) => new()
+    private static Declaration D(Declared state, string? atTurn = "u1") => new()
         {
             State = state,
             AtTurn = atTurn,
             At = Now,
-            Check = check is { } o ? new CheckResult { Outcome = o } : null,
         };
 
     // The headline: a session whose last act was `state exhausted --self` reads cut-off
@@ -77,22 +74,6 @@ public class DeclarationSettlesTests
     public void NoPromptEitherSideStillSettles()
     {
         Assert.True(D(Declared.Exhausted, atTurn: null).Settles(S(promptUuid: null)));
-    }
-
-    // The check is recorded beside the claim, never instead of it — except here, the one
-    // place a FAILED outcome gets to keep the session on the hook.
-    [Fact]
-    public void AFailedCheckDoesNotSettle()
-    {
-        Assert.False(D(Declared.Exhausted, check: CheckOutcome.Failed).Settles(S()));
-    }
-
-    [Theory]
-    [InlineData(CheckOutcome.Passed)]
-    [InlineData(CheckOutcome.NotRun)]
-    public void APassedOrNotRunCheckStillSettles(CheckOutcome outcome)
-    {
-        Assert.True(D(Declared.Exhausted, check: outcome).Settles(S()));
     }
 
     // The status does not matter: settling by declaration never reads the classifier,

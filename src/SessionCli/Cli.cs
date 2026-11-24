@@ -170,14 +170,8 @@ internal static class Cli
             none        take back what was declared
           Never changes the session's Status; it moves what the project reads as, and a
           standing needs-read or exhausted settles the session -- it drops out of
-          --unfinished like a `done` mark, unless its check failed. Expires the next
-          time you prompt that session, so re-declare before you stop.
-          needs-read and exhausted also run the repo's check, when it has a
-          .claude/sky-check.json ({"command": "...", "timeoutSeconds": 600}), and record
-          passed / failed / not-run beside the claim. The claim stands either way, but
-          a failed check keeps the session in --unfinished: "over" on a repo whose own
-          check says broken is not allowed to hide itself. A build can take minutes;
-          give the shell a long enough timeout.
+          --unfinished like a `done` mark. Expires the next time you prompt that session,
+          so re-declare before you stop.
           SessionCli stop-check               for a Stop hook: asks for a declaration when
                                               one is missing or has expired. Reads the hook's
                                               JSON on stdin; exits 2 to ask, 0 otherwise --
@@ -245,7 +239,7 @@ internal static class Cli
           --unfinished          only what is still on the hook: drops complete, done,
                                 abandoned (--disposition abandoned brings those back),
                                 sessions whose standing declaration says it is over
-                                (needs-read or exhausted, unless its check failed),
+                                (needs-read or exhausted),
                                 and unattended sessions -- nobody ever spoke in them,
                                 so a scheduled run reports through its own channel or
                                 its parent session, never here. A needs-read project
