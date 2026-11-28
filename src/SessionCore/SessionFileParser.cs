@@ -136,9 +136,13 @@ public static class SessionFileParser
         bool hasOperator = false;
         bool endedByClear = false, startedByClear = false, sawUser = false, sawPrompt = false;
         string? openingTitle = null;
+        var remote = new RemoteNaming();
+        int seq = 0, customSeq = -1;
+        string? ownId = null;
 
         foreach (var line in lines)
         {
+            seq++;
             if (string.IsNullOrWhiteSpace(line)) continue;
             // Cheap pre-filter mirroring the PS regex: skip records that carry none
             // of the fields we read (attachment/mode/snapshot noise).
@@ -154,9 +158,11 @@ public static class SessionFileParser
             catch { continue; }
 
             if (cwd is null && TryGetString(o, "cwd", out var c) && c.Length > 0) cwd = c;
+            if (ownId is null && TryGetString(o, "sessionId", out var sid) && sid.Length > 0) ownId = sid;
 
             var type = GetString(o, "type");
             var recordUtc = ReadTimestampUtc(o);
+            remote.Observe(o, type, seq);
             switch (type)
             {
                 case "ai-title":
@@ -166,6 +172,7 @@ public static class SessionFileParser
                     if (TryGetString(o, "customTitle", out var ct) && ct.Length > 0)
                     {
                         custom = ct;
+                        customSeq = seq;
                         if (!sawUser && openingTitle is null) openingTitle = ct;
                     }
                     break;
@@ -228,6 +235,14 @@ public static class SessionFileParser
                     break;
             }
         }
+
+        // A title the session gave itself on claude.ai (the phone's list) is a name it chose,
+        // the same as a rename. It loses to a custom-title written after it, unless that one
+        // is a placeholder: a resume before this was read wrote the folder slug over it.
+        if (remote.OwnTitle() is { } phone
+            && (custom is null || phone.Seq > customSeq
+                || SessionName.IsFloor(custom, ownId ?? "", cwd)))
+            custom = phone.Title;
 
         prompt ??= userText;                                   // fall back for older session files
         var recap = summary ?? lastText ?? "";
