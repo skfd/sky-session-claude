@@ -7,33 +7,45 @@ starts here; a session finishing one removes it or rewrites it as what is left.
 
 After a restart every Remote Control conversation showed a crossed-out laptop
 in the desktop app. Login standby (`--tray --standby`) had started fresh hosts,
-each a new environment, so the sidebar's old entries pointed at environments
-nothing served. What brings an entry back on its *own* row:
+and each fresh host registers a new *environment* on the server. Tested on
+guelph-bike-parking that evening (debug logs, `--debug-file`):
 
-- **Bridged terminal session** (transcript has a `bridge-session` record):
-  `claude --resume <id> --remote-control` reattaches to the same `cse_` id.
-  Proven on three that night.
-- **Host-spawned phone conversation** (v5 uuid, no bridge record):
-  `claude rc --session-id <session_X|cse_X>` re-registers the old environment
-  (`reuseEnvironmentId`). Proven on guelph-bike-parking: Bike lane un-crossed.
-  It refuses `--spawn`, `--capacity` and `--[no-]create-session-in-dir`, and
-  the server allows one environment per device+folder: while another host
-  serves the folder it answers 409 "already served", and a host killed
-  without signing off keeps the folder about 4 minutes. So restore must run
-  *before* standby takes the folders.
-- **Desktop-app session**: reconnects when sent a message in the app. Not Sky's.
+- **A conversation is pinned to the environment it was made on.** The
+  server's `bridge/reconnect` refuses to move one ("Session does not belong to
+  this environment"). A dead environment's conversations are crossed out until
+  something serves *that* environment again.
+- **New phone conversations go to a dead environment.** Once a folder had
+  several, Test, Test 2 and Test 3 all queued on an environment nothing served
+  and showed "thinking" forever; a host reusing that one took them at once.
+  The phone seems to pick the newest one registered.
+- **rc already knows how to come back.** A host writes
+  `projects/<folder>/bridge-pointer.json` (environmentId, sessionId); the next
+  `claude rc` in that folder logs "Found prior environment … requesting reuse"
+  and registers on it, and the server re-queues its conversations. **But only
+  when create-session-in-dir is on**: `--no-create-session-in-dir`, which
+  standby passes since v1.11.1 (to stop empty sessions), turns the reuse off,
+  so every standby host makes a new environment and orphans the old one.
+- `claude rc --session-id <id>` also revives an environment, but in
+  single-session mode: no new conversations. Not the tool for hosts.
+- One host per device+folder: a second gets 409 "already served", and a host
+  killed without signing off holds the folder about 4 minutes.
+- **Bridged terminal session**: `claude --resume <id> --remote-control`
+  reattaches to its own `cse_` id (its transcript has a `bridge-session`
+  record). **Desktop-app session**: reconnects when sent a message in the app.
 
-Design: the keeper snapshots, every minute, each host's folder plus one
-server session id it served (the `bridge-spawn/cse_X-*` dirs and the
-`set_session_title` calls in transcripts both carry it), and each live
-bridged terminal session. At login a `restore` step revives each host with
-`--session-id` and resumes each terminal session, then standby fills the rest.
-Fallback: resume as a fresh entry (the title now survives, 748be71).
+Design: one environment per folder, forever. Drop `--no-create-session-in-dir`
+from `ClaudeLaunch.Host` so the pointer is written and reused; at login,
+standby's hosts then come back on their old environments and the sidebar
+un-crosses by itself. Check first: whether the pre-created session reappears as
+an empty row (a 48-minute-old pointer reused its session instead of making
+one; `BRIDGE_POINTER_TTL_MS` decides), and stop hosts with the exit gesture,
+not a kill. Terminal sessions with Remote Control: the keeper snapshots which
+were live, and login resumes them. Fallback for anything orphaned: resume as
+a fresh entry (the title survives since 748be71).
 
-Open: whether one revive brings back *every* conversation on that
-environment (the test's other two were archived), and whether a revived host
-spawns new phone conversations. The phone offered guelph-bike-parking but no
-new conversation had reached the host when this was written.
+State left on guelph-bike-parking: the host serves `env_01Pfr…`, where the
+phone sends new conversations; Bike lane sits on `env_018o…` and is crossed out
+again. The old pointer is in the scratchpad if wanted, not kept.
 
 ## A NEXT.md queue in every repo, shown by Sky
 
