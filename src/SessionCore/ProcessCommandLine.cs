@@ -14,8 +14,8 @@ namespace SessionCore;
 /// file is written and whether or not startup ever completes.
 ///
 /// The working directory answers a question nothing on disk can: which folder a
-/// <c>claude rc</c> host is serving. A host publishes no registry entry, and one started
-/// without a pre-created session writes no <c>bridge-pointer.json</c> either — so the
+/// <c>claude rc</c> host is serving. A host publishes no registry entry, and the
+/// <c>bridge-pointer.json</c> it may leave outlives it — so the
 /// process is the only record that it exists, and its cwd is the folder (see
 /// <see cref="RemoteControlHosts"/>).
 ///

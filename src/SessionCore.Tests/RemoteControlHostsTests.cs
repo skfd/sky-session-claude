@@ -4,8 +4,8 @@ namespace SessionCore.Tests;
 
 /// <summary>
 /// A `claude rc` host is invisible in every place Sky normally looks: it publishes no entry in
-/// the session registry, and — started without a pre-created session, as standby starts it —
-/// writes no `bridge-pointer.json` either. The process is the only record that it exists, so
+/// the session registry, and the `bridge-pointer.json` it may leave outlives it. The process
+/// is the only record that it exists, so
 /// these pin how one is recognised: a claude image, the `rc` verb, and a working directory.
 /// </summary>
 public class RemoteControlHostsTests

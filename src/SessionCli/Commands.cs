@@ -1892,9 +1892,9 @@ internal static partial class Commands
     /// a bridged interactive session. The host spawns a session in the folder each time the
     /// phone asks for one, which matters because second thoughts are what phones are for: a
     /// session per project caps you at one conversation per repo, and starting another is
-    /// precisely the thing a phone cannot do for itself. It spawns nothing until asked — the
-    /// session it would pre-create on arrival is an empty one under a name nobody chose, and
-    /// twenty of them is a phone list (see <see cref="ClaudeLaunch.Host"/>). The cost is that
+    /// precisely the thing a phone cannot do for itself. Each host comes back on the
+    /// environment its folder had last time, so a restart or a reboot leaves the phone's
+    /// conversations served (see <see cref="ClaudeLaunch.Host"/>). The cost is that
     /// a host has no terminal you can type into at the desk, and that what it spawns is
     /// <c>sdk-cli</c> — the kind <see cref="ClosePolicy"/> refuses to sweep, on purpose.
     ///

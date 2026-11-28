@@ -8,8 +8,8 @@ namespace SessionCore;
 /// A host is invisible everywhere Sky normally looks. It publishes no entry in
 /// <c>~/.claude/sessions</c> — only the conversations it spawns do, and those are
 /// <c>sdk-cli</c> and come and go — and the one file Claude Code writes for it,
-/// <c>bridge-pointer.json</c>, names a session, so a host started without a pre-created
-/// session (every host standby opens) never writes one at all. What is left is the process:
+/// <c>bridge-pointer.json</c>, outlives the host, and hosts started without a pre-created
+/// session (standby's, before 2026-11-27) never wrote one. What is left is the process:
 /// a running claude whose command line is the <c>rc</c> verb, and whose working directory
 /// is the folder. That is where everything here is read from.
 /// </summary>

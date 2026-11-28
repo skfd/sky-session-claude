@@ -34,12 +34,13 @@ public static class LaunchLine
     /// mid-inspection, or one not ours to inspect — does this fall back to what standby
     /// would have opened, which is the best guess available and worth saying out loud.
     ///
-    /// Two flags are the exception to verbatim. Standby used to spell out
-    /// <c>--create-session-in-dir</c>, and every host it opened before that stopped still
-    /// carries it. Putting it back would put back the empty pre-created session with it — the
-    /// very thing a restart sweep is the user's only way to retire — so it comes back as the
-    /// <c>--no-</c> form. This is safe to treat as standby's signature: the flag is the CLI's
-    /// default, and a host typed by hand does not spell its defaults out.
+    /// Two flags are the exception to verbatim. Standby once spelt out
+    /// <c>--create-session-in-dir</c> and later <c>--no-create-session-in-dir</c>, and hosts
+    /// from both eras are still running. Either way the flag goes: pre-creation is the CLI's
+    /// default, and leaving it on is what lets the host come back on its own environment
+    /// (see <see cref="ClaudeLaunch.Host"/>), so a restart is how an older host is moved onto
+    /// that. Only standby's own hosts are rewritten, known by the name prefix nobody types by
+    /// hand; a hand-typed host keeps whatever it said.
     ///
     /// The other is <c>--chrome</c>, which standby did not always pass. A host stays up for
     /// days and a served folder is passed over, so this is the only road by which an older
@@ -48,17 +49,28 @@ public static class LaunchLine
     /// </summary>
     public static string HostAgain(string folder, string? commandLine) =>
         ProcessCommandLine.ArgumentsOf(commandLine) is { } arguments && RemoteControlHosts.IsHostCommand(arguments)
-            ? $"cd {SessionName.Quote(folder)}; claude {WithChrome(WithoutPreCreation(arguments))}"
+            ? $"cd {SessionName.Quote(folder)}; claude {WithChrome(WithDefaultPreCreation(arguments))}"
             : HostIn(folder, Standby.ProjectOf(folder));
 
-    /// <summary>The arguments with the pre-creation flag turned off, wherever it sat.</summary>
-    private static string WithoutPreCreation(string arguments) =>
-        System.Text.RegularExpressions.Regex.Replace(
-            arguments, @"(?<![\w-])--create-session-in-dir(?![\w-])", "--no-create-session-in-dir");
+    /// <summary>
+    /// One of standby's hosts with the pre-creation flag dropped, whichever form it took, so
+    /// the CLI's default (on) applies. Anyone else's host is returned as it was.
+    /// </summary>
+    private static string WithDefaultPreCreation(string arguments)
+    {
+        if (!IsStandbys(arguments)) return arguments;
+
+        var dropped = System.Text.RegularExpressions.Regex.Replace(
+            arguments, @"\s*(?<![\w-])--(no-)?create-session-in-dir(?![\w-])", "");
+        return dropped.Trim();
+    }
+
+    private static bool IsStandbys(string arguments) =>
+        System.Text.RegularExpressions.Regex.IsMatch(arguments, @"(?<![\w-])--remote-control-session-name-prefix(?![\w-])");
 
     /// <summary>The arguments of one of standby's hosts with Chrome on, unless they already say.</summary>
     private static string WithChrome(string arguments) =>
-        System.Text.RegularExpressions.Regex.IsMatch(arguments, @"(?<![\w-])--remote-control-session-name-prefix(?![\w-])")
+        IsStandbys(arguments)
         && !System.Text.RegularExpressions.Regex.IsMatch(arguments, @"(?<![\w-])--(no-)?chrome(?![\w-])")
             ? $"{arguments} --chrome"
             : arguments;

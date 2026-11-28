@@ -60,9 +60,8 @@ public sealed record StandbyPlan
 /// What it puts there is a <c>claude rc</c> <b>host</b>, not a session. The two are different
 /// things wearing the same words: <c>claude --remote-control</c> is one interactive session in
 /// a terminal that happens to be bridged, while <c>claude rc</c> is a server that spawns a
-/// session in the folder whenever the phone asks for one, up to its capacity (and no sooner:
-/// see <see cref="ClaudeLaunch.Host"/> for the empty session it would otherwise open on
-/// arrival). A host is the right shape here because the phone is where second thoughts
+/// session in the folder whenever the phone asks for one, up to its capacity, and comes back
+/// on its folder's last environment (see <see cref="ClaudeLaunch.Host"/>). A host is the right shape here because the phone is where second thoughts
 /// happen — a session per project caps you at one conversation per repo, and starting another
 /// is the one thing a phone cannot do for itself.
 ///
@@ -77,8 +76,8 @@ public sealed record StandbyPlan
 ///
 /// A live host is a process — a running <c>claude rc</c> whose working directory is the
 /// folder — and nothing else. It used to be the pointer file a host leaves beside the
-/// project's transcripts, and that was right until the host stopped pre-creating a session,
-/// because the file is written for the session and a host with none writes nothing. See
+/// project's transcripts, but that file outlives its host, and for a while standby's hosts
+/// wrote none. See
 /// <see cref="RemoteControlHosts"/>.
 ///
 /// It is folders, not sessions, all the way down: the host decides what conversations exist,

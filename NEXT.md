@@ -33,15 +33,19 @@ guelph-bike-parking that evening (debug logs, `--debug-file`):
   reattaches to its own `cse_` id (its transcript has a `bridge-session`
   record). **Desktop-app session**: reconnects when sent a message in the app.
 
-Design: one environment per folder, forever. Drop `--no-create-session-in-dir`
-from `ClaudeLaunch.Host` so the pointer is written and reused; at login,
-standby's hosts then come back on their old environments and the sidebar
-un-crosses by itself. Check first: whether the pre-created session reappears as
-an empty row (a 48-minute-old pointer reused its session instead of making
-one; `BRIDGE_POINTER_TTL_MS` decides), and stop hosts with the exit gesture,
-not a kill. Terminal sessions with Remote Control: the keeper snapshots which
-were live, and login resumes them. Fallback for anything orphaned: resume as
-a fresh entry (the title survives since 748be71).
+Built (dev, 2026-11-27): `ClaudeLaunch.Host` no longer passes
+`--no-create-session-in-dir`, and `restart --host/--stale` drops either form
+from standby's hosts, so each folder keeps one environment and standby's hosts
+come back on it at login. Still to see on the next reboot: whether the sidebar
+un-crosses by itself, and whether the pre-created session comes back as an
+empty row (a 48-minute-old pointer reused its session instead of making one;
+the CLI's `BRIDGE_POINTER_TTL_MS` decides, value not read out). Stop hosts
+with the exit gesture, not a kill: a killed host holds its folder ~4 minutes.
+
+Not built: terminal sessions with Remote Control. The keeper could snapshot
+which were live and login resume them (`resume` reattaches them, proven).
+Fallback for anything orphaned: resume as a fresh entry (the title survives
+since 748be71).
 
 State left on guelph-bike-parking: the host serves `env_01Pfr…`, where the
 phone sends new conversations; Bike lane sits on `env_018o…` and is crossed out

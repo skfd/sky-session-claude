@@ -60,21 +60,29 @@ public class HostRelaunchTests
             LaunchLine.HostAgain(@"C:\Users\kk\Code\demo", @"""C:\Users\kk\.local\bin\claude.exe"" rc"));
 
     /// <summary>
-    /// The one flag that is not carried over. Standby used to write <c>--create-session-in-dir</c>
-    /// out, and a restart that replayed it would put back the empty pre-created session the
-    /// sweep is the user's only way to retire. The <c>--no-</c> form, and nothing else, changes.
+    /// The one flag standby's hosts do not carry over. Pre-creation on is what lets a host come
+    /// back on its own environment, so whichever form an older standby spelt out, a restart
+    /// drops it and the CLI's default applies.
     /// </summary>
     [Theory]
     [InlineData(
-        @"""C:\claude.exe"" rc --remote-control-session-name-prefix demo --create-session-in-dir --spawn=same-dir",
-        @"cd 'C:\Users\kk\Code\demo'; claude rc --remote-control-session-name-prefix demo --no-create-session-in-dir --spawn=same-dir --chrome")]
+        @"""C:\claude.exe"" rc --remote-control-session-name-prefix demo --no-create-session-in-dir --spawn=same-dir --chrome",
+        @"cd 'C:\Users\kk\Code\demo'; claude rc --remote-control-session-name-prefix demo --spawn=same-dir --chrome")]
     [InlineData(
-        @"""C:\claude.exe"" rc --create-session-in-dir",
-        @"cd 'C:\Users\kk\Code\demo'; claude rc --no-create-session-in-dir")]
+        @"""C:\claude.exe"" rc --remote-control-session-name-prefix demo --create-session-in-dir --spawn=same-dir",
+        @"cd 'C:\Users\kk\Code\demo'; claude rc --remote-control-session-name-prefix demo --spawn=same-dir --chrome")]
+    public void StandbysPreCreationFlagIsDroppedOnTheWayBack(string commandLine, string expected) =>
+        Assert.Equal(expected, LaunchLine.HostAgain(@"C:\Users\kk\Code\demo", commandLine));
+
+    /// <summary>A host somebody typed keeps what they typed, pre-creation flag and all.</summary>
+    [Theory]
     [InlineData(
         @"""C:\claude.exe"" rc --no-create-session-in-dir --spawn=same-dir",
         @"cd 'C:\Users\kk\Code\demo'; claude rc --no-create-session-in-dir --spawn=same-dir")]
-    public void PreCreationIsTurnedOffOnTheWayBack(string commandLine, string expected) =>
+    [InlineData(
+        @"""C:\claude.exe"" rc --create-session-in-dir",
+        @"cd 'C:\Users\kk\Code\demo'; claude rc --create-session-in-dir")]
+    public void AHandTypedHostKeepsItsPreCreationFlag(string commandLine, string expected) =>
         Assert.Equal(expected, LaunchLine.HostAgain(@"C:\Users\kk\Code\demo", commandLine));
 
     [Fact]

@@ -73,14 +73,20 @@ public static class ClaudeLaunch
     /// <c>--name</c> and never on <c>--remote-control</c>. Different flag, different command,
     /// and this one is the naming lever that works.
     ///
-    /// <c>--no-create-session-in-dir</c> turns off the one thing the host does unasked. By
-    /// default it pre-creates a session the moment it starts, so there is somewhere to type
-    /// before anyone has asked to — and a sweep of twenty projects is twenty of those at once.
-    /// Each is an empty conversation under a derived name (<c>morning-briefs-57</c>) that
-    /// nobody chose, sitting in the phone's list next to the real ones, and each leaves a
-    /// zero-byte transcript that outlives the host and reads as an untitled session in a
-    /// folder nothing can name. The host serves the folder just as well without it: the
-    /// phone opens a conversation there when there is something to say, and not before.
+    /// Pre-creation is left on — the CLI's default — although it costs an empty row now and
+    /// then, because it is also the switch for the host coming back as itself. A host
+    /// registers an <i>environment</i> on the server, and every conversation it serves is
+    /// pinned to that environment for good: the server will not move one to another. With
+    /// pre-creation on, the host records its environment in
+    /// <c>projects/&lt;folder&gt;/bridge-pointer.json</c> and the next <c>claude rc</c> in that
+    /// folder registers on it again, so after a reboot or a restart every conversation in the
+    /// phone's list is served again. With <c>--no-create-session-in-dir</c> (passed from
+    /// v1.11.1 to keep empty rows off the phone) the CLI skips that pointer altogether: each
+    /// standby made a new environment, crossed out every conversation of the last one, and
+    /// left the phone filing new conversations on dead environments. Found 2026-11-27 after
+    /// a reboot; see NEXT.md. When the pointer is fresh the host takes the session it names
+    /// as its pre-created one, so a restart adds no empty row; one older than the CLI's
+    /// pointer lifetime gets a new one.
     ///
     /// <c>--spawn</c> is written out for a harder reason: unset, and with no answer recorded
     /// for the project, the host stops on a "same-dir or worktree?" question before it serves
@@ -97,7 +103,7 @@ public static class ClaudeLaunch
         + (namePrefix is { Length: > 0 }
             ? $" --remote-control-session-name-prefix {SessionName.Quote(namePrefix)}"
             : "")
-        + " --no-create-session-in-dir --spawn=same-dir --chrome";
+        + " --spawn=same-dir --chrome";
 
     private static string Line(string? sessionId, string? name)
     {
