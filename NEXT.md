@@ -3,6 +3,38 @@
 What is queued for this repo, one item per heading. A session picking up work
 starts here; a session finishing one removes it or rewrites it as what is left.
 
+## Restore phone/desktop sessions after a reboot (found 2026-11-27)
+
+After a restart every Remote Control conversation showed a crossed-out laptop
+in the desktop app. Login standby (`--tray --standby`) had started fresh hosts,
+each a new environment, so the sidebar's old entries pointed at environments
+nothing served. What brings an entry back on its *own* row:
+
+- **Bridged terminal session** (transcript has a `bridge-session` record):
+  `claude --resume <id> --remote-control` reattaches to the same `cse_` id.
+  Proven on three that night.
+- **Host-spawned phone conversation** (v5 uuid, no bridge record):
+  `claude rc --session-id <session_X|cse_X>` re-registers the old environment
+  (`reuseEnvironmentId`). Proven on guelph-bike-parking: Bike lane un-crossed.
+  It refuses `--spawn`, `--capacity` and `--[no-]create-session-in-dir`, and
+  the server allows one environment per device+folder: while another host
+  serves the folder it answers 409 "already served", and a host killed
+  without signing off keeps the folder about 4 minutes. So restore must run
+  *before* standby takes the folders.
+- **Desktop-app session**: reconnects when sent a message in the app. Not Sky's.
+
+Design: the keeper snapshots, every minute, each host's folder plus one
+server session id it served (the `bridge-spawn/cse_X-*` dirs and the
+`set_session_title` calls in transcripts both carry it), and each live
+bridged terminal session. At login a `restore` step revives each host with
+`--session-id` and resumes each terminal session, then standby fills the rest.
+Fallback: resume as a fresh entry (the title now survives, 748be71).
+
+Open: whether one revive brings back *every* conversation on that
+environment (the test's other two were archived), and whether a revived host
+spawns new phone conversations. The phone offered guelph-bike-parking but no
+new conversation had reached the host when this was written.
+
 ## A NEXT.md queue in every repo, shown by Sky
 
 "Handoff" came up in 29 prompts and "what's next" in 12 over Sep 8 – Nov 7.
