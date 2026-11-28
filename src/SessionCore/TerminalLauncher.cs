@@ -36,6 +36,10 @@ public sealed record TerminalTab(string Folder, string? Title, string Command);
 /// launched from a Claude session it inherited that session's markers, and passing them on
 /// makes the new session think it is a nested child and skip saving its transcript — so
 /// <c>cmd</c> clears them before it starts anything.
+///
+/// Where Windows Terminal is installed and there is a second screen, every new window opens on
+/// it (see <see cref="TerminalPlacement"/>) — which is why a window of its own goes through
+/// <c>wt</c> there instead of a plain <c>start</c>: only <c>wt</c> takes a position.
 /// </summary>
 public static class TerminalLauncher
 {
@@ -58,7 +62,14 @@ public static class TerminalLauncher
     public static bool HasWindowsTerminal => FindWindowsTerminal() is not null;
 
     /// <summary>One command in a terminal of its own — a session, a resume, a fork.</summary>
-    public static void Start(string command) => Run(WindowArguments(command));
+    public static void Start(string command) => Run(WindowArguments(command, Placement()));
+
+    /// <summary>
+    /// Where a new window should open, as <c>wt --pos</c> takes it: on the second screen (see
+    /// <see cref="TerminalPlacement"/>), or null where there is none or no Windows Terminal to
+    /// be told — a plain console cannot be placed from its command line.
+    /// </summary>
+    public static string? Placement() => FindWindowsTerminal() is null ? null : TerminalPlacement.Position();
 
     /// <summary>
     /// Open every host of a standby run as a tab in one window — the difference between a
@@ -88,8 +99,11 @@ public static class TerminalLauncher
             return;
         }
 
+        // Asked once for the whole run. Only the batch that creates the window uses it; Windows
+        // Terminal ignores --pos on a tab that joins a window already up, today's or yesterday's.
+        var position = TerminalPlacement.Position();
         var first = true;
-        foreach (var batch in Batch(tabs, window))
+        foreach (var batch in Batch(tabs, window, position))
         {
             // Only the first batch can create the window; the rest join one that was asked for
             // milliseconds ago and may not exist yet. The wait is cheap and only ever runs on
@@ -100,9 +114,21 @@ public static class TerminalLauncher
         }
     }
 
-    /// <summary>The <c>cmd</c> line that opens one command in a window of its own.</summary>
-    public static string WindowArguments(string command) =>
-        $"/c {Clear()}start \"\" powershell.exe -NoExit {Shell(command, CmdHazards)}";
+    /// <summary>
+    /// The <c>cmd</c> line that opens one command in a window of its own.
+    ///
+    /// With no <paramref name="position"/> it is a plain <c>start</c>, and Windows puts the
+    /// window where it likes — the primary screen. With one, it is a new Windows Terminal window
+    /// told where to open. The shell under it is the same <c>powershell -NoExit</c> with the
+    /// same readable command line, which <see cref="HostShells"/> reads to find a host's shell;
+    /// the <c>;</c> after the <c>cd</c> goes to Windows Terminal escaped, and arrives as itself.
+    /// The folder is this process's, which is the one a plain <c>start</c> would have inherited.
+    /// </summary>
+    public static string WindowArguments(string command, string? position = null) =>
+        position is null
+            ? $"/c {Clear()}start \"\" powershell.exe -NoExit {Shell(command, CmdHazards)}"
+            : $"/c {Clear()}start \"\" wt.exe -w new --pos {position} new-tab -d \"{Folder(Environment.CurrentDirectory)}\""
+              + $" powershell.exe -NoExit {EscapedShell(command)}";
 
     /// <summary>
     /// The <c>cmd</c> line that opens a run of tabs in the named window.
@@ -117,8 +143,9 @@ public static class TerminalLauncher
     /// also why a command that carries one goes in encoded (see <see cref="Shell"/>): the folder
     /// arrives quoted, and a host's command has none, but a prompt can have anything.
     /// </summary>
-    public static string TabArguments(IEnumerable<TerminalTab> tabs, string window) =>
+    public static string TabArguments(IEnumerable<TerminalTab> tabs, string window, string? position = null) =>
         $"/c {Clear()}start \"\" wt.exe -w \"{Escape(window)}\" "
+        + (position is null ? "" : $"--pos {position} ")
         + string.Join(" ; ", tabs.Select(tab =>
             "new-tab"
             + (tab.Title is { Length: > 0 } title ? $" --title \"{Escape(title)}\"" : "")
@@ -149,6 +176,17 @@ public static class TerminalLauncher
             : "-EncodedCommand " + Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(command));
 
     /// <summary>
+    /// The command for a shell under Windows Terminal, kept readable where it can be: a
+    /// <c>;</c> goes in as <c>\;</c>, which Windows Terminal reads as a literal one rather than
+    /// the end of the tab. Anything <c>cmd</c> acts on still goes in encoded, as does a command
+    /// that already holds <c>\;</c>, whose backslash would then be eaten.
+    /// </summary>
+    private static string EscapedShell(string command) =>
+        command.IndexOfAny(CmdHazards.ToCharArray()) < 0 && !command.Contains("\\;")
+            ? $"-Command \"{command.Replace(";", "\\;")}\""
+            : Shell(command, TabHazards);
+
+    /// <summary>
     /// The longest <c>cmd</c> line this launches, under the 8191 characters <c>cmd</c> stops at.
     /// It truncates rather than complains, and a truncated encoded command is no command at all.
     /// </summary>
@@ -159,8 +197,10 @@ public static class TerminalLauncher
     /// rather than complains — a limit twenty-odd projects can reach, and a truncated line
     /// would start the last host with half a command.
     /// </summary>
-    private static IEnumerable<string> Batch(IReadOnlyList<TerminalTab> tabs, string window)
+    private static IEnumerable<string> Batch(IReadOnlyList<TerminalTab> tabs, string window, string? position)
     {
+        string TabArguments(IEnumerable<TerminalTab> run, string name) => TerminalLauncher.TabArguments(run, name, position);
+
         const int budget = 7000;
 
         var pending = new List<TerminalTab>();

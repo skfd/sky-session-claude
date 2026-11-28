@@ -79,7 +79,8 @@ public static class HostShells
     /// anything else.
     ///
     /// Both shapes standby has opened are read: the tab's bare <c>claude rc …</c>, and the
-    /// separate window's <c>cd '…'; claude rc …</c> where Windows Terminal is missing. Only
+    /// separate window's <c>cd '…'; claude rc …</c> — the plain console's where Windows Terminal
+    /// is missing, and a Windows Terminal window's when it is placed on the second screen. Only
     /// the last statement counts, and it has to be the <c>rc</c> verb as a whole token
     /// (<see cref="RemoteControlHosts.IsHostCommand"/>) — a shell opened for an ordinary
     /// session is somebody's terminal, and closing it is not ours to do.

@@ -1621,7 +1621,10 @@ internal static partial class Commands
 
         var command = NewSessionLine(folder, name, prompt);
         var tab = window is null ? null : new TerminalTab(folder, null, ClaudeLaunch.New(name, prompt));
-        var line = tab is null ? TerminalLauncher.WindowArguments(command) : TerminalLauncher.TabArguments([tab], window!);
+        var position = TerminalLauncher.Placement();
+        var line = tab is null
+            ? TerminalLauncher.WindowArguments(command, position)
+            : TerminalLauncher.TabArguments([tab], window!, position);
         if (line.Length > TerminalLauncher.LineBudget)
             throw new UsageException(
                 $"That prompt is too long to start a session with ({prompt?.Length ?? 0} characters; a launch line holds "
