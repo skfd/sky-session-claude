@@ -13,10 +13,19 @@ public class TerminalPlacementTests
     private static readonly ScreenArea Primary = new(0, 0, 1920, 1032, Primary: true);
     private static readonly ScreenArea Left = new(-1920, 0, 0, 1032, Primary: false);
 
+    /// <summary>
+    /// A terminal as Windows reports it once opened at <paramref name="x"/>,<paramref name="y"/>:
+    /// the rectangle starts behind an invisible border, 8 pixels left of the visible edge.
+    /// </summary>
+    private static WindowBox At(int x, int y) => new(x - 8, y, x - 8 + 1129, y + 635);
+
+    /// <summary>The <paramref name="i"/>th slot of the cascade on the left screen.</summary>
+    private static (int, int) Slot(int i) => (-1920 + 26 * (i + 1), 26 * (i + 1));
+
     [Fact]
     public void OpensOnTheScreenThatIsNotPrimary()
     {
-        Assert.Equal((-1920 + 26, 26), TerminalPlacement.Choose([Primary, Left], []));
+        Assert.Equal(Slot(0), TerminalPlacement.Choose([Primary, Left], []));
     }
 
     [Fact]
@@ -27,19 +36,40 @@ public class TerminalPlacementTests
 
     /// <summary>Five sessions in a row are five windows, not one with four exactly underneath.</summary>
     [Fact]
-    public void StepsDownPastTheTerminalsAlreadyThere()
+    public void TakesTheNextSlotPastTheTerminalsAlreadyThere()
     {
-        var two = new List<(int, int)> { (-1300, 400), (-1250, 450), (900, 500) };   // the last is on the primary
+        var (x0, y0) = Slot(0);
+        var (x1, y1) = Slot(1);
 
-        Assert.Equal((-1920 + 3 * 26, 3 * 26), TerminalPlacement.Choose([Primary, Left], two));
+        Assert.Equal(Slot(2), TerminalPlacement.Choose([Primary, Left], [At(x0, y0), At(x1, y1)]));
+    }
+
+    /// <summary>
+    /// A count would land on a window already there whenever an earlier one was closed or
+    /// dragged off: two windows, one of them in slot 2, and the third slot by count is taken.
+    /// </summary>
+    [Fact]
+    public void FillsTheFirstGapRatherThanCounting()
+    {
+        var (x0, y0) = Slot(0);
+        var (x2, y2) = Slot(2);
+
+        Assert.Equal(Slot(1), TerminalPlacement.Choose([Primary, Left], [At(x0, y0), At(x2, y2)]));
+    }
+
+    /// <summary>A window dragged somewhere of the operator's own takes no slot.</summary>
+    [Fact]
+    public void AWindowOffTheLatticeTakesNoSlot()
+    {
+        Assert.Equal(Slot(0), TerminalPlacement.Choose([Primary, Left], [At(-1300, 400), At(900, 500)]));
     }
 
     [Fact]
-    public void StartsTheCascadeAgainAfterEightSteps()
+    public void GoesRoundAgainWhenEverySlotIsTaken()
     {
-        var eight = Enumerable.Range(0, 8).Select(i => (-1500 + i, 400)).ToList();
+        var full = Enumerable.Range(0, 9).Select(i => Slot(i % 8)).Select(s => At(s.Item1, s.Item2)).ToList();
 
-        Assert.Equal((-1920 + 26, 26), TerminalPlacement.Choose([Primary, Left], eight));
+        Assert.Equal(Slot(1), TerminalPlacement.Choose([Primary, Left], full));   // nine windows, 9 % 8
     }
 
     /// <summary>
@@ -50,9 +80,8 @@ public class TerminalPlacementTests
     public void PrefersTheSecondScreenThatAlreadyHoldsTheTerminals()
     {
         var laptop = new ScreenArea(1920, 200, 3456, 1100, Primary: false);
-        var terminals = new List<(int, int)> { (-1000, 500) };
 
-        Assert.Equal((-1920 + 2 * 26, 2 * 26), TerminalPlacement.Choose([Primary, laptop, Left], terminals));
+        Assert.Equal(Slot(0), TerminalPlacement.Choose([Primary, laptop, Left], [At(-1300, 400)]));
         Assert.Equal((1920 + 26, 200 + 26), TerminalPlacement.Choose([Primary, laptop, Left], []));
     }
 

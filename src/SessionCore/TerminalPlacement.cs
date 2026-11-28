@@ -9,6 +9,15 @@ namespace SessionCore;
 public readonly record struct ScreenArea(int Left, int Top, int Right, int Bottom, bool Primary)
 {
     public bool Contains(int x, int y) => x >= Left && x < Right && y >= Top && y < Bottom;
+
+    public bool Holds(WindowBox window) => Contains(window.CentreX, window.CentreY);
+}
+
+/// <summary>A window's rectangle as Windows reports it, invisible border included.</summary>
+public readonly record struct WindowBox(int Left, int Top, int Right, int Bottom)
+{
+    public int CentreX => (Left + Right) / 2;
+    public int CentreY => (Top + Bottom) / 2;
 }
 
 /// <summary>
@@ -23,17 +32,26 @@ public readonly record struct ScreenArea(int Left, int Top, int Right, int Botto
 /// screen there is nowhere else to go, and the answer is nothing — the window opens wherever
 /// Windows puts it, as it always has.
 ///
-/// Windows already on that screen push the next one down and right by a step, the way Windows'
-/// own cascade does, so five sessions started in a row are five windows and not one window
-/// with four more exactly underneath it.
+/// The window goes in the first free slot of a cascade down and right from the screen's
+/// corner, the way Windows' own cascade steps, so five sessions started in a row are five
+/// windows and not one window with four more exactly underneath it. A slot is taken when a
+/// terminal's corner already sits on it — which the ones Windows cascaded there itself do,
+/// on the same lattice.
 /// </summary>
 public static class TerminalPlacement
 {
     /// <summary>How far each window sits from the one before it, as Windows' own cascade does.</summary>
     public const int Step = 26;
 
-    /// <summary>How many steps the cascade takes before it starts again at the top.</summary>
+    /// <summary>How many slots the cascade has before it starts again at the top.</summary>
     public const int Cascade = 8;
+
+    /// <summary>
+    /// How far a corner can be from a slot and still be sitting on it. Windows Terminal puts the
+    /// window's visible edge at <c>--pos</c>, so the rectangle Windows reports starts a few
+    /// pixels left of it, behind the invisible border.
+    /// </summary>
+    private const int Near = 12;
 
     /// <summary>
     /// The top-left corner for a new terminal window as <c>wt --pos</c> takes it, <c>x,y</c>,
@@ -43,7 +61,7 @@ public static class TerminalPlacement
     {
         try
         {
-            return WithPhysicalPixels(() => Choose(Screens(), TerminalCentres())) is { } at
+            return WithPhysicalPixels(() => Choose(Screens(), Terminals())) is { } at
                 ? $"{at.X},{at.Y}"
                 : null;
         }
@@ -55,23 +73,29 @@ public static class TerminalPlacement
 
     /// <summary>
     /// The decision on its own, for the tests: the corner on the chosen screen, given every
-    /// screen and the centre of every terminal window already open.
+    /// screen and every terminal window already open.
     ///
-    /// Centres rather than corners because a window's rectangle includes a border Windows
-    /// draws invisibly outside it: a window flush with a screen's left edge has its corner a
-    /// few pixels onto the next screen over.
+    /// Which screen a window is on goes by its centre rather than its corner, because the
+    /// rectangle includes a border Windows draws invisibly outside it: a window flush with a
+    /// screen's left edge has its corner a few pixels onto the next screen over.
     /// </summary>
-    public static (int X, int Y)? Choose(IReadOnlyList<ScreenArea> screens, IReadOnlyList<(int X, int Y)> terminals)
+    public static (int X, int Y)? Choose(IReadOnlyList<ScreenArea> screens, IReadOnlyList<WindowBox> terminals)
     {
-        int On(ScreenArea screen) => terminals.Count(t => screen.Contains(t.X, t.Y));
-
         var others = screens.Where(s => !s.Primary).ToList();
         if (others.Count == 0) return null;
 
         // OrderByDescending is stable, so a tie keeps the order Windows listed the screens in.
-        var target = others.OrderByDescending(On).First();
-        var step = Step * (1 + On(target) % Cascade);
-        return (target.Left + step, target.Top + step);
+        var target = others.OrderByDescending(s => terminals.Count(s.Holds)).First();
+        var there = terminals.Where(target.Holds).ToList();
+
+        (int X, int Y) Slot(int i) => (target.Left + Step * (1 + i), target.Top + Step * (1 + i));
+        bool Taken((int X, int Y) slot) =>
+            there.Any(w => Math.Abs(w.Left - slot.X) <= Near && Math.Abs(w.Top - slot.Y) <= Near);
+
+        // Every slot taken: go round again from the count, so a full screen still spreads out.
+        for (var i = 0; i < Cascade; i++)
+            if (!Taken(Slot(i))) return Slot(i);
+        return Slot(there.Count % Cascade);
     }
 
     private static List<ScreenArea> Screens()
@@ -89,13 +113,13 @@ public static class TerminalPlacement
     }
 
     /// <summary>
-    /// The centre of every terminal window on the desktop: Windows Terminal's, and the old
-    /// console's for a machine still on it. A minimised window is parked far off every screen
-    /// and so counts for none of them.
+    /// Every terminal window on the desktop: Windows Terminal's, and the old console's for a
+    /// machine still on it. A minimised window is parked far off every screen and so counts
+    /// for none of them.
     /// </summary>
-    private static List<(int X, int Y)> TerminalCentres()
+    private static List<WindowBox> Terminals()
     {
-        var found = new List<(int X, int Y)>();
+        var found = new List<WindowBox>();
         var name = new char[64];
         EnumWindows((window, _) =>
         {
@@ -103,7 +127,7 @@ public static class TerminalPlacement
             var length = GetClassName(window, name, name.Length);
             var cls = new string(name, 0, Math.Max(length, 0));
             if (cls is "CASCADIA_HOSTING_WINDOW_CLASS" or "ConsoleWindowClass" && GetWindowRect(window, out var r))
-                found.Add(((r.Left + r.Right) / 2, (r.Top + r.Bottom) / 2));
+                found.Add(new WindowBox(r.Left, r.Top, r.Right, r.Bottom));
             return true;
         }, IntPtr.Zero);
         return found;
